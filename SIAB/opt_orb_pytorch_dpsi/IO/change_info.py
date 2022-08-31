@@ -35,7 +35,8 @@ def change_info(info_old, weight_old):
 	info_opt.lr = info_old.lr
 	info_opt.cal_T = info_old.cal_T
 	info_opt.cal_smooth = info_old.cal_smooth
-
+	info_opt.max_steps = info_old.max_steps
+	
 	return info_stru, info_element, info_opt
 
 	"""
