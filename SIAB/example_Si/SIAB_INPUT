@@ -1,8 +1,10 @@
 
 #--------------------------------------------------------------------------------
 #1. CMD & ENV
- EXE_mpi       mpiexec.hydra -np 20
- EXE_pw        /home/nic/wszhang/abacus/abacus222_intel-2018u4/ABACUS.mpi
+#EXE_env    module purge && module load anaconda3_nompi gcc/9.2.0 elpa/2021.05.002/intelmpi2018 intelmpi/2018.update4 2>&1 && source activate pytorch110
+ EXE_mpi    mpiexec.hydra -np 20
+ EXE_pw     /home/nic/wszhang/abacus/abacus222_intel-2018u4/ABACUS.mpi
+#EXE_opt    /home/nic/wszhang/abacus/wszhang@github/abacus-develop/tools/SIAB/PyTorchGradient_dpsi/main.py
 
 #-------------------------------------------------------------------------------- 
 #2. Electronic calculatation
@@ -19,8 +21,6 @@
 #STRU Name   #STRU Type  #nbands #MaxL   #nspin  #Bond Length list
  STRU1       dimer       8       2       1       1.8 2.0 2.3 2.8 3.8
  STRU2       trimer      10      2       1       1.9 2.1 2.6
-#For customized reference structure, just list the paths to orb_matrix.[0|1].dat
-#STRU3       customer    ../OUT.STRU3-1.2 ../OUT.STRU3-1.5  
 
 #-------------------------------------------------------------------------------- 
 #4. SIAB calculatation
@@ -30,7 +30,6 @@
  Level1       STRU1             4            none         1s1p      
  Level2       STRU1             4            fix          2s2p1d    
  Level3       STRU2             6            fix          3s3p2d    
-#Level4       STRU3             [4,8]        unfix        4s4p3d    
 
 #--------------------------------------------------------------------------------
 #5. Save Orbitals
@@ -38,5 +37,4 @@
  Save1       Level1       Z           
  Save2       Level2       DZP         
  Save3       Level3       TZDP        
-#Save4       Level4       QZTP        
 

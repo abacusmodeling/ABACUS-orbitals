@@ -119,7 +119,7 @@ def parse_arguments():
                     help='Host list separated by commas ')
     args = parser.parse_args()
     if args.InputFile == None:
-        args.InputFile = "ORBITAL_INPUT"
+        args.InputFile = "SIAB_INPUT"
     if args.HostList == None:
         args.HostList = "localhost"
     return args
@@ -299,7 +299,7 @@ def set_pw_datadir(iElement, iEcut, iRcut, STRUList):
       elif (type_STRU[STRUname] != "customer"):
         pwDataDir_STRU[STRUname] = [ None for iBL in range(nBL_STRU[STRUname]) ]
 
-        print( " Set non-customized PW WaveFunction Dir: " )
+        print( " Set default PW WaveFunction Dir for STRU:%s "%STRUname )
         for iBL in range( nBL_STRU[STRUname] ):
             pwDataDir_STRU[STRUname][iBL] = "%s-%s-%s-%s"%(element[iElement], STRUname, Rcut[iRcut], BL_STRU[STRUname][iBL] )
             pwDataPath_STRU[STRUname][iBL] = "../OUT.%s"%pwDataDir_STRU[STRUname][iBL] 
@@ -320,8 +320,8 @@ def pw_calculation(iElement, iEcut, iRcut, STRUList):
       elif (type_STRU[STRUname] != "customer"):
         #
         for iBL in range( nBL_STRU[STRUname] ):
-            print( "\n", (" Do PW Calculation for Bond-Length(%s) & Ecut(%s) & Rcut(%s) "%(
-                    BL_STRU[STRUname][iBL], Ecut[iEcut], Rcut[iRcut])).center(92,"-") )
+            print( "\n", (" Do PW Calculation for Ecut(%s) & Rcut(%s) & Bond-Length(%s)"%(
+                    Ecut[iEcut], Rcut[iRcut], BL_STRU[STRUname][iBL])).center(92,"-") )
 
             (input_STRU, nAtoms) = get_input_STRU( type_STRU[STRUname], element[iElement], mass, Pseudo_name[iElement], lat0, BL_STRU[STRUname][iBL] )
             print( " %s = %-20s"%("nAtoms", nAtoms), end='\n')
@@ -486,7 +486,7 @@ def define_global_var(InputFile):
     EXE_env     = get_string_linehead( "EXE_env", input_string )
     EXE_mpi     = get_string_linehead( "EXE_mpi", input_string )
     EXE_pw      = get_string_linehead( "EXE_pw", input_string )
-    EXE_orbital = get_string_linehead( "EXE_orbital", input_string )
+    EXE_opt     = get_string_linehead( "EXE_opt", input_string )
     element     = get_array_linehead( "element", input_string )
     Ecut        = strs_to_ints(get_array_linehead( "Ecut", input_string ) )
     Rcut        = strs_to_ints(get_array_linehead( "Rcut", input_string ) )
@@ -497,10 +497,17 @@ def define_global_var(InputFile):
     
     element_num = [ periodtable[ii] for ii in element ]
     
+    if EXE_opt == "":
+        EXE_opt = path_thisfile+"/opt_orb_pytorch_dpsi/main.py (default)" 
+        opt_mainFunc_path = path_thisfile+"/opt_orb_pytorch_dpsi" 
+    else:
+        opt_mainFunc_path=os.path.dirname(EXE_opt)
+    sys.path.append( opt_mainFunc_path ) 
+
     print(" %20s = %s "%("EXE_env", EXE_env) )
     print(" %20s = %s "%("EXE_mpi", EXE_mpi) )
-    print(" %20s = %s "%("EXE_pw", EXE_pw) )
-    print(" %20s = %s "%("EXE_orbital", EXE_orbital) )
+    print(" %20s = %s "%("EXE_pw",  EXE_pw) )
+    print(" %20s = %s "%("EXE_opt", EXE_opt) )
     print(" %20s = %s "%("element", element) )
     print(" %20s = %s "%("element_num", element_num) )
     print(" %20s = %s "%("Ecut", Ecut) )
@@ -669,7 +676,7 @@ def SaveOrb(ElementDir, SIAB_wdir, iRcut):
                 # Number of Dorbital-->       2
     
                 orbType = input["Save%s"%ii][1]
-                orbSaveDir="Orbital_%s"%(orbType)
+                orbSaveDir="Orbital_%s_%s"%(element[iElement], orbType)
                 try:
                     os.mkdir(orbSaveDir)
                 except OSError as error:
@@ -791,20 +798,14 @@ if __name__=="__main__":
             python3 %s
             
             #conda deactivate
-            '''%(EXE_env, EXE_mpi, EXE_orbital)
+            '''%(EXE_env, EXE_mpi, EXE_opt)
             #print(" runcmd: \n%s \n"%sys_run_str )
             #subprocess.run( [ sys_run_str, "--login"], shell=True, text=True, stdin=subprocess.DEVNULL, timeout=18000) 
      
-            ##execfile(EXE_orbital)
+            ##execfile(EXE_opt)
 
-            if EXE_orbital == "":
-                mainFunc_path = path_thisfile+"/opt_orb_pytorch_dpsi" 
-            else:
-                mainFunc_path=os.path.dirname(EXE_orbital)
-            print(" import mainFunc @ path: ", mainFunc_path )
-            sys.path.append( mainFunc_path ) 
+            print(" import mainFunc @ path: ", opt_mainFunc_path )
     	    #print("[pyTorch Version: "+torch.__version__+"]" , flush=True )
-
             import main as mainFunc
             mainFunc.main() #!!!
             
