@@ -58,8 +58,7 @@ def main():
 	#opt = radam.RAdam( sum(C.values(),[]), lr=info_opt.lr, eps=1e-20 )
 	opt = torch_optimizer.SWATS( sum(C.values(),[]), lr=info_opt.lr, eps=1e-20 )
 
-	flag_finish = 0
-	C_old = 0
+
 	with open("Spillage.dat","w") as S_file:
 
 		print( "\nSee \"Spillage.dat\" for detail status: " , flush=True )
@@ -69,7 +68,7 @@ def main():
 			print( '%5s'%"istep", "%20s"%"Spillage", flush=True )
 
 		loss_old = np.inf
-		
+
 		maxSteps = 30000
 		if type(info_opt.max_steps) == int :
 			if info_opt.max_steps > 0 :

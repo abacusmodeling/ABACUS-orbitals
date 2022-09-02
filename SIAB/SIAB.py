@@ -288,6 +288,7 @@ def write_string_tofile(input, filename):
 
 
 def set_pw_datadir(iElement, iEcut, iRcut, STRUList):
+    global pwDataPath_STRU
     for STRUname in STRUList:
       if (type_STRU[STRUname] == "customer"):
         pwDataDir_STRU[STRUname] = [ os.path.basename( pwDataPath_STRU[STRUname][iBL] ) for iBL in range(nBL_STRU[STRUname]) ] 
@@ -403,7 +404,12 @@ def prepare_SIAB_INPUT(iEcut, iRcut, iLevel):
             "lr": 0.01, 
             "cal_T": False,  "cal_smooth": True, "max_steps": max_steps } 
     
-    INPUT_json["weight"] = { "stru": [1] * nBL_STRU[STRUname], 
+    if ( refBands_Level[iLevelm1] == "auto" ) :
+        refBandsFile_Level[iLevelm1] = [ pwDataPath_STRU[STRUname][iBL]+"/istate.info" for iBL in range(nBL_STRU[STRUname]) ]
+        INPUT_json["weight"] = { "stru": [1] * nBL_STRU[STRUname], 
+                             "bands_file": refBandsFile_Level[iLevelm1] }
+    else:
+        INPUT_json["weight"] = { "stru": [1] * nBL_STRU[STRUname], 
                              "bands_range": refBandsRange_Level[iLevelm1] }
     
     INPUT_json["C_init_info"] = {}
@@ -423,8 +429,9 @@ def prepare_SIAB_INPUT(iEcut, iRcut, iLevel):
             INPUT_json["C_init_info"]["opt_C_read"] = True
 
     INPUT_json["V_info"] = {
-        "same_band":True,
-        "init_from_file":True }
+        "init_from_file":True,
+        "same_band":True
+        }
 
     if ( 'opt_C_read' in INPUT_json["C_init_info"] ):
         if ( INPUT_json["C_init_info"]["opt_C_read"] == True  and  INPUT_json["C_init_info"]["init_from_file"] == True ):
@@ -541,7 +548,10 @@ def define_global_var(InputFile):
         refSTRU_Level.append( input["Level%s"%iLevel][0] )
         print( " %20s = %s"%("Reference Struture", refSTRU_Level[iLevelm1] ), end='\n')
     
-        refBands = eval(input["Level%s"%iLevel][1])
+        if ( input["Level%s"%iLevel][1] == "auto" ):
+            refBands = input["Level%s"%iLevel][1]
+        else:
+            refBands = eval(input["Level%s"%iLevel][1])
         #refBands = int(float(refBands))
         refBands_Level.append( refBands )
         print( " %20s = %s"%("Reference Bands", refBands_Level[iLevelm1]), end='\n')
@@ -632,16 +642,19 @@ def define_global_var(InputFile):
     nRcut = len(Rcut)
     
     refBandsRange_Level=[]
+    refBandsFile_Level=[]
     for iLevel in range(1,nLevel+1):
         iLevelm1 = iLevel - 1
         STRUname = refSTRU_Level[iLevelm1]
-        #print( type(refBands_Level[iLevelm1] ) )
+        print( " type(refBands_Level[iLevelm1] : %s"%type(refBands_Level[iLevelm1] ) )
     
         if ( type(refBands_Level[iLevelm1]) == list ):
             refBandsRange_Level.append( int(float( refBands_Level[iLevelm1]) ) )
+        elif ( refBands_Level[iLevelm1] == "auto" ) :
+            refBandsFile_Level.append( [ "istate.info" ] * nBL_STRU[STRUname] )
         else:
             refBandsRange_Level.append( [ refBands_Level[iLevelm1] ] * nBL_STRU[STRUname] )
-        #print( iLevelm1, refBandsRange_Level[iLevelm1])
+    print( " refBandsRange_Level: %s \n refBandsFile_Level: %s"%(refBandsRange_Level, refBandsFile_Level) )
     
     
     ElementDir = os.getcwd()
