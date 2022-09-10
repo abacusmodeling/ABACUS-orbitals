@@ -127,3 +127,11 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Orbital Outlog: OUT0.H.cif
+myhost*
+**/plot*
+**/OUT*
+*_INPUT
+*_KPT
+*STRU

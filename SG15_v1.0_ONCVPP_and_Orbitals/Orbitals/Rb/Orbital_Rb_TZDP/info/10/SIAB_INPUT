@@ -1,0 +1,37 @@
+ 
+#--------------------------------------------------------------------------------
+#1. CMD & ENV
+ EXE_mpi      mpiexec.hydra -np 10 
+ EXE_pw       /home/nic/wszhang/abacus/abacus222_intel-2018u4/ABACUS.mpi
+
+#-------------------------------------------------------------------------------- 
+#2. Electronic calculatation
+ element     Rb  # element name 
+ Ecut        100  # cutoff energy (in Ry)
+ Rcut        10  # cutoff radius (in a.u.)
+ Pseudo_dir  /home/nic/wszhang/abacus/delta_dft/CIF_POT/SG15_ONCV_PBE-1.0/
+ Pseudo_name Rb_ONCV_PBE-1.0.upf
+ sigma       0.01 # energy range for gauss smearing (in Ry)
+
+#--------------------------------------------------------------------------------
+#3. Reference structure related parameters for PW calculation
+#For the built-in structure types (including 'dimer', 'trimer' and 'tetramer'):
+#STRU Name   #STRU Type  #nbands #MaxL   #nspin  #Bond Length list 
+ STRU1       dimer       13      2       1      2.5 3.1 3.7 4.3 5.0
+ STRU2       trimer      18      2       1      3.9 4.7 5.5
+
+#-------------------------------------------------------------------------------- 
+#4. SIAB calculatation
+ max_steps    9000
+#Orbital configure and reference target for each level
+#LevelIndex  #Ref STRU name  #Ref Bands  #InputOrb    #OrbitalConf 
+ Level1      STRU1           auto        none        2s1p      
+ Level2      STRU1           auto        fix         4s2p1d    
+ Level3      STRU2           auto        fix         6s3p2d    
+
+#--------------------------------------------------------------------------------
+#5. Save Orbitals
+#Index    #LevelNum   #OrbitalType 
+ Save1    Level1      Z
+ Save2    Level2      DZP
+ Save3    Level3      TZDP
