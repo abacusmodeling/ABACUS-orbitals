@@ -268,15 +268,15 @@ nbands             	%s
 
 ecutwfc             %s
 scf_thr             1.0e-7  // about iteration
-scf_nmax            1500
+scf_nmax            6000
 
 smearing_method     gauss
 smearing_sigma      %s
 
-mixing_type         pulay       // about charge mixing
-mixing_beta         0.4
-mixing_ndim         8
-printe				1
+//mixing_type         pulay       // about charge mixing
+//mixing_beta         0.4
+//mixing_ndim         8
+//printe              1
 '''%(name, name, Pseudo_dir, nspin, maxL, nbands_STRU, Ecut, smearing_sigma)
     return input_INPUT
 
@@ -307,6 +307,13 @@ def set_pw_datadir(iElement, iEcut, iRcut, STRUList):
             print( " %60s"%pwDataPath_STRU[STRUname][iBL] )
 
 def pw_calculation(iElement, iEcut, iRcut, STRUList):
+    global EXE_env
+    global EXE_mpi
+    global EXE_pw
+    global pwDataDir_STRU
+    global Pseudo_dir
+    global nspin_STRU, maxL_STRU, nbands_STRU, Ecut, sigma
+    # print("(EXE_mpi:%s)"%EXE_mpi)
     #iElement = 0
     #iEcut=0
     #iRcut=0
@@ -352,15 +359,18 @@ def pw_calculation(iElement, iEcut, iRcut, STRUList):
 %s
 echo " pwd: "`pwd`;
 PW_WF_Dir=%s
+EXE_mpi="%s"
+EXE_pw=%s
+echo " run:  ${EXE_mpi} ${EXE_pw} "
+echo " which ${EXE_pw}: "`which ${EXE_pw}`
 #which mpirun mpiexec.hydra;
 if [ ! -f "${PW_WF_Dir}/orb_matrix.0.dat" -o  ! -f "${PW_WF_Dir}/orb_matrix.1.dat" ]; then
     echo " Not found ${PW_WF_Dir}/orb_matrix.[0|1].dat, Calculating PW WF ... "
-    %s %s;
-    #mpiexec.hydra -np 4 -host localhost /gpfs/home/nic/wszhang/abacus222_intel-2018u4/ABACUS.mpi
+    ${EXE_mpi} ${EXE_pw};
 else
-    echo " Found ${PW_WF_Dir}/orb_matrix.[0|1].dat, Skip Calculation "
-fi '''%(EXE_env,  PW_WF_Dir, EXE_mpi, EXE_pw)
-            #print("\n runcmd: %s \n"%sys_run_str )
+    echo " Found ${PW_WF_Dir}/orb_matrix.[0|1].dat, Skip PW Calculation "
+fi '''%(EXE_env, PW_WF_Dir, EXE_mpi, EXE_pw)
+            # print("\n runcmd: %s \n"%sys_run_str )
             sys.stdout.flush() 
 
             # os.environ["PYTHONUNBUFFERED"] = "1"
@@ -401,17 +411,26 @@ def prepare_SIAB_INPUT(iEcut, iRcut, iLevel):
 			"Rcut": { element[iElement]:Rcut[iRcut] for iElement in range(len(element)) },
 			"dr":   { element[iElement]:0.01 for iElement in range(len(element)) },
 			"Ecut": { element[iElement]:int(Ecut[iEcut]) for iElement in range(len(element)) }, 
-            "lr": 0.01, 
+            "lr": 0.05, 
             "cal_T": False,  "cal_smooth": True, "max_steps": max_steps } 
     
     if ( refBands_Level[iLevelm1] == "auto" ) :
-        refBandsFile_Level[iLevelm1] = [ pwDataPath_STRU[STRUname][iBL]+"/istate.info" for iBL in range(nBL_STRU[STRUname]) ]
+        refBands_Level[iLevelm1] = [ pwDataPath_STRU[STRUname][iBL]+"/istate.info" for iBL in range(nBL_STRU[STRUname]) ]
+        # refBandsFile_Level[iLevelm1] = [ pwDataPath_STRU[STRUname][iBL]+"/istate.info" for iBL in range(nBL_STRU[STRUname]) ]
+        # INPUT_json["weight"] = { "stru": [1] * nBL_STRU[STRUname], 
+        #                      "bands_file": refBandsFile_Level[iLevelm1] }
+    #else:
+    #    INPUT_json["weight"] = { "stru": [1] * nBL_STRU[STRUname], 
+    #                         "bands_range": refBandsRange_Level[iLevelm1] }
+    #print("____ refBands_Level:%s"%refBands_Level)
+
+    if ( type(refBands_Level[iLevelm1][0]) == str ):
         INPUT_json["weight"] = { "stru": [1] * nBL_STRU[STRUname], 
-                             "bands_file": refBandsFile_Level[iLevelm1] }
+                             "bands_file": refBands_Level[iLevelm1] }
     else:
         INPUT_json["weight"] = { "stru": [1] * nBL_STRU[STRUname], 
-                             "bands_range": refBandsRange_Level[iLevelm1] }
-    
+                             "bands_range": refBands_Level[iLevelm1] }
+
     INPUT_json["C_init_info"] = {}
     if ( fixPre_Level[iLevelm1] == "None" or fixPre_Level[iLevelm1] == "none" ):
         INPUT_json["C_init_info"]["init_from_file"] = False
@@ -549,12 +568,13 @@ def define_global_var(InputFile):
         print( " %20s = %s"%("Reference Struture", refSTRU_Level[iLevelm1] ), end='\n')
     
         if ( input["Level%s"%iLevel][1] == "auto" ):
-            refBands = input["Level%s"%iLevel][1]
+            refBands = "auto"
         else:
             refBands = eval(input["Level%s"%iLevel][1])
         #refBands = int(float(refBands))
         refBands_Level.append( refBands )
-        print( " %20s = %s"%("Reference Bands", refBands_Level[iLevelm1]), end='\n')
+        str_to_print = "%s %s"%(refBands_Level[iLevelm1], type(refBands) )
+        print( " %20s = %s"%("Reference Bands", str_to_print), end='\n')
     
         fixPre_Level.append( input["Level%s"%iLevel][2] )
         print( " %20s : %s"%("Fix input orbitals?", fixPre_Level[iLevelm1]), end='\n')
@@ -634,31 +654,37 @@ def define_global_var(InputFile):
         print(  " %20s = %s "%("nSave", nSave) )
         for ii in range(1,nSave+1):
             input["Save%s"%ii] = get_array_linehead( "Save%s"%ii, input_string )
-            print(" %s %s as %s"%( "Save", input["Save%s"%ii][0] , input["Save%s"%ii][1]) )
+            print(" %12s %s as %s"%( "Save", input["Save%s"%ii][0] , input["Save%s"%ii][1]) )
     print( " ", end='\n' ) 
     
     
     ##################################  Derived parameter  ##################################
     nRcut = len(Rcut)
     
-    refBandsRange_Level=[]
-    refBandsFile_Level=[]
+    #refBandsRange_Level=[]
+    #refBandsFile_Level=[]
     for iLevel in range(1,nLevel+1):
         iLevelm1 = iLevel - 1
         STRUname = refSTRU_Level[iLevelm1]
-        print( " type(refBands_Level[iLevelm1] : %s"%type(refBands_Level[iLevelm1] ) )
+        #print( " type(refBands_Level[iLevelm1] : %s"%type(refBands_Level[iLevelm1] ) )
     
         if ( type(refBands_Level[iLevelm1]) == list ):
-            refBandsRange_Level.append( int(float( refBands_Level[iLevelm1]) ) )
-        elif ( refBands_Level[iLevelm1] == "auto" ) :
-            refBandsFile_Level.append( [ "istate.info" ] * nBL_STRU[STRUname] )
-        else:
-            refBandsRange_Level.append( [ refBands_Level[iLevelm1] ] * nBL_STRU[STRUname] )
-    print( " refBandsRange_Level: %s \n refBandsFile_Level: %s"%(refBandsRange_Level, refBandsFile_Level) )
-    
-    
+            refBands_Level[iLevelm1] = int(float( refBands_Level[iLevelm1]) )
+            # refBandsRange_Level.append( int(float( refBands_Level[iLevelm1]) ) )
+        #elif ( refBands_Level[iLevelm1] == "auto" ) :
+        #    refBands_Level[iLevelm1] = [ "istate.info" ] * nBL_STRU[STRUname]
+        #    # refBandsFile_Level.append( [ "istate.info" ] * nBL_STRU[STRUname] )
+        elif ( type(refBands_Level[iLevelm1]) == int ):
+            refBands_Level[iLevelm1] = [ refBands_Level[iLevelm1] for iBL in range(nBL_STRU[STRUname]) ]
+        #else:
+        #    refBands_Level[iLevelm1] = [ "istate.info"            for iBL in range(nBL_STRU[STRUname]) ]
+        #    # refBandsRange_Level.append( [ refBands_Level[iLevelm1] ] * nBL_STRU[STRUname] )
+    # print( " refBandsRange_Level: %s \n refBandsFile_Level: %s"%(refBandsRange_Level, refBandsFile_Level) )
+    print( " refBands_Level: %s "%(refBands_Level) )
+
+
     ElementDir = os.getcwd()
-    print(" Current working directory %s "%ElementDir )
+    #print(" Current working directory %s "%ElementDir )
     globals().update(locals())
     
     
@@ -744,13 +770,17 @@ if __name__=="__main__":
     print("\n %20s = %s "%("InputFile",args.InputFile))
     #print(" HostList: %s "%args.HostList)
     define_global_var(args.InputFile)
+    
+    print(" import mainFunc @ path: ", opt_mainFunc_path )
+    #print("[pyTorch Version: "+torch.__version__+"]" , flush=True )
+    import main as mainFunc
 
     
     ##################################  Do    Calculation ##################################
     iElement=0
     iEcut=0
     os.chdir(ElementDir)
-    print(" Current working directory %s "%ElementDir )
+    print("\n Current working directory %s "%ElementDir )
     # Now change the directory
     SIAB_wdir = "%s_%s_%sRy"%(element_num[iElement], element[iElement], Ecut[iEcut])
     try:
@@ -817,9 +847,10 @@ if __name__=="__main__":
      
             ##execfile(EXE_opt)
 
-            print(" import mainFunc @ path: ", opt_mainFunc_path )
-    	    #print("[pyTorch Version: "+torch.__version__+"]" , flush=True )
-            import main as mainFunc
+            # continue 
+            # print(" import mainFunc @ path: ", opt_mainFunc_path )
+    	    # #print("[pyTorch Version: "+torch.__version__+"]" , flush=True )
+            # import main as mainFunc
             mainFunc.main() #!!!
             
             Leveln = "Level"+str(iLevel)
