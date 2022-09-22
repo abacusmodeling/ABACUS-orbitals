@@ -129,6 +129,8 @@ dmypy.json
 .pyre/
 
 # Orbital Outlog: OUT0.H.cif
+*.log
+*.err
 myhost*
 **/plot*
 **/OUT*

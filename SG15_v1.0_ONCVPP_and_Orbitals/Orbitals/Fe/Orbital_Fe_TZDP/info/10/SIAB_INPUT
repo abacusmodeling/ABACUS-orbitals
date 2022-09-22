@@ -32,6 +32,6 @@
 #--------------------------------------------------------------------------------
 #5. Save Orbitals
 #Index    #LevelNum   #OrbitalType 
- Save1    Level1      Z
+ Save1    Level1      SZ
  Save2    Level2      DZP
  Save3    Level3      TZDP
