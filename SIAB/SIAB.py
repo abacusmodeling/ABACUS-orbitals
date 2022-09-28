@@ -156,11 +156,12 @@ def orbConf_to_list(str, Llabel, maxL=4):
 orbConf_to_list('1s1p' , ['s','p','d','f','g'], 2)
 
 
-def get_input_STRU( stru_type, element, mass, pseudofile, lat0, BL ):
+def get_input_STRU( stru_type, element, mass, pseudofile, lat0, BL, nspin ):
     dis1 = BL * 0.86603 
     dis2 = BL * 0.5     
     dis3 = BL * 0.81649 
     dis4 = BL * 0.28867 
+    start_mag = 0.0 if nspin == 1 else 2.0
     if (stru_type == "dimer"):
         na=2
         input_STRU='''ATOMIC_SPECIES
@@ -174,11 +175,11 @@ LATTICE_VECTORS
 ATOMIC_POSITIONS
 Cartesian_angstrom  //Cartesian or Direct coordinate.
 %s      //Element Label
-0.0     //starting magnetism
+%.2f     //starting magnetism
 2       //number of atoms
 0.0      0.0      0.0        0   0   0  // crystal coor.
 0.0      0.0      %.6f   0   0   0
-'''%(element, mass, pseudofile, lat0, element, BL)
+'''%(element, mass, pseudofile, lat0, element, start_mag, BL)
 
     elif (stru_type == "trimer" ):
         na=3
@@ -193,12 +194,12 @@ LATTICE_VECTORS
 ATOMIC_POSITIONS
 Cartesian_angstrom  //Cartesian or Direct coordinate.
 %s      //Element Label
-0.0     //starting magnetism
+%.2f     //starting magnetism
 3       //number of atoms
 0.0      0.0      0.0        0   0   0  // crystal coor.
 0.0      0.0      %.6f   0   0   0
 0.0      %.6f %.6f   0   0   0
-'''%(element, mass, pseudofile, lat0, element, BL,dis1,dis2)
+'''%(element, mass, pseudofile, lat0, element, start_mag, BL,dis1,dis2)
 
     elif (stru_type == "tetramer" ): 
         na=4
@@ -213,13 +214,13 @@ LATTICE_VECTORS
 ATOMIC_POSITIONS
 Cartesian_angstrom  //Cartesian or Direct coordinate.
 %s      //Element Label
-0.0     //starting magnetism
+%.2f     //starting magnetism
 4       //number of atoms
 0.0      0.0      0.0        0   0   0  // crystal coor.
 0.0      0.0      %.6f    0   0   0 
 0.0      %.6f %.6f   0   0   0 
 %.6f %.6f %.6f   0   0   0 
-'''%(element, mass, pseudofile, lat0, element, BL,dis1,dis2,dis3,dis4,dis2)
+'''%(element, mass, pseudofile, lat0, element, start_mag, BL,dis1,dis2,dis3,dis4,dis2)
     #print(input_STRU)
     return input_STRU, na
 
@@ -259,6 +260,7 @@ pseudo_dir          %s
 kpoint_file         KPOINTS
 wannier_card        INPUTw
 calculation         scf
+ks_solver           dav  //#cg; dav; lapack; genelpa; hpseps; scalapack_gvx; cusolver 
 ntype               1
 nspin               %s
 lmaxmax             %s
@@ -268,15 +270,15 @@ nbands             	%s
 
 ecutwfc             %s
 scf_thr             1.0e-7  // about iteration
-scf_nmax            6000
+scf_nmax            9000
 
 smearing_method     gauss
 smearing_sigma      %s
 
-//mixing_type         pulay       // about charge mixing
-//mixing_beta         0.4
-//mixing_ndim         8
-//printe              1
+mixing_type         pulay       // about charge mixing
+mixing_beta         0.4
+mixing_ndim         8
+printe              1
 '''%(name, name, Pseudo_dir, nspin, maxL, nbands_STRU, Ecut, smearing_sigma)
     return input_INPUT
 
@@ -331,7 +333,7 @@ def pw_calculation(iElement, iEcut, iRcut, STRUList):
             print( "\n", (" Do PW Calculation for Ecut(%s) & Rcut(%s) & Bond-Length(%s)"%(
                     Ecut[iEcut], Rcut[iRcut], BL_STRU[STRUname][iBL])).center(92,"-") )
 
-            (input_STRU, nAtoms) = get_input_STRU( type_STRU[STRUname], element[iElement], mass, Pseudo_name[iElement], lat0, BL_STRU[STRUname][iBL] )
+            (input_STRU, nAtoms) = get_input_STRU( type_STRU[STRUname], element[iElement], mass, Pseudo_name[iElement], lat0, BL_STRU[STRUname][iBL], nspin_STRU[STRUname] )
             print( " %s = %-20s"%("nAtoms", nAtoms), end='\n')
             # print(input_STRU, nAtoms)
             write_string_tofile(input_STRU, "%s.stru"%pwDataDir_STRU[STRUname][iBL] )
@@ -411,7 +413,7 @@ def prepare_SIAB_INPUT(iEcut, iRcut, iLevel):
 			"Rcut": { element[iElement]:Rcut[iRcut] for iElement in range(len(element)) },
 			"dr":   { element[iElement]:0.01 for iElement in range(len(element)) },
 			"Ecut": { element[iElement]:int(Ecut[iEcut]) for iElement in range(len(element)) }, 
-            "lr": 0.05, 
+            "lr": 0.03, 
             "cal_T": False,  "cal_smooth": True, "max_steps": max_steps } 
     
     if ( refBands_Level[iLevelm1] == "auto" ) :
