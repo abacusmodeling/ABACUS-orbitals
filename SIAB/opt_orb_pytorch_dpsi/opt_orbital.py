@@ -6,7 +6,7 @@ import torch
 
 class Opt_Orbital:
 		
-	def cal_Q(self,QI,C,info_stru,info_element):
+	def cal_Q(QI,C,info_stru,info_element):
 		"""
 		  <\psi|\phi> = <\psi|jY> * <jY|\phi>
 		  Q[it][il][ib,ia*im*iu]
@@ -23,7 +23,7 @@ class Opt_Orbital:
 
 		
 		
-	def cal_S(self,SI,C,info_stru,info_element):
+	def cal_S(SI,C,info_stru,info_element):
 		"""
 		  <\phi|\phi> = <\phi|jY> * <jY|jY> * <jY|\phi>
 		  S[it1,it2][il1][il2][ia1*im1*iu1,ia2*im2*iu2]
@@ -54,7 +54,7 @@ class Opt_Orbital:
 		
 		
 		
-	def change_index_S(self,S,info_stru,info_element):							# S[it1,it2][il1][il2][ia1*im1*iu1,ia2*im2*iu2]
+	def change_index_S(S,info_stru,info_element):							# S[it1,it2][il1][il2][ia1*im1*iu1,ia2*im2*iu2]
 		"""
 		  <\phi|\phi>
 		  S_cat[it1*il1*iat*im1*iu1,iat2*il2*ia2*im2*iu2]
@@ -77,7 +77,7 @@ class Opt_Orbital:
 		
 		
 		
-	def change_index_Q(self,Q,info_stru):					# Q[it][il][ib,ia*im*iu]
+	def change_index_Q(Q,info_stru):					# Q[it][il][ib,ia*im*iu]
 		"""
 		  <\psi|\phi>
 		  Q_cat[ib,it*il*ia*im*iu]
@@ -98,7 +98,7 @@ class Opt_Orbital:
 			
 			
 	
-	def cal_coef(self,Q,S):
+	def cal_coef(Q,S):
 		# Q[ib,it*il*ia*im*iu]
 		# S[it1*il1*ia1*im1*iu1,it2*il2*ia2*im2*iu2]
 		"""
@@ -112,7 +112,7 @@ class Opt_Orbital:
 		
 		
 		
-	def cal_V(self,coef,Q):
+	def cal_V(coef,Q):
 		# coef[ib,it*il*ia*im*iu]
 		# Q[ib,it*il*ia*im*iu]
 		"""
@@ -125,7 +125,7 @@ class Opt_Orbital:
 		return V
 
 
-	def cal_V_origin(self,V,V_info):
+	def cal_V_origin(V,V_info):
 		# V[ib1,ib2]
 		"""
 		  <\psi|\psi> = <\psi|\phi> * <\phi|\phi>^{-1} * <\phi|psi>
@@ -137,7 +137,7 @@ class Opt_Orbital:
 		return V_origin		
 		
 		
-	def cal_V_linear(self,coef,Q_linear,S_linear,V,V_info):
+	def cal_V_linear(coef,Q_linear,S_linear,V,V_info):
 		# coef[ib,it*il*ia*im*iu]
 		# Q_linear[ib,it*il*ia*im*iu]
 		# S_linear[it1*il1*ia1*im1*iu1,it2*il2*ia2*im2*iu2]
@@ -160,7 +160,7 @@ class Opt_Orbital:
 		return V_linear
 			
 	
-	def cal_T(self,C,E):
+	def cal_T(C,E):
 		""" T = 0.5* sum_{it,il,iu} sum_{ie} ( E[it][il,ie] * C[it][il][ie,iu] )**2 """
 		T = torch.zeros(1)
 		num = 0
