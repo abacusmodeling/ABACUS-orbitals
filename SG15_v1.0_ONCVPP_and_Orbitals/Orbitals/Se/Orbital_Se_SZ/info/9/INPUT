@@ -37,7 +37,7 @@
     "Ecut": {
       "Se": 100
     },
-    "lr": 0.02,
+    "lr": 0.03,
     "cal_T": false,
     "cal_smooth": true,
     "max_steps": 9000
@@ -50,12 +50,12 @@
       1,
       1
     ],
-    "bands_file": [
-      "../OUT.Se-STRU1-9-1.9/istate.info",
-      "../OUT.Se-STRU1-9-2.2/istate.info",
-      "../OUT.Se-STRU1-9-2.5/istate.info",
-      "../OUT.Se-STRU1-9-3.0/istate.info",
-      "../OUT.Se-STRU1-9-4.0/istate.info"
+    "bands_range": [
+      6,
+      6,
+      6,
+      6,
+      6
     ]
   },
   "C_init_info": {

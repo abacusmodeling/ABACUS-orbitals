@@ -37,7 +37,7 @@
     "Ecut": {
       "Se": 100
     },
-    "lr": 0.02,
+    "lr": 0.03,
     "cal_T": false,
     "cal_smooth": true,
     "max_steps": 9000
