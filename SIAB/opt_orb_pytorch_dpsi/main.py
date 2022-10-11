@@ -5,7 +5,8 @@ import IO.print_QSV
 import IO.func_C
 import IO.read_json
 import IO.print_orbital
-import opt_orbital
+from opt_orbital import Opt_Orbital
+from opt_orbital_wavefunc import Opt_Orbital_Wavefunc
 import orbital
 import torch
 import numpy as np
@@ -51,8 +52,6 @@ def main():
 		{it:info_element[it].dr for it in info_element},
 		C, flag_norm_C=True)
 
-	opt_orb = opt_orbital.Opt_Orbital()
-
 	#opt = torch.optim.Adam(sum( ([c.real,c.imag] for c in sum(C,[])), []), lr=info_opt.lr, eps=1e-8)
 	#opt = torch.optim.Adam( sum(C.values(),[]), lr=info_opt.lr, eps=1e-20, weight_decay=info_opt.weight_decay)
 	#opt = radam.RAdam( sum(C.values(),[]), lr=info_opt.lr, eps=1e-20 )
@@ -77,20 +76,14 @@ def main():
 
 			Spillage = 0
 			for ist in range(len(info_stru)):
-
-				Q = opt_orb.change_index_Q(opt_orb.cal_Q(QI[ist],C,info_stru[ist],info_element),info_stru[ist])
-				S = opt_orb.change_index_S(opt_orb.cal_S(SI[ist],C,info_stru[ist],info_element),info_stru[ist],info_element)
-				coef = opt_orb.cal_coef(Q,S)
-				V = opt_orb.cal_V(coef,Q)
-				V_origin = opt_orb.cal_V_origin(V,V_info)
+				opt_orb_wave = Opt_Orbital_Wavefunc(info_stru[ist], info_element, V_info)
+				
+				V_origin = opt_orb_wave.cal_V_origin(C, QI[ist], SI[ist])
 
 				if "linear" in file_list.keys():
-					V_linear = [None] * len(file_list["linear"])
-					for i in range(len(file_list["linear"])):
-						Q_linear = opt_orb.change_index_Q(opt_orb.cal_Q(QI_linear[i][ist],C,info_stru[ist],info_element),info_stru[ist])
-						S_linear = opt_orb.change_index_S(opt_orb.cal_S(SI_linear[i][ist],C,info_stru[ist],info_element),info_stru[ist],info_element)
-						V_linear[i] = opt_orb.cal_V_linear(coef,Q_linear,S_linear,V,V_info)
-
+					V_linear = [ opt_orb_wave.cal_V_linear(C, QI_linear[i][ist], SI_linear[i][ist])
+						for i in range(len(file_list["linear"]))]
+						
 				def cal_Spillage(V_delta):
 					Spillage = (V_delta * weight[ist][:info_stru[ist].Nb_true]).sum()
 					return Spillage
@@ -104,7 +97,7 @@ def main():
 						Spillage += cal_Spillage(cal_delta(VI_linear[i],V_linear[i]))
 
 			if info_opt.cal_T:
-				T = opt_orb.cal_T(C,E)
+				T = Opt_Orbital.cal_T(C,E)
 				if not "TSrate" in vars():	TSrate = torch.abs(0.002*Spillage/T).data[0]
 				Loss = Spillage + TSrate*T
 			else:
