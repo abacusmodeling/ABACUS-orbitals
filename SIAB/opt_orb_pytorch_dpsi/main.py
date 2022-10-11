@@ -6,6 +6,7 @@ import IO.func_C
 import IO.read_json
 import IO.print_orbital
 from opt_orbital import Opt_Orbital
+from opt_orbital_wavefunc import Opt_Orbital_Wavefunc
 import orbital
 import torch
 import numpy as np
@@ -75,20 +76,14 @@ def main():
 
 			Spillage = 0
 			for ist in range(len(info_stru)):
-
-				Q = Opt_Orbital.change_index_Q(Opt_Orbital.cal_Q(QI[ist],C,info_stru[ist],info_element),info_stru[ist])
-				S = Opt_Orbital.change_index_S(Opt_Orbital.cal_S(SI[ist],C,info_stru[ist],info_element),info_stru[ist],info_element)
-				coef = Opt_Orbital.cal_coef(Q,S)
-				V = Opt_Orbital.cal_V(coef,Q)
-				V_origin = Opt_Orbital.cal_V_origin(V,V_info)
+				opt_orb_wave = Opt_Orbital_Wavefunc(info_stru[ist], info_element, V_info)
+				
+				V_origin = opt_orb_wave.cal_V_origin(C, QI[ist], SI[ist])
 
 				if "linear" in file_list.keys():
-					V_linear = [None] * len(file_list["linear"])
-					for i in range(len(file_list["linear"])):
-						Q_linear = Opt_Orbital.change_index_Q(Opt_Orbital.cal_Q(QI_linear[i][ist],C,info_stru[ist],info_element),info_stru[ist])
-						S_linear = Opt_Orbital.change_index_S(Opt_Orbital.cal_S(SI_linear[i][ist],C,info_stru[ist],info_element),info_stru[ist],info_element)
-						V_linear[i] = Opt_Orbital.cal_V_linear(coef,Q_linear,S_linear,V,V_info)
-
+					V_linear = [ opt_orb_wave.cal_V_linear(C, QI_linear[i][ist], SI_linear[i][ist])
+						for i in range(len(file_list["linear"]))]
+						
 				def cal_Spillage(V_delta):
 					Spillage = (V_delta * weight[ist][:info_stru[ist].Nb_true]).sum()
 					return Spillage
