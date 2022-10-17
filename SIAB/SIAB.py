@@ -437,15 +437,14 @@ def prepare_SIAB_INPUT(iEcut, iRcut, iLevel):
     if ( fixPre_Level[iLevelm1] == "None" or fixPre_Level[iLevelm1] == "none" ):
         INPUT_json["C_init_info"]["init_from_file"] = False
     else:
-        if iLevelm1 == 0:
-            subprocess.run( [ "cp ../../ORBITAL_RESULTS.txt", "--login"], shell=True, text=True, stdin=subprocess.DEVNULL, timeout=60) 
-
         INPUT_json["C_init_info"]["init_from_file"] = True
 
-        if  (iLevelm1  > 0):
-            INPUT_json["C_init_info"]["C_init_file"] = "Level%s.ORBITAL_RESULTS.txt"%iLevelm1
-        elif(iLevelm1 == 0):
-            INPUT_json["C_init_info"]["C_init_file"] = "ORBITAL_RESULTS.txt"
+        INPUT_json["C_init_info"]["C_init_file"] = "Level%s.ORBITAL_RESULTS.txt"%iLevelm1
+        if(iLevelm1 == 0):
+            if os.path.isfile("../../ORBITAL_RESULTS.txt") and (not os.path.isfile("./Level0.ORBITAL_RESULTS.txt") ) :
+                subprocess.run( [ "cp -avp ../../ORBITAL_RESULTS.txt ./Level0.ORBITAL_RESULTS.txt", "--login"],
+                                    shell=True, text=True, stdin=subprocess.DEVNULL, timeout=60 ) 
+            # INPUT_json["C_init_info"]["C_init_file"] = "ORBITAL_RESULTS.txt"
 
         if ( fixPre_Level[iLevelm1] == "fix" or fixPre_Level[iLevelm1] == "Fix"  ):
             INPUT_json["C_init_info"]["opt_C_read"] = False
