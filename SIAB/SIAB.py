@@ -437,6 +437,9 @@ def prepare_SIAB_INPUT(iEcut, iRcut, iLevel):
     if ( fixPre_Level[iLevelm1] == "None" or fixPre_Level[iLevelm1] == "none" ):
         INPUT_json["C_init_info"]["init_from_file"] = False
     else:
+        if iLevelm1 == 0:
+            subprocess.run( [ "cp ../../ORBITAL_RESULTS.txt", "--login"], shell=True, text=True, stdin=subprocess.DEVNULL, timeout=60) 
+
         INPUT_json["C_init_info"]["init_from_file"] = True
 
         if  (iLevelm1  > 0):
@@ -753,7 +756,8 @@ def SaveOrb(ElementDir, SIAB_wdir, iRcut):
 
 if __name__=="__main__":
     #######################################  print logo  #####################################
-    print(" Starting SIAB @ %s\n"%time.ctime(time.time() ))
+    Version = "0.9"
+    print(" Starting SIAB Version %s @ %s\n"%(Version, time.ctime(time.time()))  )
     print( " %s "%('*'*92) )
     
     print( " *", ("  ___   ___     _     ___  ").center(88), "*" ) 
