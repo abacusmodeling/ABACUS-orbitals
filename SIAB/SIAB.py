@@ -400,6 +400,8 @@ def prepare_SIAB_INPUT(iEcut, iRcut, iLevel):
     print( "\n %s "%( "-"*92) )
     print( "", (" Prepare INPUT for Level%s orbitals with Ref %s "%(iLevel, STRUname)).center(92,"-") )
     print( " %s "%( "-"*92) )
+    print("\n Current working directory %s "%os.getcwd() )
+
 
     INPUT_json = {"file_list":{}, "info":{}, "weight":{}, "C_init_info":{}, "V_info": {} }
 
@@ -441,9 +443,14 @@ def prepare_SIAB_INPUT(iEcut, iRcut, iLevel):
 
         INPUT_json["C_init_info"]["C_init_file"] = "Level%s.ORBITAL_RESULTS.txt"%iLevelm1
         if(iLevelm1 == 0):
-            if os.path.isfile("../../ORBITAL_RESULTS.txt") and (not os.path.isfile("./Level0.ORBITAL_RESULTS.txt") ) :
+            print( " Prepare input-orbital (./Level0.ORBITAL_RESULTS.txt) for Level1 optimization ")
+            if   (not os.path.isfile("./Level0.ORBITAL_RESULTS.txt")) and os.path.isfile("../../ORBITAL_RESULTS.txt") :
                 subprocess.run( [ "cp -avp ../../ORBITAL_RESULTS.txt ./Level0.ORBITAL_RESULTS.txt", "--login"],
                                     shell=True, text=True, stdin=subprocess.DEVNULL, timeout=60 ) 
+            elif (not os.path.isfile("./Level0.ORBITAL_RESULTS.txt")) and os.path.isfile("../../Level0.ORBITAL_RESULTS.txt") :
+                subprocess.run( [ "cp -avp ../../Level0.ORBITAL_RESULTS.txt ./Level0.ORBITAL_RESULTS.txt", "--login"],
+                                    shell=True, text=True, stdin=subprocess.DEVNULL, timeout=60 ) 
+
             # INPUT_json["C_init_info"]["C_init_file"] = "ORBITAL_RESULTS.txt"
 
         if ( fixPre_Level[iLevelm1] == "fix" or fixPre_Level[iLevelm1] == "Fix"  ):
