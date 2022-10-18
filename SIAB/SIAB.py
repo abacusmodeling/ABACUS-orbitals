@@ -360,6 +360,8 @@ def pw_calculation(iElement, iEcut, iRcut, STRUList):
             sys_run_str = '''
 %s
 echo " pwd: "`pwd`;
+export OMP_NUM_THREADS=1
+echo " OMP_NUM_THREADS:" $OMP_NUM_THREADS
 PW_WF_Dir=%s
 EXE_mpi="%s"
 EXE_pw=%s
