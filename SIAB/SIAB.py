@@ -58,7 +58,7 @@ def get_string_linehead( headString, input_string ):
         return localarray[1].strip()
     else:
         return ""
-        print( " Not found %s"%headString )
+        print( " Missing %s"%headString )
 
 def get_nRows_linehead( headString, input_string ):
     linematch = re.findall(r"^[ ]*"+headString+"[^#^\n]*", input_string, flags=re.DOTALL|re.MULTILINE)
@@ -369,8 +369,8 @@ echo " run:  ${EXE_mpi} ${EXE_pw} "
 echo " which ${EXE_pw}: "`which ${EXE_pw}`
 #which mpirun mpiexec.hydra;
 if [ ! -f "${PW_WF_Dir}/orb_matrix.0.dat" -o  ! -f "${PW_WF_Dir}/orb_matrix.1.dat" ]; then
-    echo " Not found ${PW_WF_Dir}/orb_matrix.[0|1].dat, Calculating PW WF ... "
-    ${EXE_mpi} ${EXE_pw};
+    echo " Missing ${PW_WF_Dir}/orb_matrix.[0|1].dat, Calculating PW WF ... "
+    stdbuf -oL ${EXE_mpi} ${EXE_pw};
 else
     echo " Found ${PW_WF_Dir}/orb_matrix.[0|1].dat, Skip PW Calculation "
 fi '''%(EXE_env, PW_WF_Dir, EXE_mpi, EXE_pw)
@@ -399,11 +399,7 @@ def prepare_SIAB_INPUT(iEcut, iRcut, iLevel):
     iLevelm1 = iLevel-1
  
     STRUname = refSTRU_Level[iLevelm1]
-    print( "\n %s "%( "-"*92) )
-    print( "", (" Prepare INPUT for Level%s orbitals with Ref %s "%(iLevel, STRUname)).center(92,"-") )
-    print( " %s "%( "-"*92) )
-    print("\n Current working directory %s "%os.getcwd() )
-
+    print(" Prepare INPUT for Level%s orbitals with Ref %s "%(iLevel, STRUname))
 
     INPUT_json = {"file_list":{}, "info":{}, "weight":{}, "C_init_info":{}, "V_info": {} }
 
@@ -830,8 +826,20 @@ if __name__=="__main__":
     
         ################################  Do SIAB Calculation ###############################
         for iLevel in range(1,nLevel+1):
+            Leveln = "Level"+str(iLevel)
             iLevelm1 = iLevel - 1 
-            prepare_SIAB_INPUT(iEcut, iRcut, iLevel)
+
+            print( "\n %s "%( "-"*92) )
+            print( "", (" Generate the Level %s Orbitals"%(iLevel)).center(92,"-") )
+            print( " %s "%( "-"*92) )
+            print("\n Current working directory %s "%os.getcwd() )
+
+            genOrbFile = "%s.ORBITAL_%sU.dat"%(Leveln,element_num[iElement])
+            if os.path.isfile(genOrbFile) :
+                print(" Found file:%s, skip this level"%(genOrbFile) ) 
+                continue 
+            else:
+                prepare_SIAB_INPUT(iEcut, iRcut, iLevel)
     
             sys_run_str = '''
             #conda init bash
@@ -867,7 +875,7 @@ if __name__=="__main__":
             # import main as mainFunc
             mainFunc.main() #!!!
             
-            Leveln = "Level"+str(iLevel)
+
             sys_run_str = '''
             mv INPUT                %s.INPUT
             mv ORBITAL_%sU.dat      %s.ORBITAL_%sU.dat
