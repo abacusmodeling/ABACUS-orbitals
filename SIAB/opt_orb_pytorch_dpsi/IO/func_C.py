@@ -8,13 +8,19 @@ def random_C_init(info_element):
 	for it in info_element.keys():
 		C[it] = ND_list(info_element[it].Nl)
 		for il in range(info_element[it].Nl):
+			# I change the range of C[it][il] from [-1,1] to [0,1]
 			C[it][il] = torch.tensor(np.random.uniform(-1,1, (info_element[it].Ne, info_element[it].Nu[il])), dtype=torch.float64, requires_grad=True)
 	return C
 	
 	
 	
 def read_C_init(file_name,info_element):
-	""" C[it][il][ie,iu]	<jY|\phi> """
+	""" C[it][il][ie,iu]	<jY|\phi> 
+	it: index of atomtype
+	il: index of angular momentum l
+	iu: index of radial orbital of angular momentum l
+	ie: index of truncated spherical Bessel function of present radial orbital
+	"""
 	C = random_C_init(info_element)
 
 	with open(file_name,"r") as file:
@@ -29,22 +35,25 @@ def read_C_init(file_name,info_element):
 		while True:
 			line = file.readline().strip()
 			if line.startswith("Type"):
-				it,il,iu = file.readline().split();	
+				it,il,iu = file.readline().split()
 				il = int(il)
 				iu = int(iu)-1
 				C_read_index.add((it,il,iu))
+				# split line into list
 				line = file.readline().split()
+				# for each truncated spherical Bessel function
 				for ie in range(info_element[it].Ne):
-					if not line:	line = file.readline().split()
+					# if the line is empty, read the next line and split it into list.
+					if not line:
+						line = file.readline().split()
+					# pop the first element of the list and convert it to float as coefficient
 					C[it][il].data[ie,iu] = float(line.pop(0))
 			elif line.startswith("</Coefficient>"):
-				break;
+				break
 			else:
 				raise IOError("unknown line in read_C_init "+file_name+"\n"+line)
 	return C, C_read_index
 
-	
-	
 def copy_C(C,info_element):
 	C_copy = dict()
 	for it in info_element.keys():
@@ -71,7 +80,7 @@ def write_C(file_name,C,Spillage):
 			for il,C_tl in enumerate(C_t):
 				for iu in range(C_tl.size()[1]):
 					print("\tType\tL\tZeta-Orbital", file=file)
-					print(f"\t  {it} \t{il}\t    {iu+1}", file=file)
+					print("\t  {0} \t{1}\t    {2}".format(it, il, iu+1), file=file)
 					for ie in range(C_tl.size()[0]):
 						print("\t", '%18.14f'%C_tl[ie,iu].item(), file=file)
 		print("</Coefficient>", file=file)
