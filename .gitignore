@@ -138,3 +138,6 @@ myhost*
 *_KPT
 *STRU
 **/*_
+
+# virtualenv
+PTG_dpsi/
