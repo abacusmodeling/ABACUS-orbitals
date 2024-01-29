@@ -24,7 +24,22 @@ def main():
 	time_start = time.time()
 
 	file_list, info_true, weight_info, C_init_info, V_info = IO.read_json.read_json("INPUT")
-
+	# weight is the one has dimension [nSTRU*nkpt][nband], is calculated by multiplication of two weight data matrix,
+	# the first is STRU_weight, has dimension [nSTRU][nband], because the band itself doesnot have weight, the weight is from STRU
+	# the second is kpt_weight, has dimension [nSTRU][nkpt], for each STRU, there will be a kpoint list and kpt itself has weight
+	# every element of weight is calculated by multiplying the corresponding element of STRU_weight and kpt_weight,
+	# get physical meaning of the weight per STRU per (k, b)-pair.
+	# More exactly, the weight should have the structure like:
+	#				band1	band2	band3	...
+	# STRU1-kpt1    w11		w12		w13		...
+	# STRU1-kpt2	...
+	# ...			
+	# STRU1-kptN	...
+	# STRU2-kpt1	...
+	# STRU2-kpt2	...
+	# ...
+	# STRU2-kptN	...
+	# ...
 	weight = IO.cal_weight.cal_weight(weight_info, V_info["same_band"], file_list["origin"])
 
 	info_kst = IO.read_QSV.read_file_head(info_true,file_list["origin"])
@@ -37,11 +52,17 @@ def main():
 	print("info_element:", pprint.pformat(info_element,width=40), sep="\n", end="\n"*2, flush=True)
 	print("info_opt:", pprint.pformat(info_opt,width=40), sep="\n", end="\n"*2, flush=True)
 	print("info_max:", pprint.pformat(info_max), sep="\n", end="\n"*2, flush=True)
-
+	# Q is the overlap matrix between psi and jY, or that of the gradient of psi and jY
+	# Q = <psi|jY> or <grad(psi)|grad(jY)>
+	# S is the overlap matrix between jY and jY, or that of the gradient of jY and jY
+	# S = <jY|jY> or <grad(jY)|grad(jY)>
+	# V is the overlap matrix between psi and psi, or that of the gradient of psi and psi
+	# V = <psi|psi> or <grad(psi)|grad(psi)>
 	QI,SI,VI_origin = IO.read_QSV.read_QSV(info_stru, info_element, file_list["origin"], V_info)
 	if "linear" in file_list.keys():
 		QI_linear, SI_linear, VI_linear = list(zip(*( IO.read_QSV.read_QSV(info_stru, info_element, file, V_info) for file in file_list["linear"] )))
 
+	# C is intialized here! carefully treat it!
 	if C_init_info["init_from_file"]:
 		C, C_read_index = IO.func_C.read_C_init( C_init_info["C_init_file"], info_element )
 	else:
@@ -65,21 +86,23 @@ def main():
 			print( '%5s'%"istep", "%20s"%"Spillage", "%20s"%"T.item()", "%20s"%"Loss", flush=True )
 		else:
 			print( '%5s'%"istep", "%20s"%"Spillage", flush=True )
-
+		# initialize the loss_old to be infinity, so that the optimization will start
 		loss_old = np.inf
-
+		# arbitrarily set the max step to 30000 and if input defines it, use the input value
 		maxSteps = 30000
 		if type(info_opt.max_steps) == int :
 			if info_opt.max_steps > 0 :
 				maxSteps = info_opt.max_steps
+		# optimization loop starts here
 		for istep in range(maxSteps):
-
+			# START: hack function here to change definition of Spillage
 			Spillage = 0
 			for ist in range(len(info_stru)):
+				# initialize a new Opt_Orbital_Wavefunc object for STRU
 				opt_orb_wave = Opt_Orbital_Wavefunc(info_stru[ist], info_element, V_info)
-				
+				# 
 				V_origin = opt_orb_wave.cal_V_origin(C, QI[ist], SI[ist])
-
+				# linear corresponds to the mode of calculating the derivative of the wavefunction
 				if "linear" in file_list.keys():
 					V_linear = [ opt_orb_wave.cal_V_linear(C, QI_linear[i][ist], SI_linear[i][ist])
 						for i in range(len(file_list["linear"]))]
@@ -90,12 +113,24 @@ def main():
 
 				def cal_delta(VI, V):
 					return ((VI[ist]-V)/util.update0(VI[ist])).abs()		# abs or **2?
-				
-				Spillage += 2*cal_Spillage(cal_delta(VI_origin,V_origin))
+				# central expression appears to be here, one can modifiy the mixing coefficients between the two terms
+				# psi and dpsi here.
+				coeff_psi = 2  # 2 is the default value
+				coeff_dpsi = 1
+				cstpsi = 1
+				fpsi_dpsi = 1
+				# because we dont have the second order derivatives of quantities, the further mixing with ddpsi is not
+				# possible.
+				# coeff_ddpsi = 0
+				# CALCULATE THE SPILLAGE
+				s0 = cal_Spillage(cal_delta(VI_origin,V_origin))
+				Spillage += coeff_psi*s0
 				if "linear" in file_list.keys():
 					for i in range(len(file_list["linear"])):
-						Spillage += cal_Spillage(cal_delta(VI_linear[i],V_linear[i]))
-
+						s1 = cal_Spillage(cal_delta(VI_linear[i],V_linear[i]))
+						Spillage += coeff_dpsi*s1
+						# Spillage += coeff_dpsi*s1*(cstpsi + s0/fpsi_dpsi)
+			# END: hack function here to change definition of Spillage
 			if info_opt.cal_T:
 				T = Opt_Orbital.cal_T(C,E)
 				if not "TSrate" in vars():	TSrate = torch.abs(0.002*Spillage/T).data[0]

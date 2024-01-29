@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "SIAB"
+version = "0.2"
+description = ""
+readme = "README.md"
+authors = [
+    { name = "ABACUS-AISI developers", email = "huangyk@aisi.ac.cn" }
+]
+dependencies = [
+    "numpy",
+    "scipy"
+]
+
+[tool.setuptools]
+packages = ["SIAB"]
