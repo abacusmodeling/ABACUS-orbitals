@@ -1,4 +1,4 @@
-import SIAB.database as db
+import SIAB.data.interface as db
 import unittest
 
 class TestDatabase(unittest.TestCase):

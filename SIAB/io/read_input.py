@@ -56,7 +56,7 @@ def wash(inp: dict):
         "Save1": ["Level1", "Z"],
         "Save2": ["Level2", "DZP"],
         "Save3": ["Level3", "TZDP"]
-    }
+    },
     """
     inp, optimizer_path = default(inp)
 
@@ -76,5 +76,60 @@ def wash(inp: dict):
 
     return inp
 
+def keywords_translate(keyword: str):
+
+    if keyword == "Ecut":
+        return "ecutwfc"
+    elif keyword == "Rcut":
+        return "bessel_nao_rcut"
+    elif keyword == "Pseudo_dir":
+        return "pseudo_dir"
+    elif keyword == "sigma":
+        return "smearing_sigma"
+    else:
+        return keyword
+
+def unpack_siab_settings(user_settings: dict):
+    """unpack SIAB_INPUT settings for easy generation of ABACUS input files"""
+    bond_lengths = [[
+            bond_length for bond_length in user_settings[key][4:]
+        ] for key in user_settings.keys() if key.startswith("STRU")
+    ]
+    reference_shape = [
+        user_settings[key][0] for key in user_settings.keys() if key.startswith("STRU")
+    ]
+    readin_calc_settings = {
+        keywords_translate(key): user_settings[key] for key in user_settings.keys() if key in [
+            "Ecut", "Rcut", "Pseudo_dir", "sigma"
+        ]}
+    readin_calc_settings["nbands"] = [
+        int(user_settings[key][1]) for key in user_settings.keys() if key.startswith("STRU")
+        ]
+    readin_calc_settings["lmaxmax"] = max([
+        int(user_settings[key][2]) for key in user_settings.keys() if key.startswith("STRU")
+        ])
+    readin_calc_settings["nspin"] = [
+        int(user_settings[key][3]) for key in user_settings.keys() if key.startswith("STRU")
+        ]
+    
+    calculation_settings = [{} for _ in range(len(reference_shape))]
+    for key, value in readin_calc_settings.items():
+        if key != "bessel_nao_rcut":
+            if isinstance(value, list):
+                for i, val in enumerate(value):
+                    calculation_settings[i][key] = val
+            else:
+                for settings in calculation_settings:
+                    settings[key] = value
+        else:
+            bessel_nao_rcut = " ".join([str(v) for v in value])
+            for settings in calculation_settings:
+                settings[key] = bessel_nao_rcut
+
+    return reference_shape, bond_lengths, calculation_settings
+
 if __name__ == "__main__":
-    print(parse("SIAB/example_Si/SIAB_INPUT"))
+    result = parse("./SIAB_INPUT")
+    result = wash(result)
+    result = unpack_siab_settings(result)
+    print(result)

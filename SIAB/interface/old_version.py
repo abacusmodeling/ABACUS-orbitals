@@ -1,7 +1,7 @@
-"""This module is for making compatible with previous version of SIAB, which needs
-the "INPUT.json" file for performing optimization task. """
+"""This module is for making compatible with previous version of PTG_dpsi, 
+The optimizer needs the "INPUT.json" file for performing optimization task. """
 
-def to_bc():
+def to_ov():
     """this function is for dumping the old "INPUT.json" file for performing optimization
     task, read by opt_orb_pytorch_dpsi/main.py
     
@@ -18,7 +18,7 @@ def to_bc():
     }
     """
 
-def bc_parameters(element: str,
+def ov_parameters(element: str,
                   orbital_config: list,
                   bessel_nao_rcut: float,
                   bessel_nao_ecut: float,
@@ -39,7 +39,7 @@ def bc_parameters(element: str,
                             lr, calc_kinetic_ener, calc_smooth, opt_maxsteps]
                     ))
 
-def merge_bcparam(bcparams: list):
+def merge_ovparam(bcparams: list):
     """this function is for merging all parameters of each element packed in dicts organized
     in one list as input, into one dict. 
     Except the "Nt_all", which would be a list of element after merging, and lr, cal_T, 
@@ -65,5 +65,5 @@ def merge_bcparam(bcparams: list):
         merged[key] = dict(zip(merged["Nt_all"], [bcparam[key] for bcparam in bcparams]))
     return merged
 
-def bc_weights():
+def ov_weights():
     pass

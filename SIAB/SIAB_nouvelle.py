@@ -38,8 +38,7 @@ define_global_var           -> database.PERIODIC_TABLE_TOINDEX
                                read_input.default
                                read_input.wash
 """
-import read_input as ir
-import abacus as abacus
+import SIAB.io.read_input as ir
 import os
 def initialize(fname: str = "./SIAB_INPUT", pseudopotential_check: bool = True):
 
@@ -51,121 +50,11 @@ def initialize(fname: str = "./SIAB_INPUT", pseudopotential_check: bool = True):
     if not os.path.exists(fpseudo) and pseudopotential_check: # check the existence of pseudopotential file
         raise FileNotFoundError(
             "Pseudopotential file %s not found"%fpseudo)
-
-    return user_settings
-
-def unpack_siab_settings(user_settings: dict):
-    """unpack SIAB_INPUT settings for easy generation of ABACUS input files"""
-    bond_lengths = [[
-            bond_length for bond_length in user_settings[key][4:]
-        ] for key in user_settings.keys() if key.startswith("STRU")
-    ]
-    reference_shape = [
-        user_settings[key][0] for key in user_settings.keys() if key.startswith("STRU")
-    ]
-    readin_calc_settings = {
-        keywords_translate(key): user_settings[key] for key in user_settings.keys() if key in [
-            "Ecut", "Rcut", "Pseudo_dir", "sigma"
-        ]}
-    readin_calc_settings["nbands"] = [
-        int(user_settings[key][1]) for key in user_settings.keys() if key.startswith("STRU")
-        ]
-    readin_calc_settings["lmaxmax"] = max([
-        int(user_settings[key][2]) for key in user_settings.keys() if key.startswith("STRU")
-        ])
-    readin_calc_settings["nspin"] = [
-        int(user_settings[key][3]) for key in user_settings.keys() if key.startswith("STRU")
-        ]
     
-    calculation_settings = [{} for _ in range(len(reference_shape))]
-    for key, value in readin_calc_settings.items():
-        if key != "bessel_nao_rcut":
-            if isinstance(value, list):
-                for i, val in enumerate(value):
-                    calculation_settings[i][key] = val
-            else:
-                for settings in calculation_settings:
-                    settings[key] = value
-        else:
-            bessel_nao_rcut = " ".join([str(v) for v in value])
-            for settings in calculation_settings:
-                settings[key] = bessel_nao_rcut
+    reference_shapes, bond_lengths, calculation_settings = ir.unpack_siab_settings(user_settings)
+    return user_settings, reference_shapes, bond_lengths, calculation_settings
 
-    return reference_shape, bond_lengths, calculation_settings
-
-def keywords_translate(keyword: str):
-
-    if keyword == "Ecut":
-        return "ecutwfc"
-    elif keyword == "Rcut":
-        return "bessel_nao_rcut"
-    elif keyword == "Pseudo_dir":
-        return "pseudo_dir"
-    elif keyword == "sigma":
-        return "smearing_sigma"
-    else:
-        return keyword
-
-import cmd_wrapper as cmdwrp
-def archive(footer: str = "", env: str = "local"):
-
-    """archive the results"""
-    headers = ["INPUT", "STRU", "KPT"]
-    if footer != "":
-        cmdwrp.op("mkdir", footer, additional_args=["-p"], env=env)
-        for header in headers:
-            if header == "INPUT":
-                cmdwrp.op("mv", "%s-%s"%(header, footer), "%s/INPUT"%(footer), env=env)
-            else:
-                cmdwrp.op("mv", "%s-%s"%(header, footer), "%s/"%(footer), env=env)
-    else:
-        raise ValueError("footer is not specified")
-
-def run_abacus(reference_shapes: list,
-               bond_lengths: list,
-               calculation_settings: list,
-               user_settings: dict,
-               test: bool = True):
-    """iteratively run ABACUS calculation on reference structures
-    To let optimizer be easy to find output, return names of folders"""
-    nstructure_ref = 0
-    if len(reference_shapes)*len(bond_lengths)*len(calculation_settings) != len(reference_shapes)**3:
-        raise ValueError("number of settings not aligned.")
-    else:
-        nstructure_ref = len(reference_shapes)
-    
-    folders = []
-    for i in range(nstructure_ref):
-        folders_istructure = []
-        for bond_length in bond_lengths[i]:
-            stru_settings = {
-                "shape": reference_shapes[i],
-                "bond_length": bond_length,
-                "element": user_settings["element"],
-                "fpseudo": user_settings["Pseudo_name"],
-                "lattice_constant": 20.0
-            }
-            folder = abacus.generation(input_settings=calculation_settings[i],
-                                       stru_settings=stru_settings)
-            folders_istructure.append(folder)
-            archive(footer=folder)
-            """check-in folder and run ABACUS"""
-            os.chdir(folder)
-            print("""Run ABACUS calculation on reference structure.
-Reference structure: %s
-Bond length: %s"""%(reference_shapes[i], bond_length))
-            _jtg = abacus.submit(folder=folder, 
-                                 module_load_command=user_settings["EXE_env"],
-                                 mpi_command=user_settings["EXE_mpi"],
-                                 abacus_command=user_settings["EXE_pw"],
-                                 rcuts=user_settings["Rcut"],
-                                 test=test)
-            
-            os.chdir("../")
-        folders.append(folders_istructure)
-    """wait for all jobs to finish"""
-    
-    return folders
+import SIAB.interface.cmd_wrapper as cmdwrp
 
 def checkpoint(user_settings: dict, 
                rcut: float, 
@@ -208,27 +97,20 @@ def checkpoint(user_settings: dict,
     cmdwrp.op("mv", "ORBITAL_%sU.dat"%user_settings["element"], "%s/ORBITAL_%sU.dat"%(
         folder, user_settings["element"]), env=env)
 
+import SIAB.interface.submit as submit
 def driver(fname, test: bool = True):
     # read input
-    user_settings = initialize(fname, False)
-    #print(user_settings)
-    # in new SIAB version, we calculate SCF on each bong length, each kind of reference structures
-    # for only once. Parse the orbital overlap files named as "orb_matrix_rcutXderivY.dat", X is 
-    # according to bessel_nao_rcut the user setting from SIAB_INPUT, Y is always to be 0 and 1 for
-    # PTG_dpsi method
-    reference_shapes, bond_lengths, calculation_settings = unpack_siab_settings(user_settings) 
+    user_settings, reference_shapes, bond_lengths, calculation_settings = initialize(fname=fname, 
+                                                                                     pseudopotential_check=False)
 
     """ABACUS corresponding refactor has done supporting multiple bessel_nao_rcut input"""
-    folders = run_abacus(reference_shapes=reference_shapes,
-                         bond_lengths=bond_lengths,
-                         calculation_settings=calculation_settings,
-                         user_settings=user_settings,
-                         test=test)
+    folders = submit.iterate(reference_shapes=reference_shapes,
+                             bond_lengths=bond_lengths,
+                             calculation_settings=calculation_settings,
+                             user_settings=user_settings,
+                             test=test)
     return folders
     """then call optimizer"""
-    
-
-
 
 import argparse
 def main(cmdline_mode: bool = True):

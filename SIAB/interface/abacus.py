@@ -86,7 +86,7 @@ def KPOINTS():
     """For ABACUS-orbitals numerical orbitals generation workflow specifically"""
     return "K_POINTS\n0\nGamma\n1 1 1 0 0 0\n"
 
-def INPUT(user_settings: dict,
+def INPUT(user_setting: dict,
           suffix: str = "") -> str:
     """generate INPUT file for orbital generation task"""
     inbuilt_template = {
@@ -102,9 +102,9 @@ def INPUT(user_settings: dict,
         "printe": "1" # print energy
     }
     result = "INPUT_PARAMETERS"
-    for key in user_settings.keys():
+    for key in user_setting.keys():
         if key in inbuilt_template.keys():
-            inbuilt_template[key] = user_settings[key]
+            inbuilt_template[key] = user_setting[key]
         else:
             print("Warning: unknown key %s"%key)
     if suffix != "":
@@ -119,8 +119,8 @@ def INPUT(user_settings: dict,
 """because INPUTw and INPUTs have been deprecated, these two functions are not included in
 refactor plan"""
 
-def generation(input_settings: dict,
-               stru_settings: dict):
+def generation(input_setting: dict,
+               stru_setting: dict):
     """generate input files for orbital generation
     
     input_settings: dict, INPUT settings for ABACUS
@@ -134,11 +134,11 @@ def generation(input_settings: dict,
     """
     necessary_keys = ["element", "shape", "fpseudo", "bond_length"]
     for necessary_key in necessary_keys:
-        if necessary_key not in stru_settings.keys():
+        if necessary_key not in stru_setting.keys():
             raise ValueError("key %s is not specified"%necessary_key)
-    folder = "-".join([str(stru_settings[key]) for key in necessary_keys if key != "fpseudo"])
-    _input = INPUT(input_settings, suffix=folder)
-    _stru, natom = STRU(**stru_settings)
+    folder = "-".join([str(stru_setting[key]) for key in necessary_keys if key != "fpseudo"])
+    _input = INPUT(input_setting, suffix=folder)
+    _stru, natom = STRU(**stru_setting)
     _kpt = KPOINTS()
 
     """to make code expresses clear"""
@@ -166,69 +166,3 @@ def read_INPUT(folder: str = "") -> dict:
             if match is not None:
                 result[match.group(2)] = match.group(4)
     return result
-
-def skip(folder: str = "",
-         rcuts: list = [6],
-         derivs: list = [0, 1]):
-    """compatible with old ABACUS version generated orb_matrix.0.dat and orb_matrix.1.dat"""
-    fname_pattern = r"^(orb_matrix.)(rcut)?([0-9]+)?(deriv)?([01]{1})(.dat)$"
-
-    if not os.path.isdir(folder):
-        return False
-    files = os.listdir(folder)
-    if len(rcuts) == 0:
-        """the old version, only check if there are those two files"""
-        if "orb_matrix.0.dat" in files and "orb_matrix.1.dat" in files:
-            return True
-        else:
-            return False
-    else:
-        """the new version, check if all rcut values in rcuts are calculated"""
-        for rcut in rcuts:
-            for deriv in derivs:
-                fname = "orb_matrix.rcut%dderiv%d.dat"%(rcut, deriv)
-                if fname not in files:
-                    return False
-        return True
-
-import os
-import SIAB.cmd_wrapper as cmdwrp
-def submit(folder: str = "", 
-           module_load_command: str = "",
-           mpi_command: str = "",
-           abacus_command: str = "",
-           rcuts: list = [6],
-           env: str = "local",
-           test: bool = False) -> str:
-    
-    """submit ABACUS job"""
-    jtg = "%s\n"%module_load_command
-    jtg += "echo \"present directory: \" `pwd`;\n"
-    jtg += "export OMP_NUM_THREADS=1\n"
-    jtg += "echo \"OMP_NUM_THREADS:\" $OMP_NUM_THREADS\n"
-    jtg += "folder=%s\n"%folder
-    jtg += "abacus_command='%s'\n"%(abacus_command)
-    jtg += "mpi_command='%s'\n"%(mpi_command)
-    jtg += "echo \"run with command: $mpi_command $abacus_command\"\n"
-    jtg += "stdbuf -oL $mpi_command $abacus_command"
-
-    if skip(folder, rcuts):
-        print("skip folder %s"%folder)
-        return "skip"
-    else:
-        if not test:
-            hpc_settings = {"shell": True, "text": True, "timeout": 72000}
-            cmdwrp.run(command=jtg, env=env, hpc_settings=hpc_settings)
-
-    return jtg
-
-if __name__ == "__main__":
-
-    print(submit(folder="test", 
-                 module_load_command="module load intel/2019u4",
-                 mpi_command="mpirun -np 8",
-                 abacus_command="abacus.x < INPUT",
-                 rcuts=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-                 test=True))
-    
-           

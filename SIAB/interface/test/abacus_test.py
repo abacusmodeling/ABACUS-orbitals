@@ -1,5 +1,5 @@
 import unittest
-import SIAB.abacus as ab
+import SIAB.interface.abacus as ab
 
 class TestAbacus(unittest.TestCase):
 
@@ -193,14 +193,6 @@ class TestAbacus(unittest.TestCase):
     def test_generation(self):
         #print("generation function is not test due to it is only a wrapper contains few file operations")
         pass
-
-    def test_submit(self):
-        jtg = ab.submit(folder="unittest",
-                        module_load_command="module load abacus",
-                        mpi_command="mpirun -np 1",
-                        abacus_command="abacus --version",
-                        rcuts=[6, 7],
-                        test=True)
 
     def test_read_INPUT(self):
         result = ab.read_INPUT("./SIAB/test/support")
