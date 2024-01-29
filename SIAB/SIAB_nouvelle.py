@@ -40,11 +40,18 @@ define_global_var           -> database.PERIODIC_TABLE_TOINDEX
 """
 import SIAB.io.read_input as ir
 import os
-def initialize(fname: str = "./SIAB_INPUT", pseudopotential_check: bool = True):
+def initialize(version: str = "0.1.0",
+               fname: str = "./SIAB_INPUT", 
+               pseudopotential_check: bool = True):
 
     """read input and wash it"""
     fname = fname.strip().replace("\\", "/")
-    user_settings = ir.wash(ir.parse(fname=fname))
+    if version == "0.1.0":
+        user_settings = ir.wash(ir.parse(fname=fname))
+    elif version == "0.2.0":
+        raise NotImplementedError("Version %s not implemented."%version)
+    else:
+        raise NotImplementedError("Version %s not implemented."%version)
     """ensure the existence of pseudopotential file"""
     fpseudo = user_settings["Pseudo_dir"]+"/"+user_settings["Pseudo_name"]
     if not os.path.exists(fpseudo) and pseudopotential_check: # check the existence of pseudopotential file
@@ -55,7 +62,6 @@ def initialize(fname: str = "./SIAB_INPUT", pseudopotential_check: bool = True):
     return user_settings, reference_shapes, bond_lengths, calculation_settings
 
 import SIAB.interface.cmd_wrapper as cmdwrp
-
 def checkpoint(user_settings: dict, 
                rcut: float, 
                orbital_config: str,
@@ -98,19 +104,39 @@ def checkpoint(user_settings: dict,
         folder, user_settings["element"]), env=env)
 
 import SIAB.interface.submit as submit
+def abacus(reference_shapes: list,
+           bond_lengths: list,
+           calculation_settings: list,
+           user_settings: dict,
+           test: bool = True):
+    """abacus interface"""
+    return submit.iterate(reference_shapes=reference_shapes,
+                          bond_lengths=bond_lengths,
+                          calculation_settings=calculation_settings,
+                          user_settings=user_settings,
+                          test=test)
+
+import SIAB.spillage as spill
+def spillage(folders: list,
+             user_settings: dict):
+    pass
+
 def driver(fname, test: bool = True):
     # read input
     user_settings, reference_shapes, bond_lengths, calculation_settings = initialize(fname=fname, 
                                                                                      pseudopotential_check=False)
 
     """ABACUS corresponding refactor has done supporting multiple bessel_nao_rcut input"""
-    folders = submit.iterate(reference_shapes=reference_shapes,
-                             bond_lengths=bond_lengths,
-                             calculation_settings=calculation_settings,
-                             user_settings=user_settings,
-                             test=test)
-    return folders
+    folders = abacus(reference_shapes=reference_shapes,
+                     bond_lengths=bond_lengths,
+                     calculation_settings=calculation_settings,
+                     user_settings=user_settings,
+                     test=test)
     """then call optimizer"""
+    spillage(folders=folders,
+             user_settings=user_settings)
+    
+    return folders
 
 import argparse
 def main(cmdline_mode: bool = True):
