@@ -31,10 +31,11 @@ def _submit(folder: str = "",
 
 import os
 import SIAB.interface.abacus as abacus
-def normal(reference_shape: str,
+def normal(general: dict,
+           reference_shape: str,
            bond_lengths: list,
            calculation_setting: dict,
-           user_settings: dict,
+           env_settings: dict,
            test: bool = True):
     """iteratively run ABACUS calculation on reference structures
     To let optimizer be easy to find output, return names of folders"""
@@ -44,8 +45,8 @@ def normal(reference_shape: str,
         stru_setting = {
             "shape": reference_shape,
             "bond_length": bond_length,
-            "element": user_settings["element"],
-            "fpseudo": user_settings["Pseudo_name"],
+            "element": general["element"],
+            "fpseudo": general["Pseudo_name"],
             "lattice_constant": 20.0
         }
         folder = abacus.generation(input_setting=calculation_setting,
@@ -54,15 +55,16 @@ def normal(reference_shape: str,
         folders.append(folder)
         """check-in folder and run ABACUS"""
         os.chdir(folder)
+        rcuts = [float(rcut) for rcut in calculation_setting["bessel_nao_rcut"].split()]
         print("""Run ABACUS calculation on reference structure.
 Reference structure: %s
 Bond length: %s"""%(reference_shape, bond_length))
         _jtg = _submit(folder=folder, 
-                        module_load_command=user_settings["EXE_env"],
-                        mpi_command=user_settings["EXE_mpi"],
-                        abacus_command=user_settings["EXE_pw"],
-                        rcuts=user_settings["Rcut"],
-                        test=test)
+                       module_load_command=env_settings[0],
+                       mpi_command=env_settings[1],
+                       abacus_command=env_settings[2],
+                       rcuts=rcuts,
+                       test=test)
         
         os.chdir("../")
     """wait for all jobs to finish"""
@@ -95,7 +97,7 @@ def _init_blrange(bl0: float, stepsize: list, nstep_bidirection: int = 5):
 
     blmin = bl0 - stepsize[0]*nstep_bidirection
     blmax = bl0 + stepsize[1]*nstep_bidirection
-    print("Searching bond lengths from %s to %s, with stepsize %s."%(blmin, blmax, stepsize))
+    print("Searching bond lengths from %4.2f to %4.2f Angstrom, with stepsize %s."%(blmin, blmax, stepsize))
     bond_lengths = np.linspace(blmin, bl0, nstep_bidirection).tolist()
     bond_lengths.extend(np.linspace(bl0, blmax, nstep_bidirection).tolist())
     return [round(bl, 2) for bl in bond_lengths]
@@ -152,8 +154,9 @@ def _summarize_blrange(bl0: float,
 import numpy as np
 import SIAB.io.read_output as read_output
 import SIAB.data.interface as db
-def blscan(calculation_setting: dict,      # calculation setting, for setting up INPUT file
-           user_settings: dict,            # user settings
+def blscan(general: dict,                  # general settings
+           calculation_setting: dict,      # calculation setting, for setting up INPUT file
+           env_settings: dict,             # calculation environment settings
            reference_shape: str,           # reference shape, always to be dimer
            nstep_bidirection: int = 5,     # number of steps for searching bond lengths per direction
            stepsize: list = [0.2, 0.5],    # stepsize for searching bond lengths, unit in angstrom
@@ -162,7 +165,7 @@ def blscan(calculation_setting: dict,      # calculation setting, for setting up
     
     """search bond lengths for reference shape, for the case bond lengths is specified as auto
     if this is run, skip the calling of run_abacus function"""
-    bond_lengths = _init_blrange(bl0=db.get_radius(user_settings["element"]) * 2.0,
+    bond_lengths = _init_blrange(bl0=db.get_radius(general["element"]) * 2.0,
                                   stepsize=stepsize,
                                   nstep_bidirection=nstep_bidirection)
     """generate folders"""
@@ -171,8 +174,8 @@ def blscan(calculation_setting: dict,      # calculation setting, for setting up
         stru_setting = {
             "shape": reference_shape,
             "bond_length": bond_length,
-            "element": user_settings["element"],
-            "fpseudo": user_settings["Pseudo_name"],
+            "element": general["element"],
+            "fpseudo": general["Pseudo_name"],
             "lattice_constant": 20.0
         }
         folder = abacus.generation(input_setting=calculation_setting,
@@ -184,11 +187,12 @@ def blscan(calculation_setting: dict,      # calculation setting, for setting up
         print("""Run ABACUS calculation on reference structure.
 Reference structure: %s
 Bond length: %s"""%(reference_shape, bond_length))
+        rcuts = [float(rcut) for rcut in calculation_setting["bessel_nao_rcut"].split()]
         _jtg = _submit(folder=folder,
-                       module_load_command=user_settings["EXE_env"],
-                       mpi_command=user_settings["EXE_mpi"],
-                       abacus_command=user_settings["EXE_pw"],
-                       rcuts=user_settings["Rcut"],
+                       module_load_command=env_settings[0],
+                       mpi_command=env_settings[1],
+                       abacus_command=env_settings[2],
+                       rcuts=rcuts,
                        test=test)
         os.chdir("../")
     """wait for all jobs to finish"""
@@ -209,29 +213,33 @@ Dissociation energy: %s eV"""%(reference_shape, re, De))
     folders_to_use = [folder for folder in folders for bond_length in bond_lengths if str(bond_length) in folder]
     return folders_to_use
 
-def iterate(reference_shapes: list,
+def iterate(general: dict,
+            reference_shapes: list,
             bond_lengths: list,
             calculation_settings: list,
-            user_settings: dict,
+            env_settings: tuple,
             test: bool = False):
     """iterate over all settings and submit jobs"""
     folders = []
     for i in range(len(reference_shapes)):
         folders_istructure = []
+        """abacus_driver can be created iteratively in this layer, and feed in following functions"""
         if "auto" in bond_lengths[i]:
             """search bond lengths"""
-            folders_istructure = blscan(calculation_setting=calculation_settings[i],
-                                        user_settings=user_settings,
+            folders_istructure = blscan(general=general,
+                                        calculation_setting=calculation_settings[i],
+                                        env_settings=env_settings,
                                         reference_shape=reference_shapes[i],
                                         nstep_bidirection=5,
                                         stepsize=[0.2, 0.5],
                                         ener_thr=1.0,
                                         test=test)
         else:
-            folders_istructure = normal(reference_shape=reference_shapes[i],
+            folders_istructure = normal(general=general,
+                                        reference_shape=reference_shapes[i],
                                         bond_lengths=bond_lengths[i],
                                         calculation_setting=calculation_settings[i],
-                                        user_settings=user_settings,
+                                        env_settings=env_settings,
                                         test=test)
         folders.append(folders_istructure)
     return folders

@@ -1,5 +1,38 @@
 """this file contains functions for generating ABACUS input files"""
 
+class abacus_driver:
+    """not actually used presently"""
+    def __init__(self, general: dict, calculation_setting: dict, shape: str):
+        self.element = general["element"]
+        self.fpseudo = general["Pseudo_name"]
+        self.calculation_setting = calculation_setting
+        self.shape = shape
+
+    def stru(self, bond_length: float = 0.0, nspin: int = 1):
+        """generate structure"""
+        if self.shape == "":
+            raise ValueError("shape is not specified")
+        if bond_length == 0.0:
+            raise ValueError("bond_length is not specified")
+        if self.shape == "dimer":
+            return dimer(self.element, 1.0, self.fpseudo, 20.0, bond_length, nspin), 2
+        elif self.shape == "trimer":
+            return trimer(self.element, 1.0, self.fpseudo, 20.0, bond_length, nspin), 3
+        elif self.shape == "tetramer":
+            return tetramer(self.element, 1.0, self.fpseudo, 20.0, bond_length, nspin), 4
+        else:
+            raise NotImplementedError("Unknown shape %s"%self.shape)
+
+    def kpt(self):
+        """For ABACUS-orbitals numerical orbitals generation workflow specifically"""
+        return "K_POINTS\n0\nGamma\n1 1 1 0 0 0\n"
+    
+    def input(self, suffix: str = "") -> str:
+        return INPUT(self.calculation_setting, suffix=suffix)
+    
+    def generation(self, stru_setting: dict):
+        return generation(self.calculation_setting, stru_setting)
+
 def dimer(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     """generate dimer structure"""
     starting_magnetization = 0.0 if nspin == 1 else 2.0
@@ -86,7 +119,7 @@ def KPOINTS():
     """For ABACUS-orbitals numerical orbitals generation workflow specifically"""
     return "K_POINTS\n0\nGamma\n1 1 1 0 0 0\n"
 
-def INPUT(user_setting: dict,
+def INPUT(calculation_setting: dict,
           suffix: str = "") -> str:
     """generate INPUT file for orbital generation task"""
     inbuilt_template = {
@@ -102,9 +135,9 @@ def INPUT(user_setting: dict,
         "printe": "1" # print energy
     }
     result = "INPUT_PARAMETERS"
-    for key in user_setting.keys():
+    for key in calculation_setting.keys():
         if key in inbuilt_template.keys():
-            inbuilt_template[key] = user_setting[key]
+            inbuilt_template[key] = calculation_setting[key]
         else:
             print("Warning: unknown key %s"%key)
     if suffix != "":
