@@ -99,6 +99,9 @@ class TestReadInput(unittest.TestCase):
                 'nspin': 1
             }
         )
+    def test_abacus_params(self):
+        abacus_params = ri.abacus_params()
+        self.assertGreater(len(abacus_params), 0)
 
 if __name__ == "__main__":
     unittest.main()

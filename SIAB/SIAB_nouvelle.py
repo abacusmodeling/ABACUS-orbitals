@@ -38,79 +38,67 @@ define_global_var           -> database.PERIODIC_TABLE_TOINDEX
                                read_input.default
                                read_input.wash
 """
+# interface to initialize
 import SIAB.io.read_input as ir
 import os
-def initialize(fname: str = "./SIAB_INPUT", pseudopotential_check: bool = True):
+def initialize(version: str = "0.1.0",
+               fname: str = "./SIAB_INPUT", 
+               pseudopotential_check: bool = True):
 
     """read input and wash it"""
     fname = fname.strip().replace("\\", "/")
-    user_settings = ir.wash(ir.parse(fname=fname))
+    if version == "0.1.0":
+        user_settings = ir.wash(ir.parse(fname=fname))
+    elif version == "0.2.0":
+        raise NotImplementedError("Version %s not implemented."%version)
+    else:
+        raise NotImplementedError("Version %s not implemented."%version)
     """ensure the existence of pseudopotential file"""
     fpseudo = user_settings["Pseudo_dir"]+"/"+user_settings["Pseudo_name"]
     if not os.path.exists(fpseudo) and pseudopotential_check: # check the existence of pseudopotential file
         raise FileNotFoundError(
             "Pseudopotential file %s not found"%fpseudo)
-    
-    reference_shapes, bond_lengths, calculation_settings = ir.unpack_siab_settings(user_settings)
-    return user_settings, reference_shapes, bond_lengths, calculation_settings
 
-import SIAB.interface.cmd_wrapper as cmdwrp
-
-def checkpoint(user_settings: dict, 
-               rcut: float, 
-               orbital_config: str,
-               env: str = "local"):
-    """After optimization of numerical orbitals' coefficients,
-        move generated orbitals to the folder named as:
-        [element]_gga_[Ecut]Ry_[Rcut]au_[orbital_config]
-    
-    Design:
-        all information should be included in user_settings
-        rather than externally defined additionally.
-    
-    Args:
-        user_settings (dict): user settings
-        rcut (float): cutoff radius
-        orbital_config (str): orbital configuration, e.g. 1s1p
-    
-    Returns:
-        None
-    """
-    folder = "_".join([
-        user_settings["element"], 
-        str(user_settings["Ecut"]) + "Ry", 
-        str(rcut)+"au", 
-        orbital_config])
-    """backup input file, unlike the original version, we fix it must be named as SIAB_INPUT"""
-    cmdwrp.op("cp", "SIAB_INPUT", "%s/SIAB_INPUT"%folder, env=env)
-    """move spillage.dat"""
-    cmdwrp.op("mv", "spillage.dat", "%s/spillage.dat"%folder, env=env)
-    """move ORBITAL_PLOTU.dat and ORBITAL_RESULTS.txt"""
-    cmdwrp.op("mv", "ORBITAL_PLOTU.dat", "%s/ORBITAL_PLOTU.dat"%folder, env=env)
-    cmdwrp.op("mv", "ORBITAL_RESULTS.txt", "%s/ORBITAL_RESULTS.txt"%folder, env=env)
-    """move ORBITAL_[element]U.dat to [element]_gga_[Ecut]Ry_[Rcut]au.orb"""
-    forb = "%s_gga_%sRy_%sau_%s.orb"%(
-        user_settings["element"], str(user_settings["Ecut"]), str(rcut), orbital_config)
-    cmdwrp.op("cp", "ORBITAL_%sU.dat"%user_settings["element"], "%s/%s"%(folder, forb), env=env)
-    print("Orbital file %s generated."%forb)
-    """and directly move it to the folder"""
-    cmdwrp.op("mv", "ORBITAL_%sU.dat"%user_settings["element"], "%s/ORBITAL_%sU.dat"%(
-        folder, user_settings["element"]), env=env)
-
+    return ir.unpack_siab_input(user_settings)
+# interface to abacus
 import SIAB.interface.submit as submit
+def abacus(general: dict,
+           reference_shapes: list,
+           bond_lengths: list,
+           calculation_settings: list,
+           env_settings: tuple,
+           test: bool = True):
+    """abacus interface"""
+    return submit.iterate(general=general,
+                          reference_shapes=reference_shapes,
+                          bond_lengths=bond_lengths,
+                          calculation_settings=calculation_settings,
+                          env_settings=env_settings,
+                          test=test)
+# interface to Spillage optimization
+import SIAB.spillage as spill
+def spillage(folders: list,
+             siab_settings: dict):
+    pass
+
 def driver(fname, test: bool = True):
     # read input
-    user_settings, reference_shapes, bond_lengths, calculation_settings = initialize(fname=fname, 
-                                                                                     pseudopotential_check=False)
+    reference_shapes, bond_lengths, calculation_settings,\
+    siab_settings, env_settings, general = initialize(fname=fname, 
+                                                      pseudopotential_check=False)
 
     """ABACUS corresponding refactor has done supporting multiple bessel_nao_rcut input"""
-    folders = submit.iterate(reference_shapes=reference_shapes,
-                             bond_lengths=bond_lengths,
-                             calculation_settings=calculation_settings,
-                             user_settings=user_settings,
-                             test=test)
-    return folders
+    folders = abacus(general=general,
+                     reference_shapes=reference_shapes,
+                     bond_lengths=bond_lengths,
+                     calculation_settings=calculation_settings,
+                     env_settings=env_settings,
+                     test=test)
     """then call optimizer"""
+    spillage(folders=folders,
+             siab_settings=siab_settings)
+    
+    return folders
 
 import argparse
 def main(cmdline_mode: bool = True):
@@ -127,17 +115,26 @@ This version is refactored from PTG_dpsi, by ABACUS-AISI developers.
         parser.add_argument(
             "-i", "--input", 
             type=str, 
-            default="./SIAB_INPUT", 
+            default="./SIAB_INPUT",
+            action="store",
             help="input script, default is SIAB_INPUT")
         parser.add_argument(
-            "-t", "--test", 
+            "-t", "--test",
+            type=bool, 
             default=False,
+            action="store",
             help="test mode, default is False")
+        # add --help
+        parser.add_argument(
+            "-h", "--help", 
+            action="help", 
+            help="show this help message and exit")
         args = parser.parse_args()
 
-        driver(args.input, args.test)
+        outs = driver(args.input, args.test)
     else:
-        driver("./SIAB_INPUT", False)
+        outs = driver("./SIAB_INPUT", False)
+    print(outs)
 
 if __name__ == '__main__':
 
