@@ -46,7 +46,7 @@ def normal(general: dict,
             "shape": reference_shape,
             "bond_length": bond_length,
             "element": general["element"],
-            "fpseudo": general["Pseudo_name"],
+            "fpseudo": general["pseudo_name"],
             "lattice_constant": 20.0
         }
         folder = abacus.generation(input_setting=calculation_setting,
@@ -55,15 +55,14 @@ def normal(general: dict,
         folders.append(folder)
         """check-in folder and run ABACUS"""
         os.chdir(folder)
-        rcuts = [float(rcut) for rcut in calculation_setting["bessel_nao_rcut"].split()]
         print("""Run ABACUS calculation on reference structure.
 Reference structure: %s
 Bond length: %s"""%(reference_shape, bond_length))
         _jtg = _submit(folder=folder, 
-                       module_load_command=env_settings[0],
-                       mpi_command=env_settings[1],
-                       abacus_command=env_settings[2],
-                       rcuts=rcuts,
+                       module_load_command=env_settings["environment"],
+                       mpi_command=env_settings["mpi_command"],
+                       abacus_command=env_settings["abacus_command"],
+                       rcuts=calculation_setting["bessel_nao_rcut"],
                        test=test)
         
         os.chdir("../")
@@ -175,7 +174,7 @@ def blscan(general: dict,                  # general settings
             "shape": reference_shape,
             "bond_length": bond_length,
             "element": general["element"],
-            "fpseudo": general["Pseudo_name"],
+            "fpseudo": general["pseudo_name"],
             "lattice_constant": 20.0
         }
         folder = abacus.generation(input_setting=calculation_setting,
@@ -187,11 +186,11 @@ def blscan(general: dict,                  # general settings
         print("""Run ABACUS calculation on reference structure.
 Reference structure: %s
 Bond length: %s"""%(reference_shape, bond_length))
-        rcuts = [float(rcut) for rcut in calculation_setting["bessel_nao_rcut"].split()]
+        rcuts = calculation_setting["bessel_nao_rcut"]
         _jtg = _submit(folder=folder,
-                       module_load_command=env_settings[0],
-                       mpi_command=env_settings[1],
-                       abacus_command=env_settings[2],
+                       module_load_command=env_settings["environment"],
+                       mpi_command=env_settings["mpi_command"],
+                       abacus_command=env_settings["abacus_command"],
                        rcuts=rcuts,
                        test=test)
         os.chdir("../")

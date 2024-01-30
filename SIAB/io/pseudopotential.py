@@ -136,7 +136,7 @@ def determine_type(parsed: dict):
 
 def valelec_config(fname: str):
     """extract valence electron configuration from pseudopotential file
-    return a list of lists, 
+    return element symbol followed by a list of lists, 
     [
         ["1s", "2s"] # for s
         ["2p"] # for p
@@ -204,7 +204,7 @@ def ONCV_parser(parsed: dict) -> list:
                 break
             else:
                 result_list.append([])
-    return result_list
+    return parsed["PP_HEADER"]["attrib"]["element"], result_list
 
 def GBRV_parser(parsed: dict) -> list:
 
@@ -239,7 +239,7 @@ def GBRV_parser(parsed: dict) -> list:
                 break
             else:
                 result_list.append([])
-    return result_list
+    return parsed["PP_HEADER"]["attrib"]["element"], result_list
 
 def ATOMPAW_parser(parsed: dict) -> list:
 
@@ -291,7 +291,7 @@ def ATOMPAW_parser(parsed: dict) -> list:
                 break
             else:
                 result_list.append([])
-    return result_list
+    return parsed["PP_HEADER"]["attrib"]["element"], result_list
 
 def ADC_parser(parsed: dict) -> list:
 
@@ -329,7 +329,7 @@ def ADC_parser(parsed: dict) -> list:
                 break
             else:
                 result_list.append([])
-    return result_list
+    return parsed["PP_HEADER"]["attrib"]["element"], result_list
 
 def zeta_notation_toorbitalconfig(zeta_notation: str, minimal_basis: list = None):
 

@@ -1,8 +1,7 @@
 import re
 import os
 
-def parse(fname: str = ""):
-
+def plaintext_parse(fname: str = ""):
     keyvalue_pattern = r"^(\w+)(\s+)([^#]*)(#.*)?"
     float_pattern = r"^\d+\.\d*$"
     int_pattern = r"^\d+$"
@@ -22,6 +21,23 @@ def parse(fname: str = ""):
             result[key] = value if key not in scalar_keywords else value[0]
     
     return result
+
+import json
+def json_parse(fname: str = ""):
+    """parse SIAB_INPUT file with version 0.2.0 in json format"""
+    with open(fname, "r") as f:
+        result = json.load(f)
+    return result
+
+def parse(fname: str = "", version: str = "0.1.0"):
+    if fname.endswith(".json"):
+        return json_parse(fname)
+    else:
+        result = plaintext_parse(fname)
+        if version == "0.1.0":
+            return compatibility_convert(wash(result))
+        else:
+            return plaintext_convert_tojson(result)
 
 def default(inp: dict):
     # for version < 0.2.0
@@ -93,101 +109,146 @@ def keywords_translate(keyword: str):
     else:
         return keyword
 
-def __bond_lengths(user_settings: dict):
-    """parse bond lengths from user_settings"""
-    bond_lengths = [[
-            bond_length for bond_length in user_settings[key][4:]
-        ] for key in user_settings.keys() if key.startswith("STRU")
-    ]
-    return bond_lengths
-
-def __reference_shape(user_settings: dict):
-    """parse reference shape from user_settings"""
-    reference_shape = [
-        user_settings[key][0] for key in user_settings.keys() if key.startswith("STRU")
-    ]
-    return reference_shape
-
-def __calculation_settings(user_settings: dict):
-    """parse readin_calc_settings from user_settings"""
-    # translate keywords
-    readin_calc_settings = {
-        keywords_translate(key): user_settings[key] for key in user_settings.keys() if key in [
-            "Ecut", "Rcut", "Pseudo_dir", "sigma"
-        ]}
-    # there are parameters set for each reference shape
-    readin_calc_settings["nbands"] = [
-        int(user_settings[key][1]) for key in user_settings.keys() if key.startswith("STRU")
-        ]
-    readin_calc_settings["lmaxmax"] = max([
-        int(user_settings[key][2]) for key in user_settings.keys() if key.startswith("STRU")
-        ])
-    readin_calc_settings["nspin"] = [
-        int(user_settings[key][3]) for key in user_settings.keys() if key.startswith("STRU")
-        ]
-    # there are also other parameters set for each reference shape
-    custom_params = abacus_params()
-    for key, value in user_settings.items():
-        if key in custom_params and key not in ["nbands", "lmaxmax", "nspin", "bessel_nao_rcut"]:
-            readin_calc_settings[key] = value
-    # count the number of reference shapes
-    nref = 0
-    for key in user_settings.keys():
+def compatibility_convert(inp: dict):
+    """convert the old version input contents to new version"""
+    result = {
+        "environment": inp["EXE_env"],
+        "mpi_command": inp["EXE_mpi"],
+        "abacus_command": inp["EXE_pw"],
+        "pseudo_dir": inp["Pseudo_dir"],
+        "pseudo_name": inp["Pseudo_name"],
+        "ecutwfc": inp["Ecut"],
+        "bessel_nao_rcut": inp["Rcut"],
+        "smearing_sigma": inp["sigma"],
+        "optimizer": inp["optimizer"],
+        "max_steps": inp["max_steps"],
+        "spillage_coeff": inp["spillage_coeff"],
+        "reference_systems": [],
+        "orbitals": []
+    }
+    for key in inp.keys():
         if key.startswith("STRU"):
-            nref += 1
-    # generate calculation settings for each reference shape
-    calculation_settings = [{} for _ in range(nref)]
-    for key, value in readin_calc_settings.items():
-        if key != "bessel_nao_rcut":
-            if key in ["nbands", "nspin"]:
-                for i, val in enumerate(value):
-                    calculation_settings[i][key] = val
-            else:
-                for settings in calculation_settings: # for each reference shape
-                    settings[key] = value
+            result["reference_systems"].append({
+                "shape": inp[key][0],
+                "nbands": int(inp[key][1]), # maxL the useless parameter skipped
+                "nspin": int(inp[key][3]),
+                "bond_lengths": ["auto"] if inp[key][4] == "auto" else [float(v) for v in inp[key][4:]]
+            })
+        elif key.startswith("Save"):
+            result["orbitals"].append({
+                "zeta_notation": inp[key][1],
+                "shape": inp[inp[inp[key][0]][0]][0],
+                "nbands_ref": "auto" if inp[inp[key][0]][1] == "auto" else int(inp[inp[key][0]][1]),
+                "orb_ref": "none" if inp[inp[key][0]][2] == "none" else inp[
+                    "Save"+str(int(inp[key][0][5:]) - 1)][1]
+            })
+
+    return result
+
+def plaintext_convert_tojson(inp: dict):
+    """especially for version 0.2.0"""
+    
+    shapes = ["dimer", "trimer", "tetramer"]
+
+    def is_reference_systems_line(key, value):
+        if key in shapes:
+            if len(value) == 3:
+                if value[0].isdigit():
+                    if value[1].isdigit():
+                        if isinstance(value[2], list):
+                            return True
+        return False
+    
+    def is_orbitals_line(key, value):
+        zeta_pattern = r"^(\s*)([SDTQ56789]?Z([SDTQ56789]?P)?)"
+        match = re.match(zeta_pattern, key)
+        if match:
+            if len(value) == 3:
+                if value[0] in shapes:
+                    if value[1].isdigit():
+                        if value[2] == "none" or re.match(zeta_pattern, value[2]):
+                            return True
+        return False
+
+    result = {
+        "reference_systems": [],
+        "orbitals": []
+    }
+    for key, value in inp.items():
+        if is_reference_systems_line(key, value):
+            result["reference_systems"].append({
+                "shape": key,
+                "nbands": int(value[0]),
+                "nspin": int(value[1]),
+                "bond_lengths": value[2]
+            })
+        elif is_orbitals_line(key, value):
+            result["orbitals"].append({
+                "zeta_notation": key,
+                "shape": value[0],
+                "nbands_ref": int(value[1]),
+                "orb_ref": value[2]
+            })
         else:
-            bessel_nao_rcut = " ".join([str(v) for v in value])
-            for settings in calculation_settings:
-                settings[key] = bessel_nao_rcut
-    return calculation_settings
+            result[key] = value
 
-def __siab_settings(user_settings: dict):
+def abacus_settings(user_settings: dict, minimal_basis: list):
+
+    # copy all possible shared parameters
+    all_params = abacus_params()
+    template = {key: value for key, value in user_settings.items() if key in all_params}
+    result = [template.copy() for _ in range(len(user_settings["reference_systems"]))]
+    # then parameters cannot share
+    shape_index_mapping = [v["shape"] for v in user_settings["reference_systems"]]
+    with_polarization = [False]*len(user_settings["reference_systems"])
+    for iorb in range(len(user_settings["orbitals"])):
+        index_shape = shape_index_mapping.index(user_settings["orbitals"][iorb]["shape"])
+        if user_settings["orbitals"][iorb]["zeta_notation"].endswith("P"):
+            with_polarization[index_shape] = True
     
-    return user_settings["optimizer"], user_settings["max_steps"], user_settings["spillage_coeff"]
+    for irs in range(len(user_settings["reference_systems"])):
+        result[irs].update({
+            "nbands": user_settings["reference_systems"][irs]["nbands"],
+            "lmaxmax": len(minimal_basis) if with_polarization[irs] else len(minimal_basis) - 1,
+            "nspin": user_settings["reference_systems"][irs]["nspin"]
+        })
+    return result
 
-def __environment_settings(user_settings: dict):
+def siab_settings(user_settings: dict):
+    return {
+        "optimizer": user_settings["optimizer"],
+        "max_steps": user_settings["max_steps"],
+        "spillage_coeff": user_settings["spillage_coeff"],
+        "orbitals": user_settings["orbitals"]
+    }
 
-    return user_settings["EXE_env"], user_settings["EXE_opt"], user_settings["EXE_pw"]
+def environment_settings(user_settings: dict):
 
-def __description(user_settings: dict):
+    return {
+        "environment": user_settings["environment"],
+        "mpi_command": user_settings["mpi_command"],
+        "abacus_command": user_settings["abacus_command"]
+    }
 
-    keys = ["element", "Pseudo_name"]
-    return {key: user_settings[key] for key in keys}
+def description(symbol: str, user_settings: dict):
 
-def unpack_siab_input(user_settings: dict):
-    """unpack SIAB_INPUT settings for easy generation of ABACUS input files
-    
-    Args:
-        user_settings (dict): user settings parsed from SIAB_INPUT
-        
-    Returns:
-        tuple: reference_shape, bond_lengths, calculation_settings, siab_settings, environment_settings, description
-        
-    Details:
-        reference_shape (list): a list of reference shapes, e.g. ["dimer", "trimer"]
-        bond_lengths (list): a list of bond lengths, e.g. [[1.8, 2.0, 2.3, 2.8, 3.8], [1.9, 2.1, 2.6]]
-        calculation_settings (list): a list of calculation settings (INPUT of ABACUS).
-            Each element is a dict, e.g. [{"ecutwfc": 100, "bessel_nao_rcut": "6 7", ...}, {...}, ...]
-        siab_settings (tuple): optimizer, max_steps, spillage_coeff
-        environment_settings (tuple): EXE_env, EXE_opt, EXE_pw
-        description (dict): element, Pseudo_dir, Pseudo_name
-    """
-    return __reference_shape(user_settings) \
-           , __bond_lengths(user_settings) \
-           , __calculation_settings(user_settings) \
-           , __siab_settings(user_settings) \
-           , __environment_settings(user_settings) \
-           , __description(user_settings)
+    return {
+        "element": symbol,
+        "pseudo_dir": user_settings["pseudo_dir"],
+        "pseudo_name": user_settings["pseudo_name"]
+    }
+
+def unpack_siab_input(user_settings: dict,
+                      symbol: str, 
+                      minimal_basis: list,):
+
+    shapes = [rs["shape"] for rs in user_settings["reference_systems"]]
+    bond_lengths = [rs["bond_lengths"] for rs in user_settings["reference_systems"]]
+    abacus = abacus_settings(user_settings, minimal_basis)
+    siab = siab_settings(user_settings)
+    env = environment_settings(user_settings)
+    general = description(symbol, user_settings)
+    return shapes, bond_lengths, abacus, siab, env, general
 
 def abacus_params():
     pattern = r"^([\w]+)(\s+)([^#]+)(\s*)(#.*)?"
@@ -581,7 +642,50 @@ qo_basis                       hydrogen #type of QO basis function: hydrogen: hy
 qo_thr                         1e-06 #accuracy for evaluating cutoff radius of QO basis function"""
 
 if __name__ == "__main__":
+    shapes = ["dimer", "trimer", "tetramer"]
+    def is_reference_systems_line(key, value):
+        if key in shapes:
+            if len(value) == 3:
+                if isinstance(value[0], int): # nbands
+                    if value[1] == 1 or value[1] == 2: # nspin
+                        if isinstance(value[2], list):
+                            return True
+        return False
+    
+    def is_orbitals_line(key, value):
+        zeta_pattern = r"^(\s*)([SDTQ56789]?Z([SDTQ56789]?P)?)"
+        match = re.match(zeta_pattern, key)
+        if match:
+            if len(value) == 3:
+                if value[0] in shapes:
+                    if isinstance(value[1], int):
+                        if value[2] == "none" or re.match(zeta_pattern, value[2]):
+                            return True
+        return False
+    
+    value1 = [10,        1,       [ 1.9, 2.1, 2.6]]
+    value2 = ["dimer",    4,            "none"]
+
+    print(is_reference_systems_line("dimer", value1))
+    print(is_reference_systems_line("trimer", value1))
+    print(is_reference_systems_line("tetramer", value1))
+    print(is_reference_systems_line("dimer", value2))
+    print(is_reference_systems_line("trimer", value2))
+    print(is_reference_systems_line("tetramer", value2))
+    print(is_orbitals_line("S", value1))
+    print(is_orbitals_line("SZ", value1))
+    print(is_orbitals_line("SZP", value1))
+    print(is_orbitals_line("SZP", value2))
+    print(is_orbitals_line("SZ", value2))
+    print(is_orbitals_line("DZP", value2))
+    print(is_orbitals_line("DZP", value1))
+    print(is_orbitals_line("TZDP", value2))
+    print(is_orbitals_line("TZDP", value1))
+
+    exit()
     result = parse("./SIAB_INPUT")
+    print(result)
     result = wash(result)
+    print(result)
     result = unpack_siab_input(result)
     print(result)

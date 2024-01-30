@@ -41,25 +41,22 @@ define_global_var           -> database.PERIODIC_TABLE_TOINDEX
 # interface to initialize
 import SIAB.io.read_input as ir
 import os
+import SIAB.io.pseudopotential as pp
 def initialize(version: str = "0.1.0",
                fname: str = "./SIAB_INPUT", 
                pseudopotential_check: bool = True):
 
     """read input and wash it"""
     fname = fname.strip().replace("\\", "/")
-    if version == "0.1.0":
-        user_settings = ir.wash(ir.parse(fname=fname))
-    elif version == "0.2.0":
-        raise NotImplementedError("Version %s not implemented."%version)
-    else:
-        raise NotImplementedError("Version %s not implemented."%version)
+    user_settings = ir.parse(fname=fname, version=version)
     """ensure the existence of pseudopotential file"""
-    fpseudo = user_settings["Pseudo_dir"]+"/"+user_settings["Pseudo_name"]
+    fpseudo = user_settings["pseudo_dir"]+"/"+user_settings["pseudo_name"]
     if not os.path.exists(fpseudo) and pseudopotential_check: # check the existence of pseudopotential file
         raise FileNotFoundError(
             "Pseudopotential file %s not found"%fpseudo)
-
-    return ir.unpack_siab_input(user_settings)
+    else:
+        symbol, minimal_basis = pp.valelec_config(fpseudo)
+    return ir.unpack_siab_input(user_settings, symbol=symbol, minimal_basis=minimal_basis)
 # interface to abacus
 import SIAB.interface.submit as submit
 def abacus(general: dict,
