@@ -1,7 +1,65 @@
 """This module is for making compatible with previous version of PTG_dpsi, 
 The optimizer needs the "INPUT.json" file for performing optimization task. """
 
-"""variables appear in function prepare_SIAB_INPUT()
+"""the parsed parameters are organized inside like this:
+{
+    "environment": "module load intel/2019.5.281 openmpi/3.1.4 intel-mkl/2019.5.281 intel-mpi/2019.5.281",
+    "mpi_command": "mpirun -np 1",
+    "abacus_command": "abacus",
+
+    "pseudo_dir": "./download/pseudopotentials/sg15_oncv_upf_2020-02-06/1.2",
+    "pesudo_name": "Fe_ONCV_PBE-1.2.upf",
+    "ecutwfc": 100,
+    "bessel_nao_rcut": [6, 7, 8, 9, 10],
+    "smearing_sigma": 0.015,
+
+    "optimizer": "pytorch.SWAT",
+    "spillage_coeff": [0.5, 0.5],
+    "max_steps": 9000,
+
+    "reference_systems": [
+        {
+            "shape": "dimer",
+            "nbands": 8,
+            "nspin": 1,
+            "bond_lengths": "auto"
+        },
+        {
+            "shape": "trimer",
+            "nbands": 10,
+            "nspin": 1,
+            "bond_lengths": [1.9, 2.1, 2.6]
+        }
+    ],
+    "orbitals": [
+        {
+            "zeta_notation": "SZ",
+            "shape": "dimer",
+            "nbands_ref": 4,
+            "orb_ref": "none"
+        },
+        {
+            "zeta_notation": "DZP",
+            "shape": "dimer",
+            "nbands_ref": 4,
+            "orb_ref": "SZ"
+        },
+        {
+            "zeta_notation": "TZDP",
+            "shape": "trimer",
+            "nbands_ref": 6,
+            "orb_ref": "DZP"
+        }
+    ]
+}
+"""
+
+"""
+prepare_SIAB_INPUT() seems will be called each time when a
+new rcut and new level of orbitals, say each task that can
+define one unique numerical atomic orbital (NAO)
+
+variables appear in function prepare_SIAB_INPUT()
 refSTRU_Level: ["STRU1", "STRU2"]
 orbConf_Level: [
 #   element1, element2, ...
@@ -29,27 +87,67 @@ fixPre_Level: [
 ]
 """
 
-def to_oldversion():
-    """this function is for dumping the old "INPUT.json" file for performing optimization
-    task, read by opt_orb_pytorch_dpsi/main.py
-    
-    here named the dict object as to_bc_settings, it has the structure as below:
-    {
-        "files": {
-            "origin": [],
-            "linear": []
-        },
-        "parameters": {},
-        "weights": {},
-        "sphebes_coeffs": {},
-        "V": {}
-    }
-    """
+def scan_folder_consistency(folders: list):
+    """check if all folders have the same shape, returns 
+    [True/False, element/None, shape/None, bond_lengths/None]"""
+    elements = []
+    shapes = []
+    bond_lengths = []
+    for folder in folders:
+        elements.append(folder.split("-")[0])
+        shapes.append(folder.split("-")[1])
+        bond_lengths.append(float(folder.split("-")[2]))
+    if len(set(shapes)) == 1 and len(set(elements)) == 1:
+        return True, elements[0], shapes[0], bond_lengths
+    else:
+        return False, None, None, None
+
+def convert(calculation_setting: dict,
+            siab_settings: dict):
+    element = None
+    reference_shapes = []
+    bond_lengths = []
+    for orbital in siab_settings["orbitals"]:
+        result = scan_folder_consistency(orbital["folder"])
+        if not result[0]:
+            raise ValueError("all folders for one orbital should have the same shape")
+        if element is None:
+            element = result[1]
+        elif element != result[1]:
+            raise ValueError("all folders should have the same element")
+        reference_shapes.append(result[2])
+        bond_lengths.append(result[3])
+    for rcut in calculation_setting["bessel_nao_rcut"]:
+        ovlp_qsv = ov_ovlps_qsv(element=element,
+                                reference_shapes=reference_shapes,
+                                bond_lengths=bond_lengths,
+                                orbitals=siab_settings["orbitals"],
+                                abacus_version="<3.5.1",
+                                rcut=rcut)
+        istates = ov_reference_states(element=element,
+                                      reference_shapes=reference_shapes,
+                                      bond_lengths=bond_lengths,
+                                      orbitals=siab_settings["orbitals"])
+        c_init = ov_c_init(orbitals=siab_settings["orbitals"])
+        v = ov_V()
+        info = [ov_parameters(element=element,
+                              orbital_config=orbital["nzeta"],
+                              bessel_nao_rcut=rcut,
+                              ecutwfc=calculation_setting["ecutwfc"])
+                for orbital in siab_settings["orbitals"]]
+        for iorb in range(len(siab_settings["orbitals"])):
+            yield {
+                "file_list": dict(zip(["origin", "linear"], ovlp_qsv[iorb])),
+                "info": info[iorb],
+                "weights": istates[1][iorb],
+                "C_init_info": c_init[iorb],
+                "V_info": v
+            }
 
 def ov_parameters(element: str,
                   orbital_config: list,
                   bessel_nao_rcut: float,
-                  bessel_nao_ecut: float,
+                  ecutwfc: float,
                   dr: float = 0.01,
                   opt_maxsteps: int = 1000,
                   lr: float = 0.03,
@@ -62,9 +160,12 @@ def ov_parameters(element: str,
 
     keys = ["Nt_all", "Nu", "Rcut", "dr", "Ecut", "lr", "cal_T", "cal_smooth", "max_steps"]
 
-    return dict(zip(keys, [element, orbital_config, 
-                           bessel_nao_rcut, dr, bessel_nao_ecut,
-                            lr, calc_kinetic_ener, calc_smooth, opt_maxsteps]
+    return dict(zip(keys, [[element], 
+                           {element: orbital_config}, 
+                           {element: bessel_nao_rcut}, 
+                           {element: dr}, 
+                           {element: ecutwfc},
+                           lr, calc_kinetic_ener, calc_smooth, opt_maxsteps]
                     ))
 
 def merge_ovparam(params: list):
@@ -93,11 +194,176 @@ def merge_ovparam(params: list):
         merged[key] = dict(zip(merged["Nt_all"], [param[key] for param in params]))
     return merged
 
-def ov_weights():
-    pass
+def ov_weights(reference_states: list):
+    """for each level, generate the "weights" section in the "INPUT.json" file
+    but actually the "weight" is all the same as 1 for reference structures of
+    one level of numerical orbitals. But is that always reasonable?
+    """
+    result = []
+    def type_trais_isallsame(obj: list):
+        """check if all elements in obj are the same type"""
+        if len(obj) == 0:
+            return True, None
+        else:
+            return all(isinstance(obj[0], type(item)) for item in obj), type(obj[0])
+    for reference_state in reference_states:
+        is_same, type_ = type_trais_isallsame(reference_state)
+        if not is_same:
+            raise TypeError("elements in reference_states should be all str or all int")
+        if type_ == str:
+            result.append(
+                dict(zip(["stru", "bands_file"], [
+                    [1]*len(reference_state),
+                    reference_state
+                ]))
+            )
+        elif type_ == int:
+            result.append(
+                dict(zip(["stru", "bands_range"], [
+                    [1]*len(reference_state),
+                    reference_state
+                ]))
+            )
+        else:
+            raise TypeError("elements in reference_states should be all str or all int")
+    return result
 
-def ov_ovlps():
-    pass
+def ov_V():
+    """generate the "V_info" section (shared by all (rcut, level)-pairs)
+    in the "INPUT.json" file for performing optimization task"""
+    return {
+        "init_from_file": True,
+        "same_band": True
+    }
 
-def ov_reference_states():
-    pass
+def ov_ovlps_qsv(element: str,
+                 reference_shapes: list,
+                 bond_lengths: list,
+                 orbitals: list,
+                 abacus_version: str,
+                 rcut: float = 10.0):
+    """set path of file where overlap_q, s and v are stored for ALL LEVELS OF ORBITALS IN
+    ONE SHOT, organized in one list, each element corresponds to one level of orbitals
+
+    to check abacus_version, use:
+    ```python
+    import subprocess
+
+    stdout = subprocess.run(["abacus", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout.decode("utf-8")
+    print(stdout)
+    ```
+    For example this function returns:
+    [
+        [# level1
+            ["H-dimer-0.8/orb_matrix.0.dat", "H-dimer-1.2/orb_matrix.0.dat"], # origin key
+            [["H-dimer-0.8/orb_matrix.1.dat", "H-dimer-1.2/orb_matrix.1.dat"]] # linear key
+        ],
+        [
+        ...
+        ]
+        ...
+    ]
+    Above is the case for old abacus version. For abacus version >=3.5.1, there are some
+    trivial differences because different bessel_nao_rcut know is calculated in one shot
+    by abacus. For example this function returns:
+    [
+        [# level1
+            ["H-dimer-0.8/orb_matrix_rcut10.0deriv0.dat", "H-dimer-1.2/orb_matrix_rcut10.0deriv0.dat"], # origin key
+            [["H-dimer-0.8/orb_matrix_rcut10.0deriv1.dat", "H-dimer-1.2/orb_matrix_rcut10.0deriv1.dat"]] # linear key
+        ],
+        [
+        ...
+        ]
+        ...
+    ]
+    """
+    ovlp_qsv_header = "orb_matrix"
+
+    if abacus_version == "<3.5.1":
+        ovlp_qsv0 = ovlp_qsv_header + ".0.dat"
+        ovlp_qsv1 = ovlp_qsv_header + ".1.dat"
+    elif abacus_version == ">=3.5.1":
+        ovlp_qsv0 = ovlp_qsv_header + "_rcut" + str(rcut) + "deriv0.dat"
+        ovlp_qsv1 = ovlp_qsv_header + "_rcut" + str(rcut) + "deriv1.dat"
+    else:
+        raise ValueError("abacus_version should be <3.5.1 or >=3.5.1")
+
+    result = [[] for _ in range(len(orbitals))]
+    for iorb, orbital in enumerate(orbitals): # for each level
+        shape = scan_folder_consistency(orbital["folder"])[2]
+        if orbital["nbands_ref"] == "auto":
+            folder_header = "-".join([element, shape])
+            ishape = reference_shapes.index(shape)
+            result[iorb] = [
+                ["-".join(
+                    [folder_header, str(bond_length)]
+                    ) + "/" + ovlp_qsv0 for bond_length in bond_lengths[ishape]],
+                [[
+                "-".join(
+                    [folder_header, str(bond_length)]
+                    ) + "/" + ovlp_qsv1 for bond_length in bond_lengths[ishape]]]
+            ]
+        elif isinstance(orbital["nbands_ref"], int):
+            ishape = reference_shapes.index(shape)
+            result[iorb] = [
+                [orbital["nbands_ref"]]*len(bond_lengths[ishape]),
+                [[orbital["nbands_ref"]]*len(bond_lengths[ishape])]
+            ]
+        else:
+            raise TypeError("nbands_ref should be 'auto' or exact number of bands")
+    return result
+
+def ov_reference_states(element: str,
+                        reference_shapes: list,
+                        bond_lengths: list,
+                        orbitals: list):
+    """set reference states for ALL LEVELS OF ORBITALS IN ONE SHOT, organized
+    in one list, each element corresponds to one level of orbitals
+    
+    For example this function returns:
+    [
+        ['H-dimer-0.8/istate.info', 'H-dimer-1.2/istate.info'], 
+        [4, 4], 
+        ['H-trimer-0.8/istate.info', 'H-trimer-1.2/istate.info', 'H-trimer-1.6/istate.info']
+    ]
+    it means for level1, the reference state is read from files in the first list, and
+    from the name of folder can be known that the reference state is for dimer with bond
+    length of 0.8 and 1.2, 
+    and for level2, the number of reference states is read explicitly specified by users,
+    as 4, 
+    and for level3, the reference state is read from files in the third list, and from
+    the name of folder can be known that the reference state is for trimer with bond
+    length of 0.8, 1.2 and 1.6.
+    """
+    # allocate
+    result = [[] for _ in range(len(orbitals))]
+    for iorb, orbital in enumerate(orbitals):
+        shape = scan_folder_consistency(orbital["folder"])[2]
+        if orbital["nbands_ref"] == "auto":
+            folder_header = element + "-" + shape
+            ishape = reference_shapes.index(shape)
+            result[iorb] = ["-".join(
+                [folder_header, str(bond_length)]
+                ) + "/istate.info" for bond_length in bond_lengths[ishape]]
+        elif isinstance(orbital["nbands_ref"], int):
+            ishape = reference_shapes.index(shape)
+            result[iorb] = [orbital["nbands_ref"]]*len(bond_lengths[ishape])
+        else:
+            raise TypeError("nbands_ref should be 'auto' or exact number of bands")
+    
+    return result, ov_weights(result)
+
+def ov_c_init(orbitals: list):
+    result = [{} for _ in range(len(orbitals))]
+    for il, level in enumerate(orbitals):
+        if level["nzeta_from"] is None or il == 0:
+            result[il] = {
+                "init_from_file": False,
+            }
+        else:
+            result[il] = {
+                "init_from_file": True,
+                "C_init_file": "Level%s.ORBITAL_RESULTS.txt"%(il - 1),
+                "opt_C_read": False
+            } # discard the "opt_C_read" further support
+    return result

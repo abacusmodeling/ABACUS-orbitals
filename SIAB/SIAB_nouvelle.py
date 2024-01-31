@@ -38,67 +38,8 @@ define_global_var           -> database.PERIODIC_TABLE_TOINDEX
                                read_input.default
                                read_input.wash
 """
-# interface to initialize
-import SIAB.io.read_input as ir
-import os
-import SIAB.io.pseudopotential as pp
-def initialize(version: str = "0.1.0",
-               fname: str = "./SIAB_INPUT", 
-               pseudopotential_check: bool = True):
-
-    """read input and wash it"""
-    fname = fname.strip().replace("\\", "/")
-    user_settings = ir.parse(fname=fname, version=version)
-    """ensure the existence of pseudopotential file"""
-    fpseudo = user_settings["pseudo_dir"]+"/"+user_settings["pseudo_name"]
-    if not os.path.exists(fpseudo) and pseudopotential_check: # check the existence of pseudopotential file
-        raise FileNotFoundError(
-            "Pseudopotential file %s not found"%fpseudo)
-    else:
-        symbol, minimal_basis = pp.valelec_config(fpseudo)
-    return ir.unpack_siab_input(user_settings, symbol=symbol, minimal_basis=minimal_basis)
-# interface to abacus
-import SIAB.interface.submit as submit
-def abacus(general: dict,
-           reference_shapes: list,
-           bond_lengths: list,
-           calculation_settings: list,
-           env_settings: tuple,
-           test: bool = True):
-    """abacus interface"""
-    return submit.iterate(general=general,
-                          reference_shapes=reference_shapes,
-                          bond_lengths=bond_lengths,
-                          calculation_settings=calculation_settings,
-                          env_settings=env_settings,
-                          test=test)
-# interface to Spillage optimization
-import SIAB.spillage as spill
-def spillage(folders: list,
-             siab_settings: dict):
-    pass
-
-def driver(fname, test: bool = True):
-    # read input
-    reference_shapes, bond_lengths, calculation_settings,\
-    siab_settings, env_settings, general = initialize(fname=fname, 
-                                                      pseudopotential_check=False)
-
-    """ABACUS corresponding refactor has done supporting multiple bessel_nao_rcut input"""
-    folders = abacus(general=general,
-                     reference_shapes=reference_shapes,
-                     bond_lengths=bond_lengths,
-                     calculation_settings=calculation_settings,
-                     env_settings=env_settings,
-                     test=test)
-    """then call optimizer"""
-    spillage(folders=folders,
-             siab_settings=siab_settings)
-    
-    return folders
-
 import argparse
-def main(cmdline_mode: bool = True):
+def initialize(command_line: bool = True):
     welcome = """
 Starting new version of Systematically Improvable Atomic-orbital Basis (SIAB) method
 for generating numerical atomic orbitals (NAOs) for Linar Combinations of Atomic 
@@ -107,7 +48,9 @@ Orbitals (LCAO) based electronic structure calculations.
 This version is refactored from PTG_dpsi, by ABACUS-AISI developers.
     """
     print(welcome)
-    if cmdline_mode:
+    placeholder_1 = ""
+    placeholder_2 = ""
+    if command_line:
         parser = argparse.ArgumentParser(description=welcome)
         parser.add_argument(
             "-i", "--input", 
@@ -128,11 +71,45 @@ This version is refactored from PTG_dpsi, by ABACUS-AISI developers.
             help="show this help message and exit")
         args = parser.parse_args()
 
-        outs = driver(args.input, args.test)
+        placeholder_1 = args.input
+        placeholder_2 = args.test
     else:
-        outs = driver("./SIAB_INPUT", False)
+        placeholder_1 = "./SIAB_INPUT"
+        placeholder_2 = False
+
+    return  placeholder_1, placeholder_2 
+
+import SIAB.driver.front as sdf
+def run(fname: str, version: str = "0.1.0", test: bool = True):
+    # read input
+    reference_shapes, bond_lengths, calculation_settings,\
+    siab_settings, env_settings, general = sdf.initialize(fname=fname,
+                                                          version=version, 
+                                                          pseudopotential_check=False)
+
+    """ABACUS corresponding refactor has done supporting multiple bessel_nao_rcut input"""
+    folders = sdf.abacus(general=general,
+                         reference_shapes=reference_shapes,
+                         bond_lengths=bond_lengths,
+                         calculation_settings=calculation_settings,
+                         env_settings=env_settings,
+                         test=test)
+    """then call optimizer"""
+    sdf.spillage(folders=folders,
+                 calculation_setting=calculation_settings[0],
+                 siab_settings=siab_settings)
+    
+    return "seems everything is fine"
+
+def finalize(outs: str):
     print(outs)
+
+def main(command_line: bool = True):
+
+    fname, test = initialize(command_line=command_line)
+    outs = run(fname=fname, version="0.1.0", test=test)
+    finalize(outs=outs)
 
 if __name__ == '__main__':
 
-    main(cmdline_mode=False)
+    main(command_line=False)

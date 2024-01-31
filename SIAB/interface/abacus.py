@@ -199,3 +199,16 @@ def read_INPUT(folder: str = "") -> dict:
             if match is not None:
                 result[match.group(2)] = match.group(4)
     return result
+
+def version_compare(version_1: str, version_2: str) -> bool:
+    """compare two version strings, return True if version_1 <= version_2"""
+    version_1 = version_1.split(".")
+    version_2 = version_2.split(".")
+    for i in range(len(version_1)):
+        if int(version_1[i]) < int(version_2[i]):
+            return True
+        elif int(version_1[i]) > int(version_2[i]):
+            return False
+        else:
+            continue
+    return True

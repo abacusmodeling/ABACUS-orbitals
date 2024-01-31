@@ -214,13 +214,56 @@ def abacus_settings(user_settings: dict, minimal_basis: list):
         })
     return result
 
-def siab_settings(user_settings: dict):
-    return {
+import SIAB.io.pseudopotential.tools.basic as siptb
+def siab_settings(user_settings: dict, minimal_basis: list):
+    """convert user_settings to SIAB settings the information needed by spillage optimization
+    information is organized as follows:
+    
+    {
+        "optimizer": "pytorch.SWAT",
+        "max_steps": 9000,
+        "spillage_coeff": [0.5, 0.5],
+        "orbitals": [
+            {
+                "nzeta": [1, 1],
+                "nzeta_from": "none",
+                "nbands_ref": 4,
+                "folder": ["dimer"] # this will have exact value after abacus calculation
+            },
+            {
+                "nzeta": [2, 2, 1],
+                "nzeta_from": [1, 1],
+                "nbands_ref": 4,
+                "folder": ["dimer"] # this will have exact value after abacus calculation
+            }
+        ]
+    }
+    """
+    # allocate
+    result = {
         "optimizer": user_settings["optimizer"],
         "max_steps": user_settings["max_steps"],
         "spillage_coeff": user_settings["spillage_coeff"],
-        "orbitals": user_settings["orbitals"]
+        "orbitals": [{} for _ in range(len(user_settings["orbitals"]))]
     }
+    shapes = [rs["shape"] for rs in user_settings["reference_systems"]]
+    for iorb, orbital in enumerate(user_settings["orbitals"]):
+
+        result["orbitals"][iorb]["nzeta"] = siptb.zeta_notation_toorbitalconfig(
+            zeta_notation=orbital["zeta_notation"], 
+            minimal_basis=minimal_basis, 
+            as_list=True)
+        if orbital["orb_ref"] == "none":
+            result["orbitals"][iorb]["nzeta_from"] = None
+        else:
+            result["orbitals"][iorb]["nzeta_from"] = siptb.zeta_notation_toorbitalconfig(
+                zeta_notation=orbital["orb_ref"], 
+                minimal_basis=minimal_basis, 
+                as_list=True)
+        result["orbitals"][iorb]["nbands_ref"] = orbital["nbands_ref"]
+        result["orbitals"][iorb]["folder"] = shapes.index(orbital["shape"])
+ 
+    return result
 
 def environment_settings(user_settings: dict):
 
@@ -245,7 +288,7 @@ def unpack_siab_input(user_settings: dict,
     shapes = [rs["shape"] for rs in user_settings["reference_systems"]]
     bond_lengths = [rs["bond_lengths"] for rs in user_settings["reference_systems"]]
     abacus = abacus_settings(user_settings, minimal_basis)
-    siab = siab_settings(user_settings)
+    siab = siab_settings(user_settings, minimal_basis)
     env = environment_settings(user_settings)
     general = description(symbol, user_settings)
     return shapes, bond_lengths, abacus, siab, env, general

@@ -33,16 +33,24 @@ class TestReadInput(unittest.TestCase):
               'ecutwfc': 100, 'bessel_nao_rcut': [6, 7], 'smearing_sigma': 0.01, 
               'nbands': 10, 'lmaxmax': 2, 'nspin': 1}
               ])
-        self.assertDictEqual(result[3], {'optimizer': 'pytorch.SWAT', 'max_steps': [200], 
-                                         'spillage_coeff': [0.5, 0.5], 
-                                         'orbitals': [
-                                        {'zeta_notation': 'Z', 'shape': 'dimer', 
-                                         'nbands_ref': 4, 'orb_ref': 'none'}, 
-                                        {'zeta_notation': 'DZP', 'shape': 'dimer', 
-                                         'nbands_ref': 4, 'orb_ref': 'Z'}, 
-                                        {'zeta_notation': 'TZDP', 'shape': 'trimer', 
-                                         'nbands_ref': 6, 'orb_ref': 'DZP'}
-                                         ]})
+        self.assertDictEqual(result[3], {
+            'optimizer': 'pytorch.SWAT', 
+            'max_steps': [200], 
+            'spillage_coeff': [0.5, 0.5], 
+            'orbitals': [
+                {'nzeta': [1, 1], 
+                 'nzeta_from': None, 
+                 'nbands_ref': 4, 
+                 'folder': 0}, 
+                {'nzeta': [2, 2, 1], 
+                 'nzeta_from': [1, 1], 
+                 'nbands_ref': 4, 
+                 'folder': 0}, 
+                {'nzeta': [3, 3, 2], 
+                 'nzeta_from': [2, 2, 1], 
+                 'nbands_ref': 6, 
+                 'folder': 1}]
+        })
         self.assertDictEqual(result[4], {'environment': '', 
                                          'mpi_command': 'mpirun -np 1', 
                                          'abacus_command': 'abacus'})

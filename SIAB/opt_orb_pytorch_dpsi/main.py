@@ -17,13 +17,19 @@ import util
 import IO.change_info
 import pprint
 
-def main():
+def main(params: dict = None):
 	seed = int(1000*time.time())%(2**32)
 	np.random.seed(seed)
 	print("seed:",seed)
 	time_start = time.time()
-
-	file_list, info_true, weight_info, C_init_info, V_info = IO.read_json.read_json("INPUT")
+	if params is None:
+		file_list, info_true, weight_info, C_init_info, V_info = IO.read_json.read_json("INPUT")
+	else:
+		file_list = params["file_list"]
+		info_true = params["info"]
+		weight_info = params["weight"]
+		C_init_info = params["C_init"]
+		V_info = params["V_info"]
 	# weight is the one has dimension [nSTRU*nkpt][nband], is calculated by multiplication of two weight data matrix,
 	# the first is STRU_weight, has dimension [nSTRU][nband], because the band itself doesnot have weight, the weight is from STRU
 	# the second is kpt_weight, has dimension [nSTRU][nkpt], for each STRU, there will be a kpoint list and kpt itself has weight

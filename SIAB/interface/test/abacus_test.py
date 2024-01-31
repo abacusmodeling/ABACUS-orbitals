@@ -183,7 +183,7 @@ class TestAbacus(unittest.TestCase):
             "stru_file": "unittest.stru",
             "kpoint_file": "unittest.kpt"
         }
-        input = ab.INPUT(user_settings=user_settings, suffix="unittest")
+        input = ab.INPUT(calculation_setting=user_settings, suffix="unittest")
         lines = input.split("\n")
         self.assertEqual(lines[0], "INPUT_PARAMETERS")
         self.assertEqual(lines[1], "suffix               unittest")
@@ -218,6 +218,15 @@ class TestAbacus(unittest.TestCase):
         self.assertEqual(result["mixing_ndim"], "8")
         self.assertEqual(result["mixing_gg0"], "1")
         self.assertEqual(result["printe"], "1")
+
+    def test_version_compare(self):
+        self.assertTrue(ab.version_compare("0.1.0", "0.1.0"))
+        self.assertTrue(ab.version_compare("0.1.0", "0.1.1"))
+        self.assertTrue(ab.version_compare("0.1.0", "0.2.0"))
+        self.assertTrue(ab.version_compare("0.1.0", "1.0.0"))
+        self.assertFalse(ab.version_compare("0.1.0", "0.0.1"))
+        self.assertFalse(ab.version_compare("0.1.0", "0.0.9"))
+        self.assertFalse(ab.version_compare("0.1.0", "0.0.0"))
 
 if __name__ == "__main__":
     unittest.main()
