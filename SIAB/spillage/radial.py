@@ -128,18 +128,16 @@ def jlbar(l, q, r, m, rcut=None):
 
     k = JLZEROS[l][q] / rcut
 
-    def _jlbar_recur(l, m):
+    def _jl_recur(l, m):
         if m == 0:
-            return norm_fac(l, q, rcut) * spherical_jn(l, k*r)
+            return spherical_jn(l, k*r)
         else:
             if l == 0:
-                return -norm_fac(0, q, rcut) * k * _jlbar_recur(1, m-1) / norm_fac(1, q, rcut)
+                return - k * _jl_recur(1, m-1)
             else:
-                return  ( l * _jlbar_recur(l-1, m-1) / norm_fac(l-1, q, rcut) \
-                        - (l+1) * _jlbar_recur(l+1, m-1) / norm_fac(l+1, q, rcut) ) \
-                        * norm_fac(l, q, rcut) * k / (2 * l + 1)
+                return ( l * _jl_recur(l-1, m-1) - (l+1) * _jl_recur(l+1, m-1) ) * k / (2 * l + 1)
 
-    return _jlbar_recur(l, m)
+    return norm_fac(l, q, rcut) * _jl_recur(l, m)
 
 
 ############################################################
