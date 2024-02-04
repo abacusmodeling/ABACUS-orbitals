@@ -133,8 +133,8 @@ dmypy.json
 *.err
 myhost*
 **/plot*
+INPUT
 **/OUT*
-*_INPUT
 *_KPT
 *STRU
 **/*_

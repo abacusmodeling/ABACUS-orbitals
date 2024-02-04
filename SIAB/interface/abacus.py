@@ -124,6 +124,7 @@ def INPUT(calculation_setting: dict,
     """generate INPUT file for orbital generation task"""
     inbuilt_template = {
         "suffix": "ABACUS", "stru_file": "STRU", "kpoint_file": "KPT", # wannier_card is deprecated
+        "wannier_card": "INPUTw",
         "pseudo_dir": "./",
         "calculation": "scf", # calculation, definitely to be scf for orbital generation
         "basis_type": "pw", "ecutwfc": "100",
@@ -137,7 +138,9 @@ def INPUT(calculation_setting: dict,
     result = "INPUT_PARAMETERS"
     for key in calculation_setting.keys():
         if key in inbuilt_template.keys():
-            inbuilt_template[key] = calculation_setting[key]
+            value = calculation_setting[key]
+            value = " ".join([str(v) for v in value]) if isinstance(value, list) else value
+            inbuilt_template[key] = value
         else:
             print("Warning: unknown key %s"%key)
     if suffix != "":
@@ -182,6 +185,9 @@ def generation(input_setting: dict,
         f.write(_stru)
     with open("KPT-"+suffix, "w") as f:
         f.write(_kpt)
+    with open("INPUTw", "w") as f:
+        f.write("WANNIER_PARAMETERS\n")
+        f.write("out_spillage 2\n")
     return folder
 
 import re

@@ -3,7 +3,7 @@
 # DATE :   2022-10-03
 #=======================
 
-from opt_orbital import Opt_Orbital
+from SIAB.opt_orb_pytorch_dpsi.opt_orbital import Opt_Orbital
 
 class Opt_Orbital_Wavefunc:
 
@@ -12,7 +12,7 @@ class Opt_Orbital_Wavefunc:
 		self.info_element = info_element
 		self.V_info = V_info
 
-	def cal_V_origin(self, C, QI, SI):
+	def  cal_V_origin(self, C, QI, SI):
 		"""
 			C[it][il][ie,iu]
 			QI[it][il][ib*ia*im,ie]
@@ -24,12 +24,17 @@ class Opt_Orbital_Wavefunc:
 		Q = Opt_Orbital.change_index_Q(
 			Opt_Orbital.cal_Q( QI, C, self.info_stru, self.info_element ),
 			self.info_stru)
+		print("Q:", Q, sep="\n", end="\n"*2, flush=True)
 		S = Opt_Orbital.change_index_S(
 			Opt_Orbital.cal_S( SI, C,self.info_stru, self.info_element ),
 			self.info_stru, self.info_element)
+		print("S:", S, sep="\n", end="\n"*2, flush=True)
 		self.coef = Opt_Orbital.cal_coef(Q, S)
+		print("coef:", self.coef, sep="\n", end="\n"*2, flush=True)
 		self.V = Opt_Orbital.cal_V(self.coef, Q)
+		print("V:", self.V, sep="\n", end="\n"*2, flush=True)
 		V_origin = Opt_Orbital.cal_V_origin(self.V, self.V_info)
+		print("V_origin:", V_origin, sep="\n", end="\n"*2, flush=True)
 		return V_origin
 
 	# attention: must cal_V_origin() firstly

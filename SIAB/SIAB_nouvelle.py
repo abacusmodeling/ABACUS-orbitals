@@ -80,12 +80,15 @@ This version is refactored from PTG_dpsi, by ABACUS-AISI developers.
     return  placeholder_1, placeholder_2 
 
 import SIAB.driver.front as sdf
-def run(fname: str, version: str = "0.1.0", test: bool = True):
+def run(fname: str, 
+        abacus_version: str = "<3.5.1", 
+        siab_version: str = "0.1.0", 
+        test: bool = True):
     # read input
     reference_shapes, bond_lengths, calculation_settings,\
     siab_settings, env_settings, general = sdf.initialize(fname=fname,
-                                                          version=version, 
-                                                          pseudopotential_check=False)
+                                                          version=siab_version, 
+                                                          pseudopotential_check=True)
 
     """ABACUS corresponding refactor has done supporting multiple bessel_nao_rcut input"""
     folders = sdf.abacus(general=general,
@@ -96,8 +99,10 @@ def run(fname: str, version: str = "0.1.0", test: bool = True):
                          test=test)
     """then call optimizer"""
     sdf.spillage(folders=folders,
-                 calculation_setting=calculation_settings[0],
-                 siab_settings=siab_settings)
+                 calculation_settings=calculation_settings,
+                 siab_settings=siab_settings,
+                 abacus_version=abacus_version,
+                 siab_version=siab_version)
     
     return "seems everything is fine"
 
@@ -107,7 +112,7 @@ def finalize(outs: str):
 def main(command_line: bool = True):
 
     fname, test = initialize(command_line=command_line)
-    outs = run(fname=fname, version="0.1.0", test=test)
+    outs = run(fname=fname, abacus_version=">=3.5.1", siab_version="0.1.0", test=test)
     finalize(outs=outs)
 
 if __name__ == '__main__':

@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import IO.read_QSV
-import IO.print_QSV
-import IO.func_C
-import IO.read_json
-import IO.print_orbital
-from opt_orbital import Opt_Orbital
-from opt_orbital_wavefunc import Opt_Orbital_Wavefunc
-import orbital
+
+# present packages
+import SIAB.opt_orb_pytorch_dpsi.IO.read_QSV as soopdirqsv
+import SIAB.opt_orb_pytorch_dpsi.IO.func_C as soopdifc
+import SIAB.opt_orb_pytorch_dpsi.IO.read_json as soopdirj
+import SIAB.opt_orb_pytorch_dpsi.IO.print_orbital as soopdipo
+import SIAB.opt_orb_pytorch_dpsi.IO.change_info as soopdicinfo
+import SIAB.opt_orb_pytorch_dpsi.IO.cal_weight as soopdicw
+from SIAB.opt_orb_pytorch_dpsi.opt_orbital import Opt_Orbital
+from SIAB.opt_orb_pytorch_dpsi.opt_orbital_wavefunc import Opt_Orbital_Wavefunc
+import SIAB.opt_orb_pytorch_dpsi.orbital as soopdo
+import SIAB.opt_orb_pytorch_dpsi.util as soopdu
+# released/official packages
 import torch
+import torch_optimizer 
+import pprint
 import numpy as np
 import time
-import torch_optimizer 
-import IO.cal_weight
-import util
-import IO.change_info
-import pprint
 
 def main(params: dict = None):
 	seed = int(1000*time.time())%(2**32)
@@ -23,13 +25,16 @@ def main(params: dict = None):
 	print("seed:",seed)
 	time_start = time.time()
 	if params is None:
-		file_list, info_true, weight_info, C_init_info, V_info = IO.read_json.read_json("INPUT")
+		file_list, info_true, weight_info, C_init_info, V_info = soopdirj.read_json("INPUT")
 	else:
 		file_list = params["file_list"]
-		info_true = params["info"]
 		weight_info = params["weight"]
-		C_init_info = params["C_init"]
+		C_init_info = params["C_init_info"]
 		V_info = params["V_info"]
+		info_true = soopdirj.Info()
+		for key, value in params["info"].items():
+			info_true.__dict__[key] = value
+		info_true.Nl = {it:len(Nu) for it, Nu in info_true.Nu.items()}
 	# weight is the one has dimension [nSTRU*nkpt][nband], is calculated by multiplication of two weight data matrix,
 	# the first is STRU_weight, has dimension [nSTRU][nband], because the band itself doesnot have weight, the weight is from STRU
 	# the second is kpt_weight, has dimension [nSTRU][nkpt], for each STRU, there will be a kpoint list and kpt itself has weight
@@ -46,12 +51,13 @@ def main(params: dict = None):
 	# ...
 	# STRU2-kptN	...
 	# ...
-	weight = IO.cal_weight.cal_weight(weight_info, V_info["same_band"], file_list["origin"])
+	weight = soopdicw.cal_weight(weight_info, V_info["same_band"], file_list["origin"])
 
-	info_kst = IO.read_QSV.read_file_head(info_true,file_list["origin"])
+	info_kst = soopdirqsv.read_file_head(info_true,file_list["origin"])
 
-	info_stru, info_element, info_opt = IO.change_info.change_info(info_kst,weight)
-	info_max = IO.change_info.get_info_max(info_stru, info_element)
+	print("!!!!!!!!!!!weight:", weight, sep="\n", end="\n"*2, flush=True)
+	info_stru, info_element, info_opt = soopdicinfo.change_info(info_kst,weight)
+	info_max = soopdicinfo.get_info_max(info_stru, info_element)
 
 	print("info_kst:", info_kst, sep="\n", end="\n"*2, flush=True)
 	print("info_stru:", pprint.pformat(info_stru), sep="\n", end="\n"*2, flush=True)
@@ -64,18 +70,18 @@ def main(params: dict = None):
 	# S = <jY|jY> or <grad(jY)|grad(jY)>
 	# V is the overlap matrix between psi and psi, or that of the gradient of psi and psi
 	# V = <psi|psi> or <grad(psi)|grad(psi)>
-	QI,SI,VI_origin = IO.read_QSV.read_QSV(info_stru, info_element, file_list["origin"], V_info)
+	QI,SI,VI_origin = soopdirqsv.read_QSV(info_stru, info_element, file_list["origin"], V_info)
 	if "linear" in file_list.keys():
-		QI_linear, SI_linear, VI_linear = list(zip(*( IO.read_QSV.read_QSV(info_stru, info_element, file, V_info) for file in file_list["linear"] )))
+		QI_linear, SI_linear, VI_linear = list(zip(*( soopdirqsv.read_QSV(info_stru, info_element, file, V_info) for file in file_list["linear"] )))
 
 	# C is intialized here! carefully treat it!
 	if C_init_info["init_from_file"]:
-		C, C_read_index = IO.func_C.read_C_init( C_init_info["C_init_file"], info_element )
+		C, C_read_index = soopdifc.read_C_init( C_init_info["C_init_file"], info_element )
 	else:
-		C = IO.func_C.random_C_init(info_element)
-	E = orbital.set_E(info_element)
-	orbital.normalize(
-		orbital.generate_orbital(info_element,C,E),
+		C = soopdifc.random_C_init(info_element)
+	E = soopdo.set_E(info_element)
+	soopdo.normalize(
+		soopdo.generate_orbital(info_element,C,E),
 		{it:info_element[it].dr for it in info_element},
 		C, flag_norm_C=True)
 
@@ -103,22 +109,30 @@ def main(params: dict = None):
 		for istep in range(maxSteps):
 			# START: hack function here to change definition of Spillage
 			Spillage = 0
-			for ist in range(len(info_stru)):
+			for ist in range(len(info_stru)): # for each structure...
 				# initialize a new Opt_Orbital_Wavefunc object for STRU
 				opt_orb_wave = Opt_Orbital_Wavefunc(info_stru[ist], info_element, V_info)
 				# 
+				print("C:", C, sep="\n", end="\n"*2, flush=True)
+				print("QI[ist]:", QI[ist], sep="\n", end="\n"*2, flush=True)
+				print("SI[ist]:", SI[ist], sep="\n", end="\n"*2, flush=True)
 				V_origin = opt_orb_wave.cal_V_origin(C, QI[ist], SI[ist])
+				print("V_origin:", V_origin, sep="\n", end="\n"*2, flush=True)
 				# linear corresponds to the mode of calculating the derivative of the wavefunction
 				if "linear" in file_list.keys():
 					V_linear = [ opt_orb_wave.cal_V_linear(C, QI_linear[i][ist], SI_linear[i][ist])
 						for i in range(len(file_list["linear"]))]
 						
 				def cal_Spillage(V_delta):
+					print("V_delta:", V_delta, sep="\n", end="\n"*2, flush=True)
+					print("weight[ist][:info_stru[ist].Nb_true]:", weight[ist][:info_stru[ist].Nb_true], sep="\n", end="\n"*2, flush=True)
 					Spillage = (V_delta * weight[ist][:info_stru[ist].Nb_true]).sum()
 					return Spillage
 
 				def cal_delta(VI, V):
-					return ((VI[ist]-V)/util.update0(VI[ist])).abs()		# abs or **2?
+					print("VI:", VI, sep="\n", end="\n"*2, flush=True)
+					print("V:", V, sep="\n", end="\n"*2, flush=True)
+					return ((VI[ist]-V)/soopdu.update0(VI[ist])).abs()		# abs or **2?
 				# central expression appears to be here, one can modifiy the mixing coefficients between the two terms
 				# psi and dpsi here.
 				coeff_psi = 2  # 2 is the default value
@@ -131,11 +145,14 @@ def main(params: dict = None):
 				# CALCULATE THE SPILLAGE
 				s0 = cal_Spillage(cal_delta(VI_origin,V_origin))
 				Spillage += coeff_psi*s0
+				
 				if "linear" in file_list.keys():
 					for i in range(len(file_list["linear"])):
 						s1 = cal_Spillage(cal_delta(VI_linear[i],V_linear[i]))
 						Spillage += coeff_dpsi*s1
 						# Spillage += coeff_dpsi*s1*(cstpsi + s0/fpsi_dpsi)
+				print("Spillage:", Spillage, sep="\n", end="\n"*2, flush=True)
+				exit()
 			# END: hack function here to change definition of Spillage
 			if info_opt.cal_T:
 				T = Opt_Orbital.cal_T(C,E)
@@ -152,9 +169,10 @@ def main(params: dict = None):
 			if not istep%100:
 				print(*print_content, sep="\t", flush=True)
 
+			flag_finish = 0
 			if Loss.item() < loss_old:
 				loss_old = Loss.item()
-				C_old = IO.func_C.copy_C(C,info_element)
+				C_old = soopdifc.copy_C(C,info_element)
 				flag_finish = 0
 			else:
 				flag_finish += 1
@@ -172,22 +190,22 @@ def main(params: dict = None):
 			#	{it:info_element[it].dr for it in info_element},
 			#	C, flag_norm_C=True)
 
-	orb = orbital.generate_orbital(info_element,C_old,E)
+	orb = soopdo.generate_orbital(info_element,C_old,E)
 	if info_opt.cal_smooth:
-		orbital.smooth_orbital(
+		soopdo.smooth_orbital(
 			orb,
 			{it:info_element[it].Rcut for it in info_element}, {it:info_element[it].dr for it in info_element},
 			0.1)
-	orbital.orth(
+	soopdo.orth(
 		orb,
 		{it:info_element[it].dr for it in info_element})
-	IO.print_orbital.print_orbital(orb,info_element)
-	IO.print_orbital.plot_orbital(
+	soopdipo.print_orbital(orb,info_element)
+	soopdipo.plot_orbital(
 		orb,
 		{it:info_element[it].Rcut for it in info_element},
 		{it:info_element[it].dr for it in info_element})
 
-	IO.func_C.write_C("ORBITAL_RESULTS.txt",C_old,Spillage)
+	soopdifc.write_C("ORBITAL_RESULTS.txt",C_old,Spillage)
 
 	print("Time (PyTorch):     %s\n"%(time.time()-time_start), flush=True )
 

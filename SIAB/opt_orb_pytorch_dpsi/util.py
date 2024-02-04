@@ -1,3 +1,6 @@
+import torch
+import torch_complex
+
 def ND_list(*sizes,element=None):
 	size_1,*size_other = sizes
 	l = [element] * size_1

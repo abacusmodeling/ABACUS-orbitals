@@ -1,4 +1,4 @@
-from util import *
+from SIAB.opt_orb_pytorch_dpsi.util import *
 import torch
 import numpy as np
 
@@ -8,11 +8,9 @@ def random_C_init(info_element):
 	for it in info_element.keys():
 		C[it] = ND_list(info_element[it].Nl)
 		for il in range(info_element[it].Nl):
-			# I change the range of C[it][il] from [-1,1] to [0,1]
-			C[it][il] = torch.tensor(np.random.uniform(-1,1, (info_element[it].Ne, info_element[it].Nu[il])), dtype=torch.float64, requires_grad=True)
+			initial_guess = np.random.uniform(-1,1, (info_element[it].Ne, info_element[it].Nu[il]))
+			C[it][il] = torch.tensor(initial_guess, dtype=torch.float64, requires_grad=True)
 	return C
-	
-	
 	
 def read_C_init(file_name,info_element):
 	""" C[it][il][ie,iu]	<jY|\phi> 

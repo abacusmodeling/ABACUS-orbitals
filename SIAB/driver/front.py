@@ -1,6 +1,6 @@
 # interface to initialize
-import SIAB.io.read_input as ir
 import os
+import SIAB.io.read_input as siri
 import SIAB.io.pseudopotential.api as sipa
 def initialize(version: str = "0.1.0",
                fname: str = "./SIAB_INPUT", 
@@ -19,25 +19,26 @@ def initialize(version: str = "0.1.0",
     """
 
     fname = fname.strip().replace("\\", "/")
-    user_settings = ir.parse(fname=fname, version=version)
-
+    user_settings = siri.parse(fname=fname, version=version)
+    # pseudopotential check
     fpseudo = user_settings["pseudo_dir"]+"/"+user_settings["pseudo_name"]
     if not os.path.exists(fpseudo) and pseudopotential_check: # check the existence of pseudopotential file
         raise FileNotFoundError(
             "Pseudopotential file %s not found"%fpseudo)
     else:
         pseudo = sipa.towards_siab(fname=fpseudo)
-    return ir.unpack_siab_input(user_settings, 
-                                symbol=pseudo["element"], 
-                                minimal_basis=pseudo["valence_electron_configuration"])
+    unpacked = siri.unpack_siab_input(user_settings, 
+                                      symbol=pseudo["element"], 
+                                      minimal_basis=pseudo["valence_electron_configuration"])
+    return unpacked
 
 # interface to abacus
-import SIAB.interface.submit as submit
+import SIAB.interface.submit as sis
 def abacus(general: dict,
            reference_shapes: list,
            bond_lengths: list,
            calculation_settings: list,
-           env_settings: tuple,
+           env_settings: dict,
            test: bool = True):
     """abacus interface for calling iteratively the abacus executable, generate reference
     wavefunctions and overlap between KS states and Truncated Spherical Bessel Functions.
@@ -57,21 +58,22 @@ def abacus(general: dict,
     ]
     if the bond_lengths is given as [[1.0, 1.1], [1.0, 1.1, 1.2]]
     """
-    return submit.iterate(general=general,
-                          reference_shapes=reference_shapes,
-                          bond_lengths=bond_lengths,
-                          calculation_settings=calculation_settings,
-                          env_settings=env_settings,
-                          test=test)
+    return sis.iterate(general=general,
+                       reference_shapes=reference_shapes,
+                       bond_lengths=bond_lengths,
+                       calculation_settings=calculation_settings,
+                       env_settings=env_settings,
+                       test=test)
 
 # interface to Spillage optimization
 import SIAB.interface.old_version as siov
 import SIAB.opt_orb_pytorch_dpsi.main as soopdm # old version of backend
-import SIAB.io.numerical_orbital as sino
+import SIAB.io.restart as sisrt
 import SIAB.spillage as spill                   # new version of backend
 def spillage(folders: list,
              calculation_settings: list,
              siab_settings: dict,
+             abacus_version: str = "<3.5.1",
              siab_version: str = "0.1.0"):
     """spillage interface
     For being compatible with old version, the one without refactor, there exposes
@@ -81,8 +83,12 @@ def spillage(folders: list,
         orbital["folder"] = folders[orbital["folder"]]
     if siab_version == "0.1.0":
         for orb_gen in siov.convert(calculation_setting=calculation_settings[0],
-                                    siab_settings=siab_settings):
+                                    siab_settings=siab_settings,
+                                    abacus_version=abacus_version):
+            """the iteration here will be processed first by rcut and second by zeta notation"""
+            print(orb_gen)
             soopdm.main(params=orb_gen)
-            sino.archive()
+            sisrt.checkpoint(src="./", dst = "./", )
+            exit()
     else:
         raise NotImplementedError("SIAB version %s is not supported yet"%siab_version)

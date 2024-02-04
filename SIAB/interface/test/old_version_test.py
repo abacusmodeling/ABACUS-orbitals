@@ -188,7 +188,7 @@ class TestToBc(unittest.TestCase):
      'Rcut': {'Si': 6}, 'dr': {'Si': 0.01}, 
      'Ecut': {'Si': 100}, 
      'lr': 0.03, 'cal_T': False, 'cal_smooth': True, 'max_steps': 1000}, 
- 'weights': {'stru': [1, 1], 'bands_range': [4, 4]}, 
+ 'weight': {'stru': [1, 1], 'bands_range': [4, 4]}, 
  'C_init_info': {'init_from_file': False}, 
  'V_info': {'init_from_file': True, 'same_band': True}
 }

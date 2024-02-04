@@ -1,12 +1,11 @@
 import SIAB.interface.cmd_wrapper as cmdwrp
-import SIAB.io.file_manage as file_manage
+import SIAB.io.restart as sirst
 def _submit(folder: str = "", 
-             module_load_command: str = "",
-             mpi_command: str = "",
-             abacus_command: str = "",
-             rcuts: list = [6],
-             env: str = "local",
-             test: bool = False) -> str:
+            module_load_command: str = "",
+            mpi_command: str = "",
+            abacus_command: str = "",
+            env: str = "local",
+            test: bool = False) -> str:
     
     """submit ABACUS job"""
     jtg = "%s\n"%module_load_command
@@ -19,18 +18,19 @@ def _submit(folder: str = "",
     jtg += "echo \"run with command: $mpi_command $abacus_command\"\n"
     jtg += "stdbuf -oL $mpi_command $abacus_command"
 
-    if file_manage.skip(folder, rcuts):
-        print("skip folder %s"%folder)
+    if sirst.abacus_skip(folder=folder):
+        print("<OVERLAP_Q>, <OVERLAP_Sq> and <OVERLAP_V> storing files detected, skip folder %s"%folder)
         return "skip"
     else:
+        os.chdir(folder)
         if not test:
             hpc_settings = {"shell": True, "text": True, "timeout": 72000}
             cmdwrp.run(command=jtg, env=env, hpc_settings=hpc_settings)
-
+        os.chdir("../")
     return jtg
 
 import os
-import SIAB.interface.abacus as abacus
+import SIAB.interface.abacus as sia
 def normal(general: dict,
            reference_shape: str,
            bond_lengths: list,
@@ -49,23 +49,20 @@ def normal(general: dict,
             "fpseudo": general["pseudo_name"],
             "lattice_constant": 20.0
         }
-        folder = abacus.generation(input_setting=calculation_setting,
-                                   stru_setting=stru_setting)
-        file_manage.archive(footer=folder)
+        folder = sia.generation(input_setting=calculation_setting,
+                                stru_setting=stru_setting)
+        sirst.abacus_inputs_archive(footer=folder)
         folders.append(folder)
-        """check-in folder and run ABACUS"""
-        os.chdir(folder)
         print("""Run ABACUS calculation on reference structure.
 Reference structure: %s
 Bond length: %s"""%(reference_shape, bond_length))
-        _jtg = _submit(folder=folder, 
+        # need a better design here
+        _jtg = _submit(folder=folder,
                        module_load_command=env_settings["environment"],
                        mpi_command=env_settings["mpi_command"],
                        abacus_command=env_settings["abacus_command"],
-                       rcuts=calculation_setting["bessel_nao_rcut"],
                        test=test)
         
-        os.chdir("../")
     """wait for all jobs to finish"""
     return folders
 
@@ -177,21 +174,19 @@ def blscan(general: dict,                  # general settings
             "fpseudo": general["pseudo_name"],
             "lattice_constant": 20.0
         }
-        folder = abacus.generation(input_setting=calculation_setting,
-                                   stru_setting=stru_setting)
+        folder = sia.generation(input_setting=calculation_setting,
+                                stru_setting=stru_setting)
         folders.append(folder)
-        file_manage.archive(footer=folder)
+        sirst.abacus_inputs_archive(footer=folder)
         """check-in folder and run ABACUS"""
         os.chdir(folder)
         print("""Run ABACUS calculation on reference structure.
 Reference structure: %s
 Bond length: %s"""%(reference_shape, bond_length))
-        rcuts = calculation_setting["bessel_nao_rcut"]
         _jtg = _submit(folder=folder,
                        module_load_command=env_settings["environment"],
                        mpi_command=env_settings["mpi_command"],
                        abacus_command=env_settings["abacus_command"],
-                       rcuts=rcuts,
                        test=test)
         os.chdir("../")
     """wait for all jobs to finish"""

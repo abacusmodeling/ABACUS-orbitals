@@ -103,7 +103,18 @@ def scan_folder_consistency(folders: list):
         return False, None, None, None
 
 def convert(calculation_setting: dict,
-            siab_settings: dict):
+            siab_settings: dict,
+            abacus_version: str = "<3.5.1"):
+    """
+    convert from the new version of SIAB input to the old version of SIAB input, to make
+    compatible with the old version of SIAB optimizer. This works in the way same as
+    generator, therefore use
+    ```python
+    for old_siab_input in convert(calculation_setting, siab_settings):
+        pass
+    ```
+    to get the old SIAB input in the form of dict.
+    """
     element = None
     reference_shapes = []
     bond_lengths = []
@@ -122,7 +133,7 @@ def convert(calculation_setting: dict,
                                 reference_shapes=reference_shapes,
                                 bond_lengths=bond_lengths,
                                 orbitals=siab_settings["orbitals"],
-                                abacus_version="<3.5.1",
+                                abacus_version=abacus_version,
                                 rcut=rcut)
         istates = ov_reference_states(element=element,
                                       reference_shapes=reference_shapes,
@@ -136,10 +147,15 @@ def convert(calculation_setting: dict,
                               ecutwfc=calculation_setting["ecutwfc"])
                 for orbital in siab_settings["orbitals"]]
         for iorb in range(len(siab_settings["orbitals"])):
+            """there is correlation between different sections, not happy with this"""
+            if "opt_C_read" in c_init[iorb]:
+                if c_init[iorb]["opt_C_read"]:
+                    if c_init[iorb]["init_from_file"]:
+                        info[iorb]["lr"] = 0.001
             yield {
                 "file_list": dict(zip(["origin", "linear"], ovlp_qsv[iorb])),
                 "info": info[iorb],
-                "weights": istates[1][iorb],
+                "weight": istates[1][iorb],
                 "C_init_info": c_init[iorb],
                 "V_info": v
             }
@@ -210,7 +226,10 @@ def ov_weights(reference_states: list):
         is_same, type_ = type_trais_isallsame(reference_state)
         if not is_same:
             raise TypeError("elements in reference_states should be all str or all int")
-        if type_ == str:
+        # 20240204: seems should provide the first branch all the time, the second is not
+        # directly valid
+        #if type_ == str:
+        if True:
             result.append(
                 dict(zip(["stru", "bands_file"], [
                     [1]*len(reference_state),
@@ -291,7 +310,10 @@ def ov_ovlps_qsv(element: str,
     result = [[] for _ in range(len(orbitals))]
     for iorb, orbital in enumerate(orbitals): # for each level
         shape = scan_folder_consistency(orbital["folder"])[2]
-        if orbital["nbands_ref"] == "auto":
+        # 20240204: seems should provide the first branch all the time, the second is not
+        # directly valid
+        #if orbital["nbands_ref"] == "auto":
+        if True:
             folder_header = "-".join([element, shape])
             ishape = reference_shapes.index(shape)
             result[iorb] = [
@@ -339,12 +361,15 @@ def ov_reference_states(element: str,
     result = [[] for _ in range(len(orbitals))]
     for iorb, orbital in enumerate(orbitals):
         shape = scan_folder_consistency(orbital["folder"])[2]
-        if orbital["nbands_ref"] == "auto":
+        # 20240204: seems should provide the first branch all the time, the second is not
+        # directly valid
+        #if orbital["nbands_ref"] == "auto":
+        if True:
             folder_header = element + "-" + shape
             ishape = reference_shapes.index(shape)
-            result[iorb] = ["-".join(
-                [folder_header, str(bond_length)]
-                ) + "/istate.info" for bond_length in bond_lengths[ishape]]
+            folders = [folder_header + "-" + str(bond_length) for bond_length in bond_lengths[ishape]]
+            result[iorb] = [folder + "/OUT.%s/istate.info"%folder for folder in folders]
+
         elif isinstance(orbital["nbands_ref"], int):
             ishape = reference_shapes.index(shape)
             result[iorb] = [orbital["nbands_ref"]]*len(bond_lengths[ishape])
@@ -367,3 +392,4 @@ def ov_c_init(orbitals: list):
                 "opt_C_read": False
             } # discard the "opt_C_read" further support
     return result
+

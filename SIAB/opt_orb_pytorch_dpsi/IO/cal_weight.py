@@ -1,4 +1,4 @@
-import IO.read_istate
+import SIAB.opt_orb_pytorch_dpsi.IO.read_istate as soopdir
 import torch
 import re
 import functools
@@ -13,7 +13,7 @@ def cal_weight(info_weight, flag_same_band, stru_file_list=None):
 
 		weight = []														# weight[ist][ib]
 		for weight_stru, file_name in zip(info_weight["stru"], info_weight["bands_file"]):
-			occ = IO.read_istate.read_istate(file_name)
+			occ = soopdir.read_istate(file_name)
 			weight += [occ_k * weight_stru for occ_k in occ]
 
 	elif "bands_range" in info_weight.keys():

@@ -1,5 +1,5 @@
-from util import ND_list
-import util
+from SIAB.opt_orb_pytorch_dpsi.util import ND_list
+import SIAB.opt_orb_pytorch_dpsi.util as util
 import functools
 import itertools
 import torch
@@ -98,7 +98,7 @@ class Opt_Orbital:
 			
 			
 	
-	def cal_coef(Q,S):
+	def cal_coef(Q: torch.Tensor, S: torch.Tensor) -> torch.Tensor:
 		# Q[ib,it*il*ia*im*iu]
 		# S[it1*il1*ia1*im1*iu1,it2*il2*ia2*im2*iu2]
 		"""
@@ -106,8 +106,9 @@ class Opt_Orbital:
 		  coef[ib,it*il*ia*im*iu]
 			= Q[ib,it1*il1*ia1*im1*iu1] * S{[it1*il1*ia1*im1*iu1,it2*il2*ia2*im2*iu2]}^{-1}
 		"""
-		S_I = torch.inverse(S)
-		coef = torch.mm(Q, S_I)
+#		S_I = torch.inverse(S)
+		coef = torch.linalg.solve(S.t().conj(), Q.t().conj()).t().conj()
+#		coef = torch.mm(Q, S_I)
 		return coef
 		
 		
@@ -125,13 +126,16 @@ class Opt_Orbital:
 		return V
 
 
-	def cal_V_origin(V,V_info):
+	def cal_V_origin(V: torch.Tensor, V_info: dict) -> torch.Tensor:
 		# V[ib1,ib2]
 		"""
 		  <\psi|\psi> = <\psi|\phi> * <\phi|\phi>^{-1} * <\phi|psi>
 		  V_origin[ib]	
 		  V_origin[ib1,ib2]
 		"""			
+
+		# assert diag values of V are positive
+		assert (V.diag() > 0).all()
 		if V_info["same_band"]:		V_origin = V.diag().sqrt()
 		else:						V_origin = V.sqrt()
 		return V_origin		
