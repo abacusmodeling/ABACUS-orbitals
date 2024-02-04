@@ -69,7 +69,7 @@ Bond length: %s"""%(reference_shape, bond_length))
 import numpy as np
 from scipy.optimize import curve_fit
 def _morse_potential_fitting(bond_lengths: list,
-                              energies: list):
+                             energies: list):
     """fitting morse potential, return D_e, a, r_e, e_0 in the equation below:
     
     V(r) = D_e * (1-exp(-a(r-r_e)))^2 + e_0
@@ -79,7 +79,10 @@ def _morse_potential_fitting(bond_lengths: list,
     def morse_potential(r, De, a, re, e0=0.0):
         return De * (1.0 - np.exp(-a*(r-re)))**2.0 + e0
     
-    popt, pcov = curve_fit(morse_potential, bond_lengths, energies, bounds=(0, np.inf))
+    popt, pcov = curve_fit(f=morse_potential, 
+                           xdata=bond_lengths, 
+                           ydata=energies,
+                           p0=[-100, 1.0, 2.0, 0.0])
     if pcov is None:
         raise ValueError("fitting failed.")
     elif np.any(np.diag(pcov) < 0):
@@ -94,58 +97,54 @@ def _init_blrange(bl0: float, stepsize: list, nstep_bidirection: int = 5):
     blmin = bl0 - stepsize[0]*nstep_bidirection
     blmax = bl0 + stepsize[1]*nstep_bidirection
     print("Searching bond lengths from %4.2f to %4.2f Angstrom, with stepsize %s."%(blmin, blmax, stepsize))
-    bond_lengths = np.linspace(blmin, bl0, nstep_bidirection).tolist()
-    bond_lengths.extend(np.linspace(bl0, blmax, nstep_bidirection).tolist())
+    left = np.linspace(blmin, bl0, nstep_bidirection).tolist()
+    right = np.linspace(bl0, blmax, nstep_bidirection).tolist()
+    bond_lengths = left + right[1:]
     return [round(bl, 2) for bl in bond_lengths]
 
 def _summarize_blrange(bl0: float, 
-                        ener0: float, 
-                        bond_lengths: list, 
-                        energies: list, 
-                        ener_thr: float = 1.0):
+                       ener0: float, 
+                       bond_lengths: list, 
+                       energies: list, 
+                       ener_thr: float = 1.5):
     """Get the range of bond lengths corresponding to energies lower than ener_thr"""
-    blmin = min(bond_lengths)
-    blmax = max(bond_lengths)
-    if bl0 < blmin or bl0 > blmax:
-        raise ValueError("bl0 is not in the range of bond lengths.")
 
-    # Sort bond lengths and energies according to bond lengths
-    bond_lengths, energies = zip(*sorted(zip(bond_lengths, energies)))
-
-    # Split bond lengths and energies into two parts: lower and higher than bl0
-    bl_lower = [bl for bl in bond_lengths if bl < bl0]
-    ener_lower = [e for e, bl in zip(energies, bond_lengths) if bl < bl0]
-
-    # Find energies <= ener_thr + ener0 for the lower part
-    bl_lower = [bl for bl, e in zip(bl_lower, ener_lower) if e <= ener_thr + ener0]
-    ener_lower = [e for e in ener_lower if e <= ener_thr + ener0]
-    # check if the first energy is approximately equal to ener0 + ener_thr
+    delta_energies = [e-ener0 for e in energies]
+    emin = min(delta_energies)
+    i_emin = delta_energies.index(emin)
+    delta_e_r = delta_energies[i_emin+1] - delta_energies[i_emin]
+    delta_e_l = delta_energies[i_emin-1] - delta_energies[i_emin]
     
-    # Split bond lengths and energies into two parts: lower and higher than bl0
-    bl_higher = [bl for bl in bond_lengths if bl > bl0]
-    ener_higher = [e for e, bl in zip(energies, bond_lengths) if bl > bl0]
+    assert i_emin > 2
+    assert i_emin < len(delta_energies) - 2
+    assert delta_e_r > 0
+    assert delta_e_l > 0
+    assert all(delta_energies) > 0
 
-    # Find energies <= ener_thr + ener0 for the higher part
-    bl_higher = [bl for bl, e in zip(bl_higher, ener_higher) if e <= ener_thr + ener0]
-    ener_higher = [e for e in ener_higher if e <= ener_thr + ener0]
+    i_emax_r, i_emax_l = 0, -1
+    for i in range(i_emin, len(delta_energies)):
+        if delta_energies[i] > ener_thr:
+            i_emax_r = i
+            break
+    for i in range(i_emin, 0, -1):
+        if delta_energies[i] > ener_thr:
+            i_emax_l = i
+            break
+    if i_emax_r == 0:
+        raise ValueError("No bond length found with energy higher than %4.2f eV."%ener_thr)
+    if i_emax_l == -1:
+        print("WARNING: No bond length found with energy higher than %4.2f eV."%ener_thr)
 
-    # Select representative bond lengths
-    bond_lengths = [
-        bl_lower[0],
-        bl_lower[len(bl_lower) // 2],
-        bl_lower[-1],
-        bl_higher[len(bl_higher) // 2],
-        bl_higher[-1]
-    ]
-    energies = [
-        ener_lower[0],
-        ener_lower[len(ener_lower) // 2],
-        ener_lower[-1],
-        ener_higher[len(ener_higher) // 2],
-        ener_higher[-1]
-    ]
-
-    return [round(bl, 2) for bl in bond_lengths]
+    indices = [i_emax_l, (i_emax_l+i_emin)//2, i_emin, (i_emax_r+i_emin)//2, i_emax_r]
+    print("\nSummary of bond lengths and energies:".upper())
+    print("| Bond length (Angstrom) |   Energy (eV)   |")
+    print("|------------------------|-----------------|")
+    for bl, e in zip(bond_lengths, energies):
+        line = "|%24.2f|%17.10f|"%(bl, e)
+        if bond_lengths.index(bl) in indices:
+            line += " <=="
+        print(line)
+    return [bond_lengths[i] for i in indices]
 
 import numpy as np
 import SIAB.io.read_output as read_output
@@ -156,7 +155,7 @@ def blscan(general: dict,                  # general settings
            reference_shape: str,           # reference shape, always to be dimer
            nstep_bidirection: int = 5,     # number of steps for searching bond lengths per direction
            stepsize: list = [0.2, 0.5],    # stepsize for searching bond lengths, unit in angstrom
-           ener_thr: float = 1.0,          # energy threshold for searching bond lengths
+           ener_thr: float = 1.5,          # energy threshold for searching bond lengths
            test: bool = True):
     
     """search bond lengths for reference shape, for the case bond lengths is specified as auto
@@ -179,7 +178,6 @@ def blscan(general: dict,                  # general settings
         folders.append(folder)
         sirst.abacus_inputs_archive(footer=folder)
         """check-in folder and run ABACUS"""
-        os.chdir(folder)
         print("""Run ABACUS calculation on reference structure.
 Reference structure: %s
 Bond length: %s"""%(reference_shape, bond_length))
@@ -188,23 +186,29 @@ Bond length: %s"""%(reference_shape, bond_length))
                        mpi_command=env_settings["mpi_command"],
                        abacus_command=env_settings["abacus_command"],
                        test=test)
-        os.chdir("../")
     """wait for all jobs to finish"""
     """read energies"""
     bond_lengths = [float(folder.split("-")[-1]) for folder in folders]
-    energies = [read_output.read_energy(folder=folder) for folder in folders]
+    energies = [read_output.read_energy(folder=folder,
+                                        suffix=folder) for folder in folders]
     """fitting morse potential"""
     De, a, re, e0 = _morse_potential_fitting(bond_lengths, energies)
-    print("""Fitting morse potential for reference structure %s.
-Equilibrium bond length: %s Angstrom
-Dissociation energy: %s eV"""%(reference_shape, re, De))
+    print("Morse potential fitting results:")
+
+    print("Fitting morse potential for reference structure %s"%(reference_shape))
+    print("%6s: %15.10f %10s (Bond dissociation energy)"%("D_e", De, "eV"))
+    print("%6s: %15.10f %10s (Morse potential parameter)"%("a", a, ""))
+    print("%6s: %15.10f %10s (Equilibrium bond length)"%("r_e", re, "Angstrom"))
+    print("%6s: %15.10f %10s (Zero point energy)"%("e_0", e0, "eV"))
+
     """search bond lengths"""
     bond_lengths = _summarize_blrange(bl0=re,
                                       ener0=e0,
                                       bond_lengths=bond_lengths,
                                       energies=energies,
                                       ener_thr=ener_thr)
-    folders_to_use = [folder for folder in folders for bond_length in bond_lengths if str(bond_length) in folder]
+
+    folders_to_use = [folder for folder in folders for bond_length in bond_lengths if "%3.2f"%bond_length in folder]
     return folders_to_use
 
 def iterate(general: dict,
@@ -226,7 +230,7 @@ def iterate(general: dict,
                                         reference_shape=reference_shapes[i],
                                         nstep_bidirection=5,
                                         stepsize=[0.2, 0.5],
-                                        ener_thr=1.0,
+                                        ener_thr=1.5,
                                         test=test)
         else:
             folders_istructure = normal(general=general,

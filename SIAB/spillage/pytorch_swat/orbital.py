@@ -1,4 +1,4 @@
-from SIAB.opt_orb_pytorch_dpsi.util import ND_list
+from SIAB.spillage.pytorch_swat.util import ND_list
 import numpy as np
 from scipy.special import spherical_jn
 from scipy.integrate import simps

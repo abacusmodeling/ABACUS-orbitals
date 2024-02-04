@@ -1,5 +1,5 @@
 import json
-from SIAB.opt_orb_pytorch_dpsi.util import Info
+from SIAB.spillage.pytorch_swat.util import Info
 
 def read_json(file_name):
 

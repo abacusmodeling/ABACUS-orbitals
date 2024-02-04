@@ -1,6 +1,6 @@
 import SIAB.io.restart as sisrt
 import SIAB.interface.old_version as siov
-import SIAB.opt_orb_pytorch_dpsi.main as soopdm
+import SIAB.spillage.pytorch_swat.main as sspsm
 def driver(params: dict = None, ilevel: int = 0, nlevel: int = 3):
 
     chkpt = siov.unpack(orb_gen=params)
@@ -9,9 +9,9 @@ def driver(params: dict = None, ilevel: int = 0, nlevel: int = 3):
         return
     
     if params is None:
-        soopdm.main()
+        sspsm.main()
     else:
-        soopdm.main(params)
+        sspsm.main(params)
     
     refresh = True if ilevel == nlevel-1 else False
     sisrt.checkpoint(src="./", dst=folder, this_point=chkpt, refresh=refresh)

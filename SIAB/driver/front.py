@@ -67,7 +67,7 @@ def abacus(general: dict,
 
 # interface to Spillage optimization
 import SIAB.interface.old_version as siov
-import SIAB.opt_orb_pytorch_dpsi.api as soopda
+import SIAB.spillage.pytorch_swat.api as sspsa
 import SIAB.spillage as spill                   # new version of backend
 def spillage(folders: list,
              calculation_settings: list,
@@ -88,6 +88,6 @@ def spillage(folders: list,
                                                siab_settings=siab_settings,
                                                abacus_version=abacus_version):
             """the iteration here will be processed first by rcut and second by zeta notation"""
-            soopda.driver(params=orb_gen, ilevel=ilevel, nlevel=len(siab_settings["orbitals"]))
+            sspsa.driver(params=orb_gen, ilevel=ilevel, nlevel=len(siab_settings["orbitals"]))
     else:
         raise NotImplementedError("SIAB version %s is not supported yet"%siab_version)

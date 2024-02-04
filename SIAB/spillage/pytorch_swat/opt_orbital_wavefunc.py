@@ -3,7 +3,7 @@
 # DATE :   2022-10-03
 #=======================
 
-from SIAB.opt_orb_pytorch_dpsi.opt_orbital import Opt_Orbital
+from SIAB.spillage.pytorch_swat.opt_orbital import Opt_Orbital
 
 class Opt_Orbital_Wavefunc:
 

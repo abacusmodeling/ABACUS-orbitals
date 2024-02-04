@@ -2,7 +2,7 @@
 #--------------------------------------------------------------------------------
 #1. CMD & ENV
 #EXE_env    module purge && module load anaconda3_nompi gcc/9.2.0 elpa/2021.05.002/intelmpi2018 intelmpi/2018.update4 2>&1 && source activate pytorch110
- EXE_mpi    mpirun -np 4
+ EXE_mpi    mpirun -np 8
  EXE_pw     abacus
 #EXE_pw     /home/nic/wszhang/abacus/abacus222_intel-2018u4/ABACUS.mpi
 #EXE_opt    /home/nic/wszhang/abacus/wszhang@github/abacus-develop/tools/SIAB/PyTorchGradient_dpsi/main.py
@@ -20,7 +20,7 @@
 #3. Reference structure related parameters for PW calculation
 #For the built-in structure types (including 'dimer', 'trimer' and 'tetramer'):
 #STRU Name   #STRU Type  #nbands #MaxL   #nspin  #Bond Length list
- STRU1       dimer       8       2       1       1.8 2.0 2.3 2.8 3.8
+ STRU1       dimer       8       2       1       auto
  STRU2       trimer      10      2       1       1.9 2.1 2.6
 
 #-------------------------------------------------------------------------------- 

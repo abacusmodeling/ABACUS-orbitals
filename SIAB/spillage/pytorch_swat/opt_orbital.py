@@ -1,5 +1,5 @@
-from SIAB.opt_orb_pytorch_dpsi.util import ND_list
-import SIAB.opt_orb_pytorch_dpsi.util as util
+from SIAB.spillage.pytorch_swat.util import ND_list
+import SIAB.spillage.pytorch_swat.util as util
 import functools
 import itertools
 import torch

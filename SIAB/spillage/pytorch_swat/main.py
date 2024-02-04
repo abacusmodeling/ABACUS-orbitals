@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 # present packages
-import SIAB.opt_orb_pytorch_dpsi.IO.read_QSV as soopdirqsv
-import SIAB.opt_orb_pytorch_dpsi.IO.func_C as soopdifc
-import SIAB.opt_orb_pytorch_dpsi.IO.read_json as soopdirj
-import SIAB.opt_orb_pytorch_dpsi.IO.print_orbital as soopdipo
-import SIAB.opt_orb_pytorch_dpsi.IO.change_info as soopdicinfo
-import SIAB.opt_orb_pytorch_dpsi.IO.cal_weight as soopdicw
-from SIAB.opt_orb_pytorch_dpsi.opt_orbital import Opt_Orbital
-from SIAB.opt_orb_pytorch_dpsi.opt_orbital_wavefunc import Opt_Orbital_Wavefunc
-import SIAB.opt_orb_pytorch_dpsi.orbital as soopdo
-import SIAB.opt_orb_pytorch_dpsi.util as soopdu
+import SIAB.spillage.pytorch_swat.IO.read_QSV as sspsirqsv
+import SIAB.spillage.pytorch_swat.IO.func_C as sspsifc
+import SIAB.spillage.pytorch_swat.IO.read_json as sspsirj
+import SIAB.spillage.pytorch_swat.IO.print_orbital as sspsipo
+import SIAB.spillage.pytorch_swat.IO.change_info as sspsicinfo
+import SIAB.spillage.pytorch_swat.IO.cal_weight as sspsicw
+from SIAB.spillage.pytorch_swat.opt_orbital import Opt_Orbital
+from SIAB.spillage.pytorch_swat.opt_orbital_wavefunc import Opt_Orbital_Wavefunc
+import SIAB.spillage.pytorch_swat.orbital as sspso
+import SIAB.spillage.pytorch_swat.util as sspsu
 # released/official packages
 import torch
 import torch_optimizer 
@@ -25,13 +24,13 @@ def main(params: dict = None):
 	print("seed:",seed)
 	time_start = time.time()
 	if params is None:
-		file_list, info_true, weight_info, C_init_info, V_info = soopdirj.read_json("INPUT")
+		file_list, info_true, weight_info, C_init_info, V_info = sspsirj.read_json("INPUT")
 	else:
 		file_list = params["file_list"]
 		weight_info = params["weight"]
 		C_init_info = params["C_init_info"]
 		V_info = params["V_info"]
-		info_true = soopdirj.Info()
+		info_true = sspsirj.Info()
 		for key, value in params["info"].items():
 			info_true.__dict__[key] = value
 		info_true.Nl = {it:len(Nu) for it, Nu in info_true.Nu.items()}
@@ -51,12 +50,12 @@ def main(params: dict = None):
 	# ...
 	# STRU2-kptN	...
 	# ...
-	weight = soopdicw.cal_weight(weight_info, V_info["same_band"], file_list["origin"])
+	weight = sspsicw.cal_weight(weight_info, V_info["same_band"], file_list["origin"])
 
-	info_kst = soopdirqsv.read_file_head(info_true,file_list["origin"])
+	info_kst = sspsirqsv.read_file_head(info_true,file_list["origin"])
 
-	info_stru, info_element, info_opt = soopdicinfo.change_info(info_kst,weight)
-	info_max = soopdicinfo.get_info_max(info_stru, info_element)
+	info_stru, info_element, info_opt = sspsicinfo.change_info(info_kst,weight)
+	info_max = sspsicinfo.get_info_max(info_stru, info_element)
 
 	print("info_kst:", info_kst, sep="\n", end="\n"*2, flush=True)
 	print("info_stru:", pprint.pformat(info_stru), sep="\n", end="\n"*2, flush=True)
@@ -69,18 +68,18 @@ def main(params: dict = None):
 	# S = <jY|jY> or <grad(jY)|grad(jY)>
 	# V is the overlap matrix between psi and psi, or that of the gradient of psi and psi
 	# V = <psi|psi> or <grad(psi)|grad(psi)>
-	QI,SI,VI_origin = soopdirqsv.read_QSV(info_stru, info_element, file_list["origin"], V_info)
+	QI,SI,VI_origin = sspsirqsv.read_QSV(info_stru, info_element, file_list["origin"], V_info)
 	if "linear" in file_list.keys():
-		QI_linear, SI_linear, VI_linear = list(zip(*( soopdirqsv.read_QSV(info_stru, info_element, file, V_info) for file in file_list["linear"] )))
+		QI_linear, SI_linear, VI_linear = list(zip(*( sspsirqsv.read_QSV(info_stru, info_element, file, V_info) for file in file_list["linear"] )))
 
 	# C is intialized here! carefully treat it!
 	if C_init_info["init_from_file"]:
-		C, C_read_index = soopdifc.read_C_init( C_init_info["C_init_file"], info_element )
+		C, C_read_index = sspsifc.read_C_init( C_init_info["C_init_file"], info_element )
 	else:
-		C = soopdifc.random_C_init(info_element)
-	E = soopdo.set_E(info_element)
-	soopdo.normalize(
-		soopdo.generate_orbital(info_element,C,E),
+		C = sspsifc.random_C_init(info_element)
+	E = sspso.set_E(info_element)
+	sspso.normalize(
+		sspso.generate_orbital(info_element,C,E),
 		{it:info_element[it].dr for it in info_element},
 		C, flag_norm_C=True)
 
@@ -123,7 +122,7 @@ def main(params: dict = None):
 					return Spillage
 
 				def cal_delta(VI, V):
-					return ((VI[ist]-V)/soopdu.update0(VI[ist])).abs()		# abs or **2?
+					return ((VI[ist]-V)/sspsu.update0(VI[ist])).abs()		# abs or **2?
 				# central expression appears to be here, one can modifiy the mixing coefficients between the two terms
 				# psi and dpsi here.
 				coeff_psi = 2  # 2 is the default value
@@ -162,7 +161,7 @@ def main(params: dict = None):
 			flag_finish = 0
 			if Loss.item() < loss_old:
 				loss_old = Loss.item()
-				C_old = soopdifc.copy_C(C,info_element)
+				C_old = sspsifc.copy_C(C,info_element)
 				flag_finish = 0
 			else:
 				flag_finish += 1
@@ -180,22 +179,22 @@ def main(params: dict = None):
 			#	{it:info_element[it].dr for it in info_element},
 			#	C, flag_norm_C=True)
 
-	orb = soopdo.generate_orbital(info_element,C_old,E)
+	orb = sspso.generate_orbital(info_element,C_old,E)
 	if info_opt.cal_smooth:
-		soopdo.smooth_orbital(
+		sspso.smooth_orbital(
 			orb,
 			{it:info_element[it].Rcut for it in info_element}, {it:info_element[it].dr for it in info_element},
 			0.1)
-	soopdo.orth(
+	sspso.orth(
 		orb,
 		{it:info_element[it].dr for it in info_element})
-	soopdipo.print_orbital(orb,info_element)
-	soopdipo.plot_orbital(
+	sspsipo.print_orbital(orb,info_element)
+	sspsipo.plot_orbital(
 		orb,
 		{it:info_element[it].Rcut for it in info_element},
 		{it:info_element[it].dr for it in info_element})
 
-	soopdifc.write_C("ORBITAL_RESULTS.txt",C_old,Spillage)
+	sspsifc.write_C("ORBITAL_RESULTS.txt",C_old,Spillage)
 
 	print("Time (PyTorch):     %s\n"%(time.time()-time_start), flush=True )
 

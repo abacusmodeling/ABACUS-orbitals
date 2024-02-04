@@ -784,7 +784,7 @@ if __name__=="__main__":
     
     print(" import mainFunc @ path: ", opt_mainFunc_path )
     #print("[pyTorch Version: "+torch.__version__+"]" , flush=True )
-    import SIAB.opt_orb_pytorch_dpsi.main as mainFunc
+    import SIAB.spillage.pytorch_swat.main as mainFunc
 
     
     ##################################  Do    Calculation ##################################

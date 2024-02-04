@@ -140,4 +140,4 @@ INPUT
 **/*_
 
 # virtualenv
-PTG_dpsi/
+abacus_orbitals/
