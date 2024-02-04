@@ -101,6 +101,9 @@ def bracket(l, nzeros, return_all=False):
 
     return list(_zerogen())
 
+
+JLZEROS = bracket(20, 100, return_all=True)
+
 ############################################################
 #                       Test
 ############################################################
