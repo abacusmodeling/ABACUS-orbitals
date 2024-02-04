@@ -189,7 +189,7 @@ def main(params: dict = None):
 			#	orbital.generate_orbital(info_element,C,E),
 			#	{it:info_element[it].dr for it in info_element},
 			#	C, flag_norm_C=True)
-
+	exit()
 	orb = soopdo.generate_orbital(info_element,C_old,E)
 	if info_opt.cal_smooth:
 		soopdo.smooth_orbital(
