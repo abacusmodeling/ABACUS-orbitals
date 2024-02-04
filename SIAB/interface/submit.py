@@ -19,7 +19,7 @@ def _submit(folder: str = "",
     jtg += "stdbuf -oL $mpi_command $abacus_command"
 
     if sirst.abacus_skip(folder=folder):
-        print("<OVERLAP_Q>, <OVERLAP_Sq> and <OVERLAP_V> storing files detected, skip folder %s"%folder)
+        print("=> <OVERLAP_Q>, <OVERLAP_Sq> and <OVERLAP_V> storing files detected, \nskip folder %s"%folder)
         return "skip"
     else:
         os.chdir(folder)

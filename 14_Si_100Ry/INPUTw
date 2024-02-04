@@ -1,4 +1,0 @@
-WANNIER_PARAMETERS
-rcut 10
-out_spillage 2
-spillage_outdir OUT.Si-STRU2-6-2.6

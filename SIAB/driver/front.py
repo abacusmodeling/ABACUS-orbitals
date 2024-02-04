@@ -67,8 +67,7 @@ def abacus(general: dict,
 
 # interface to Spillage optimization
 import SIAB.interface.old_version as siov
-import SIAB.opt_orb_pytorch_dpsi.main as soopdm # old version of backend
-import SIAB.io.restart as sisrt
+import SIAB.opt_orb_pytorch_dpsi.api as soopda
 import SIAB.spillage as spill                   # new version of backend
 def spillage(folders: list,
              calculation_settings: list,
@@ -80,15 +79,15 @@ def spillage(folders: list,
     a parameter siab_version, which is the version of SIAB, default is "0.1.0".
     """
     for orbital in siab_settings["orbitals"]:
+        # for old version SIAB, but lmax can be read from orb_matrix*.dat for better design
+        orbital["lmax"] = calculation_settings[orbital["folder"]]["lmaxmax"]
+        # general, only need to convert the index of reference system to the folders collection
         orbital["folder"] = folders[orbital["folder"]]
     if siab_version == "0.1.0":
-        for orb_gen in siov.convert(calculation_setting=calculation_settings[0],
-                                    siab_settings=siab_settings,
-                                    abacus_version=abacus_version):
+        for orb_gen, _, ilevel in siov.convert(calculation_setting=calculation_settings[0],
+                                               siab_settings=siab_settings,
+                                               abacus_version=abacus_version):
             """the iteration here will be processed first by rcut and second by zeta notation"""
-            print(orb_gen)
-            soopdm.main(params=orb_gen)
-            sisrt.checkpoint(src="./", dst = "./", )
-            exit()
+            soopda.driver(params=orb_gen, ilevel=ilevel, nlevel=len(siab_settings["orbitals"]))
     else:
         raise NotImplementedError("SIAB version %s is not supported yet"%siab_version)

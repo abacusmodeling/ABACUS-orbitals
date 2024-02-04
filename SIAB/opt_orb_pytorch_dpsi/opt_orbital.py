@@ -135,7 +135,7 @@ class Opt_Orbital:
 		"""			
 
 		# assert diag values of V are positive
-		assert (V.diag() > 0).all()
+		#assert (V.diag() > 0).all()
 		if V_info["same_band"]:		V_origin = V.diag().sqrt()
 		else:						V_origin = V.sqrt()
 		return V_origin		

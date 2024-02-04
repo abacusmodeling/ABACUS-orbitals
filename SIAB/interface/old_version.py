@@ -102,67 +102,11 @@ def scan_folder_consistency(folders: list):
     else:
         return False, None, None, None
 
-def convert(calculation_setting: dict,
-            siab_settings: dict,
-            abacus_version: str = "<3.5.1"):
-    """
-    convert from the new version of SIAB input to the old version of SIAB input, to make
-    compatible with the old version of SIAB optimizer. This works in the way same as
-    generator, therefore use
-    ```python
-    for old_siab_input in convert(calculation_setting, siab_settings):
-        pass
-    ```
-    to get the old SIAB input in the form of dict.
-    """
-    element = None
-    reference_shapes = []
-    bond_lengths = []
-    for orbital in siab_settings["orbitals"]:
-        result = scan_folder_consistency(orbital["folder"])
-        if not result[0]:
-            raise ValueError("all folders for one orbital should have the same shape")
-        if element is None:
-            element = result[1]
-        elif element != result[1]:
-            raise ValueError("all folders should have the same element")
-        reference_shapes.append(result[2])
-        bond_lengths.append(result[3])
-    for rcut in calculation_setting["bessel_nao_rcut"]:
-        ovlp_qsv = ov_ovlps_qsv(element=element,
-                                reference_shapes=reference_shapes,
-                                bond_lengths=bond_lengths,
-                                orbitals=siab_settings["orbitals"],
-                                abacus_version=abacus_version,
-                                rcut=rcut)
-        istates = ov_reference_states(element=element,
-                                      reference_shapes=reference_shapes,
-                                      bond_lengths=bond_lengths,
-                                      orbitals=siab_settings["orbitals"])
-        c_init = ov_c_init(orbitals=siab_settings["orbitals"])
-        v = ov_V()
-        info = [ov_parameters(element=element,
-                              orbital_config=orbital["nzeta"],
-                              bessel_nao_rcut=rcut,
-                              ecutwfc=calculation_setting["ecutwfc"])
-                for orbital in siab_settings["orbitals"]]
-        for iorb in range(len(siab_settings["orbitals"])):
-            """there is correlation between different sections, not happy with this"""
-            if "opt_C_read" in c_init[iorb]:
-                if c_init[iorb]["opt_C_read"]:
-                    if c_init[iorb]["init_from_file"]:
-                        info[iorb]["lr"] = 0.001
-            yield {
-                "file_list": dict(zip(["origin", "linear"], ovlp_qsv[iorb])),
-                "info": info[iorb],
-                "weight": istates[1][iorb],
-                "C_init_info": c_init[iorb],
-                "V_info": v
-            }
 
 def ov_parameters(element: str,
                   orbital_config: list,
                   bessel_nao_rcut: float,
+                  lmax: int,
                   ecutwfc: float,
                   dr: float = 0.01,
                   opt_maxsteps: int = 1000,
@@ -175,9 +119,8 @@ def ov_parameters(element: str,
     function and feed list of what this function returns for elements"""
 
     keys = ["Nt_all", "Nu", "Rcut", "dr", "Ecut", "lr", "cal_T", "cal_smooth", "max_steps"]
-
     return dict(zip(keys, [[element], 
-                           {element: orbital_config}, 
+                           {element: orbital_config+[0]*(lmax+1-len(orbital_config))}, 
                            {element: bessel_nao_rcut}, 
                            {element: dr}, 
                            {element: ecutwfc},
@@ -228,8 +171,8 @@ def ov_weights(reference_states: list):
             raise TypeError("elements in reference_states should be all str or all int")
         # 20240204: seems should provide the first branch all the time, the second is not
         # directly valid
-        #if type_ == str:
-        if True:
+        if type_ == str:
+        #if True:
             result.append(
                 dict(zip(["stru", "bands_file"], [
                     [1]*len(reference_state),
@@ -363,8 +306,8 @@ def ov_reference_states(element: str,
         shape = scan_folder_consistency(orbital["folder"])[2]
         # 20240204: seems should provide the first branch all the time, the second is not
         # directly valid
-        #if orbital["nbands_ref"] == "auto":
-        if True:
+        if orbital["nbands_ref"] == "auto":
+        #if True:
             folder_header = element + "-" + shape
             ishape = reference_shapes.index(shape)
             folders = [folder_header + "-" + str(bond_length) for bond_length in bond_lengths[ishape]]
@@ -393,3 +336,94 @@ def ov_c_init(orbitals: list):
             } # discard the "opt_C_read" further support
     return result
 
+def convert(calculation_setting: dict,
+            siab_settings: dict,
+            abacus_version: str = "<3.5.1"):
+    """
+    convert from the new version of SIAB input to the old version of SIAB input, to make
+    compatible with the old version of SIAB optimizer. This works in the way same as
+    generator, therefore use
+    ```python
+    for old_siab_input in convert(calculation_setting, siab_settings):
+        pass
+    ```
+    to get the old SIAB input in the form of dict.
+    """
+    element = None
+    reference_shapes = []
+    bond_lengths = []
+    for orbital in siab_settings["orbitals"]:
+        result = scan_folder_consistency(orbital["folder"])
+        if not result[0]:
+            raise ValueError("all folders for one orbital should have the same shape")
+        if element is None:
+            element = result[1]
+        elif element != result[1]:
+            raise ValueError("all folders should have the same element")
+        reference_shapes.append(result[2])
+        bond_lengths.append(result[3])
+    for rcut in calculation_setting["bessel_nao_rcut"]:
+        ovlp_qsv = ov_ovlps_qsv(element=element,
+                                reference_shapes=reference_shapes,
+                                bond_lengths=bond_lengths,
+                                orbitals=siab_settings["orbitals"],
+                                abacus_version=abacus_version,
+                                rcut=rcut)
+        istates = ov_reference_states(element=element,
+                                      reference_shapes=reference_shapes,
+                                      bond_lengths=bond_lengths,
+                                      orbitals=siab_settings["orbitals"])
+        c_init = ov_c_init(orbitals=siab_settings["orbitals"])
+        v = ov_V()
+        info = [ov_parameters(element=element,
+                              orbital_config=orbital["nzeta"],
+                              bessel_nao_rcut=rcut,
+                              lmax=orbital["lmax"],
+                              ecutwfc=calculation_setting["ecutwfc"])
+                for orbital in siab_settings["orbitals"]]
+        for iorb in range(len(siab_settings["orbitals"])):
+            """there is correlation between different sections, not happy with this"""
+            if "opt_C_read" in c_init[iorb]:
+                if c_init[iorb]["opt_C_read"]:
+                    if c_init[iorb]["init_from_file"]:
+                        info[iorb]["lr"] = 0.001
+            yield {
+                "file_list": dict(zip(["origin", "linear"], ovlp_qsv[iorb])),
+                "info": info[iorb],
+                "weight": istates[1][iorb],
+                "C_init_info": c_init[iorb],
+                "V_info": v
+            }, rcut, iorb
+
+def unpack(orb_gen: dict) -> dict:
+
+    symbols = ["s", "p", "d", "f", "g", "h", "i", "j", "k", "l"]
+    
+    element = orb_gen["info"]["Nt_all"][0]
+    ecutwfc = orb_gen["info"]["Ecut"][element]
+    rcut = orb_gen["info"]["Rcut"][element]
+
+    orbital_config = orb_gen["info"]["Nu"][element]
+    zeta_notation = ""
+    for i, n in enumerate(orbital_config):
+        if n != 0:
+            zeta_notation += str(n) + symbols[i]
+    
+    return {
+        "element": element,
+        "ecutwfc": ecutwfc,
+        "rcut": rcut,
+        "zeta_notation": zeta_notation,
+    }
+
+def folder(unpacked_orb: dict, additional_suffix: str = None) -> str:
+    element = unpacked_orb["element"]
+    ecutwfc = str(unpacked_orb["ecutwfc"]) + "Ry"
+    rcut = str(unpacked_orb["rcut"]) + "au"
+    zeta_notation = unpacked_orb["zeta_notation"]
+    
+    if additional_suffix is not None:
+        zeta_notation = additional_suffix + "_" + zeta_notation
+    layer1 = "_".join([element, zeta_notation])
+    layer2 = "_".join([rcut, ecutwfc])
+    return "/".join([layer1, layer2])

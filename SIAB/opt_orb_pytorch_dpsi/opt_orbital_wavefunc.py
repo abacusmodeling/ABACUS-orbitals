@@ -24,17 +24,12 @@ class Opt_Orbital_Wavefunc:
 		Q = Opt_Orbital.change_index_Q(
 			Opt_Orbital.cal_Q( QI, C, self.info_stru, self.info_element ),
 			self.info_stru)
-		print("Q:", Q, sep="\n", end="\n"*2, flush=True)
 		S = Opt_Orbital.change_index_S(
 			Opt_Orbital.cal_S( SI, C,self.info_stru, self.info_element ),
 			self.info_stru, self.info_element)
-		print("S:", S, sep="\n", end="\n"*2, flush=True)
 		self.coef = Opt_Orbital.cal_coef(Q, S)
-		print("coef:", self.coef, sep="\n", end="\n"*2, flush=True)
 		self.V = Opt_Orbital.cal_V(self.coef, Q)
-		print("V:", self.V, sep="\n", end="\n"*2, flush=True)
 		V_origin = Opt_Orbital.cal_V_origin(self.V, self.V_info)
-		print("V_origin:", V_origin, sep="\n", end="\n"*2, flush=True)
 		return V_origin
 
 	# attention: must cal_V_origin() firstly

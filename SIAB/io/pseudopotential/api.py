@@ -18,7 +18,8 @@ def towards_siab(fname: str):
         ],
     }"""
     parsed = parse(fname=fname)
+    element, valence_electron_configuration = sipta.valence_electron_configuration(parsed=parsed)
     return {
-        "element": sipta.element(parsed=parsed),
-        "valence_electron_configuration": sipta.valence_electron_configuration(parsed=parsed)
+        "element": element,
+        "valence_electron_configuration": valence_electron_configuration
     }

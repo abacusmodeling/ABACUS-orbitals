@@ -55,7 +55,6 @@ def main(params: dict = None):
 
 	info_kst = soopdirqsv.read_file_head(info_true,file_list["origin"])
 
-	print("!!!!!!!!!!!weight:", weight, sep="\n", end="\n"*2, flush=True)
 	info_stru, info_element, info_opt = soopdicinfo.change_info(info_kst,weight)
 	info_max = soopdicinfo.get_info_max(info_stru, info_element)
 
@@ -113,25 +112,17 @@ def main(params: dict = None):
 				# initialize a new Opt_Orbital_Wavefunc object for STRU
 				opt_orb_wave = Opt_Orbital_Wavefunc(info_stru[ist], info_element, V_info)
 				# 
-				print("C:", C, sep="\n", end="\n"*2, flush=True)
-				print("QI[ist]:", QI[ist], sep="\n", end="\n"*2, flush=True)
-				print("SI[ist]:", SI[ist], sep="\n", end="\n"*2, flush=True)
 				V_origin = opt_orb_wave.cal_V_origin(C, QI[ist], SI[ist])
-				print("V_origin:", V_origin, sep="\n", end="\n"*2, flush=True)
 				# linear corresponds to the mode of calculating the derivative of the wavefunction
 				if "linear" in file_list.keys():
 					V_linear = [ opt_orb_wave.cal_V_linear(C, QI_linear[i][ist], SI_linear[i][ist])
 						for i in range(len(file_list["linear"]))]
 						
 				def cal_Spillage(V_delta):
-					print("V_delta:", V_delta, sep="\n", end="\n"*2, flush=True)
-					print("weight[ist][:info_stru[ist].Nb_true]:", weight[ist][:info_stru[ist].Nb_true], sep="\n", end="\n"*2, flush=True)
 					Spillage = (V_delta * weight[ist][:info_stru[ist].Nb_true]).sum()
 					return Spillage
 
 				def cal_delta(VI, V):
-					print("VI:", VI, sep="\n", end="\n"*2, flush=True)
-					print("V:", V, sep="\n", end="\n"*2, flush=True)
 					return ((VI[ist]-V)/soopdu.update0(VI[ist])).abs()		# abs or **2?
 				# central expression appears to be here, one can modifiy the mixing coefficients between the two terms
 				# psi and dpsi here.
@@ -151,8 +142,7 @@ def main(params: dict = None):
 						s1 = cal_Spillage(cal_delta(VI_linear[i],V_linear[i]))
 						Spillage += coeff_dpsi*s1
 						# Spillage += coeff_dpsi*s1*(cstpsi + s0/fpsi_dpsi)
-				print("Spillage:", Spillage, sep="\n", end="\n"*2, flush=True)
-				exit()
+
 			# END: hack function here to change definition of Spillage
 			if info_opt.cal_T:
 				T = Opt_Orbital.cal_T(C,E)
@@ -189,7 +179,7 @@ def main(params: dict = None):
 			#	orbital.generate_orbital(info_element,C,E),
 			#	{it:info_element[it].dr for it in info_element},
 			#	C, flag_norm_C=True)
-	exit()
+
 	orb = soopdo.generate_orbital(info_element,C_old,E)
 	if info_opt.cal_smooth:
 		soopdo.smooth_orbital(

@@ -283,7 +283,7 @@ def description(symbol: str, user_settings: dict):
 
 def unpack_siab_input(user_settings: dict,
                       symbol: str, 
-                      minimal_basis: list,):
+                      minimal_basis: list):
 
     shapes = [rs["shape"] for rs in user_settings["reference_systems"]]
     bond_lengths = [rs["bond_lengths"] for rs in user_settings["reference_systems"]]
