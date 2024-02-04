@@ -44,12 +44,11 @@ def ikebe(l, nzeros):
 def bracket(l, nzeros, return_all=False):
     '''
     Returns the first few zeros of the l-th order spherical Bessel
-    function by recursively using the bracketing method.
+    function by iteratively using the bracketing method.
     
     The zeros of j_{l} and j_{l+1} are interlaced; so are
     the zeros of j_{l} and j_{l+2}. This property is exploited
-    to bracket the zeros of j_{l} by the zeros of j_{l-1}
-    or j_{l-2} recursively until j_{0}.
+    to find the zeros iteratively from the zeros of j_0.
     
     Parameters
     ----------
@@ -95,7 +94,10 @@ def bracket(l, nzeros, return_all=False):
             zeros = [brentq(jl, zeros[i], zeros[i+1], xtol=1e-14) for i in range(nz-1)]
             nz -= 1
 
-        yield zeros[:nzeros]
+        if return_all:
+            yield zeros[:nzeros]
+        else:
+            yield from zeros[:nzeros]
 
     return list(_zerogen())
 
