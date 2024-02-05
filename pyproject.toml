@@ -14,8 +14,6 @@ dependencies = [
     "numpy",
     "scipy",
     "torch",
-    "torchvision",
-    "torchaudio",
     "torch_optimizer",
     "torch_complex",
     "addict"
