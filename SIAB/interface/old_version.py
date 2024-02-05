@@ -202,19 +202,13 @@ def ov_ovlps_qsv(element: str,
                  reference_shapes: list,
                  bond_lengths: list,
                  orbitals: list,
-                 abacus_version: str,
+                 om_shortname: bool,
                  rcut: float = 10.0):
     """set path of file where overlap_q, s and v are stored for ALL LEVELS OF ORBITALS IN
     ONE SHOT, organized in one list, each element corresponds to one level of orbitals
 
-    to check abacus_version, use:
-    ```python
-    import subprocess
-
-    stdout = subprocess.run(["abacus", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout.decode("utf-8")
-    print(stdout)
-    ```
     For example this function returns:
+    ```
     [
         [# level1
             ["H-dimer-0.8/orb_matrix.0.dat", "H-dimer-1.2/orb_matrix.0.dat"], # origin key
@@ -225,9 +219,11 @@ def ov_ovlps_qsv(element: str,
         ]
         ...
     ]
+    ```
     Above is the case for old abacus version. For abacus version >=3.5.1, there are some
     trivial differences because different bessel_nao_rcut know is calculated in one shot
     by abacus. For example this function returns:
+    ```
     [
         [# level1
             ["H-dimer-0.8/orb_matrix_rcut10.0deriv0.dat", "H-dimer-1.2/orb_matrix_rcut10.0deriv0.dat"], # origin key
@@ -238,17 +234,16 @@ def ov_ovlps_qsv(element: str,
         ]
         ...
     ]
+    ```
     """
     ovlp_qsv_header = "orb_matrix"
 
-    if abacus_version == "<3.5.1":
+    if om_shortname:
         ovlp_qsv0 = ovlp_qsv_header + ".0.dat"
         ovlp_qsv1 = ovlp_qsv_header + ".1.dat"
-    elif abacus_version == ">=3.5.1":
+    else:
         ovlp_qsv0 = ovlp_qsv_header + "_rcut" + str(rcut) + "deriv0.dat"
         ovlp_qsv1 = ovlp_qsv_header + "_rcut" + str(rcut) + "deriv1.dat"
-    else:
-        raise ValueError("abacus_version should be <3.5.1 or >=3.5.1")
 
     result = [[] for _ in range(len(orbitals))]
     for iorb, orbital in enumerate(orbitals): # for each level
@@ -286,11 +281,13 @@ def ov_reference_states(element: str,
     in one list, each element corresponds to one level of orbitals
     
     For example this function returns:
+    ```
     [
         ['H-dimer-0.8/istate.info', 'H-dimer-1.2/istate.info'], 
         [4, 4], 
         ['H-trimer-0.8/istate.info', 'H-trimer-1.2/istate.info', 'H-trimer-1.6/istate.info']
     ]
+    ```
     it means for level1, the reference state is read from files in the first list, and
     from the name of folder can be known that the reference state is for dimer with bond
     length of 0.8 and 1.2, 
@@ -337,17 +334,23 @@ def ov_c_init(orbitals: list):
     return result
 
 def convert(calculation_setting: dict,
-            siab_settings: dict,
-            abacus_version: str = "<3.5.1"):
+            siab_settings: dict):
     """
     convert from the new version of SIAB input to the old version of SIAB input, to make
     compatible with the old version of SIAB optimizer. This works in the way same as
     generator, therefore use
     ```python
-    for old_siab_input in convert(calculation_setting, siab_settings):
+    for PytorchSWAT_inp, rcut, iorb in convert(calculation_setting, siab_settings):
         pass
     ```
-    to get the old SIAB input in the form of dict.
+    to get the old SIAB input in the form of dict, rcut value for present orbital and index
+    of orbital within present rcut.
+
+    Args:
+        `calculation_settings`: because the old version does not organize information well,
+        there are many information that can be obtained from external files it requires, 
+        many variables in pytorch_swat are initialized in "design-less" way, the calculation
+        setting is therefore an *ad hoc*.
     """
     element = None
     reference_shapes = []
@@ -362,12 +365,23 @@ def convert(calculation_setting: dict,
             raise ValueError("all folders should have the same element")
         reference_shapes.append(result[2])
         bond_lengths.append(result[3])
+    # ----------------------------------------------------------------------------------------------
+    # for SIAB and PTG_dpsi original version, can only accept the case where only one bessel_nao_rcut
+    # is given each ABACUS run, in this case, the overlap matrix will be output like orb_matrix.0.dat
+    # and orb_matrix.1.dat. However since ABACUS 3.5.1, bessel_nao_rcut can support multiple values
+    # and can calculate for all values in one-shot. In this case overlap matrices for different rcut
+    # are distinguished by another naming convention: orb_matrix_rcut[R]deriv[D].dat, where R will be
+    # corresponding rcut and D will be 0 or 1.
+    om_shortname = False if len(calculation_setting["bessel_nao_rcut"]) > 1 else True
+    # ----------------------------------------------------------------------------------------------
+    # for each rcut and each orbital configuration, yield tuple ("input", rcut, iorb), where the 
+    # "input" is the one for pytorch_swat spillage submodule.
     for rcut in calculation_setting["bessel_nao_rcut"]:
         ovlp_qsv = ov_ovlps_qsv(element=element,
                                 reference_shapes=reference_shapes,
                                 bond_lengths=bond_lengths,
                                 orbitals=siab_settings["orbitals"],
-                                abacus_version=abacus_version,
+                                om_shortname=om_shortname,
                                 rcut=rcut)
         istates = ov_reference_states(element=element,
                                       reference_shapes=reference_shapes,

@@ -1,11 +1,16 @@
 import unittest
-import SIAB.interface.abacus as ab
+import SIAB.interface.abacus as sia
+import numpy as np
+from scipy.optimize import curve_fit
+
+def morse(r, De, a, re, e0=0.0):
+    return De * (1.0 - np.exp(-a*(r-re)))**2.0 + e0
 
 class TestAbacus(unittest.TestCase):
 
     def test_dimer(self):
 
-        dimer = ab.dimer(element="Si",
+        dimer = sia.dimer(element="Si",
                          mass=28.085,
                          fpseudo="Si.pbe-n-kjpaw_psl.1.0.0.UPF",
                          lattice_constant=10.263,
@@ -31,7 +36,7 @@ class TestAbacus(unittest.TestCase):
 
     def test_trimer(self):
             
-        trimer = ab.trimer(element="Si",
+        trimer = sia.trimer(element="Si",
                         mass=28.085,
                         fpseudo="Si.pbe-n-kjpaw_psl.1.0.0.UPF",
                         lattice_constant=10.263,
@@ -58,7 +63,7 @@ class TestAbacus(unittest.TestCase):
 
     def test_tetramer(self):
 
-        tetramer = ab.tetramer(element="Si",
+        tetramer = sia.tetramer(element="Si",
                             mass=28.085,
                             fpseudo="Si.pbe-n-kjpaw_psl.1.0.0.UPF",
                             lattice_constant=10.263,
@@ -85,7 +90,7 @@ class TestAbacus(unittest.TestCase):
         self.assertEqual(lines[17], "")    
 
     def test_STRU(self):
-        dimer, natom = ab.STRU(shape="dimer",
+        dimer, natom = sia.STRU(shape="dimer",
                                element="Si",
                                mass=28.085,
                                fpseudo="Si.pbe-n-kjpaw_psl.1.0.0.UPF",
@@ -111,7 +116,7 @@ class TestAbacus(unittest.TestCase):
         self.assertEqual(lines[14], "0.00000000 0.00000000 2.35000000 0 0 0")
         self.assertEqual(lines[15], "")
 
-        trimer, natom = ab.STRU(shape="trimer",
+        trimer, natom = sia.STRU(shape="trimer",
                                 element="Si",
                                 mass=28.085,
                                 fpseudo="Si.pbe-n-kjpaw_psl.1.0.0.UPF",
@@ -138,7 +143,7 @@ class TestAbacus(unittest.TestCase):
         self.assertEqual(lines[15], "0.00000000 2.03517050 1.17500000 0 0 0")
         self.assertEqual(lines[16], "")
 
-        tetramer, natom = ab.STRU(shape="tetramer",
+        tetramer, natom = sia.STRU(shape="tetramer",
                                     element="Si",
                                     mass=28.085,
                                     fpseudo="Si.pbe-n-kjpaw_psl.1.0.0.UPF",
@@ -168,7 +173,7 @@ class TestAbacus(unittest.TestCase):
 
     def test_KPOINTS(self):
 
-        kpt = ab.KPOINTS()
+        kpt = sia.KPOINTS()
         lines = kpt.split("\n")
         self.assertEqual(lines[0], "K_POINTS")
         self.assertEqual(lines[1], "0")
@@ -183,7 +188,7 @@ class TestAbacus(unittest.TestCase):
             "stru_file": "unittest.stru",
             "kpoint_file": "unittest.kpt"
         }
-        input = ab.INPUT(calculation_setting=user_settings, suffix="unittest")
+        input = sia.INPUT(calculation_setting=user_settings, suffix="unittest")
         lines = input.split("\n")
         self.assertEqual(lines[0], "INPUT_PARAMETERS")
         self.assertEqual(lines[1], "suffix               unittest")
@@ -195,7 +200,7 @@ class TestAbacus(unittest.TestCase):
         pass
 
     def test_read_INPUT(self):
-        result = ab.read_INPUT("./SIAB/test/support")
+        result = sia.read_INPUT("./SIAB/test/support")
         self.assertEqual(result["suffix"], "Si-trimer-1.9")
         self.assertEqual(result["stru_file"], "STRU-Si-trimer-1.9")
         self.assertEqual(result["kpoint_file"], "KPT-Si-trimer-1.9")
@@ -220,13 +225,97 @@ class TestAbacus(unittest.TestCase):
         self.assertEqual(result["printe"], "1")
 
     def test_version_compare(self):
-        self.assertTrue(ab.version_compare("0.1.0", "0.1.0"))
-        self.assertTrue(ab.version_compare("0.1.0", "0.1.1"))
-        self.assertTrue(ab.version_compare("0.1.0", "0.2.0"))
-        self.assertTrue(ab.version_compare("0.1.0", "1.0.0"))
-        self.assertFalse(ab.version_compare("0.1.0", "0.0.1"))
-        self.assertFalse(ab.version_compare("0.1.0", "0.0.9"))
-        self.assertFalse(ab.version_compare("0.1.0", "0.0.0"))
+        self.assertTrue(sia.version_compare("0.1.0", "0.1.0"))
+        self.assertTrue(sia.version_compare("0.1.0", "0.1.1"))
+        self.assertTrue(sia.version_compare("0.1.0", "0.2.0"))
+        self.assertTrue(sia.version_compare("0.1.0", "1.0.0"))
+        self.assertFalse(sia.version_compare("0.1.0", "0.0.1"))
+        self.assertFalse(sia.version_compare("0.1.0", "0.0.9"))
+        self.assertFalse(sia.version_compare("0.1.0", "0.0.0"))
+
+    def test_blscan_guessbls(self):
+        """this function is identical with the one in blscan"""
+        self.assertListEqual(
+            sia.blscan_guessbls(2.0, [0.1, 0.1]), 
+            [1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5]
+        )
+
+    def test_blscan_fitmorse(self):
+
+        r = np.linspace(1.5, 5.0, 100) # Angstrom
+        De = 2.5 # eV
+        a = 1.0
+        re = 2.0 # Angstrom
+        y = morse(r, De, a, re)
+        x = r
+        e_dis, _, bleq, _ = sia.blscan_fitmorse(x, y)
+        self.assertAlmostEqual(e_dis, De, places=2)
+        self.assertAlmostEqual(bleq, re, places=2)
+
+        # with noise
+        nprecision = 3
+        y = y + np.random.normal(0, 10**(-nprecision), 100)
+        e_dis, _, bleq, _ = sia.blscan_fitmorse(x, y)
+        self.assertAlmostEqual(e_dis, De, places=nprecision-1)
+        self.assertAlmostEqual(bleq, re, places=nprecision-1)
+
+    def test_returnbls(self):
+
+        r = np.linspace(1.5, 5.0, 100)
+        De = 2.5 # eV
+        a = 1.0 # 1/Angstrom
+        re = 2.25 # Angstrom
+        y = morse(r, De, a, re)
+        x = r.tolist()
+        e_dis, _, bleq, e0 = sia.blscan_fitmorse(x, y)
+        self.assertAlmostEqual(e_dis, De, places=2)
+        self.assertAlmostEqual(bleq, re, places=2)
+        self.assertAlmostEqual(e0, 0.0, places=2)
+        blrange = sia.blscan_returnbls(bl0=bleq, ener0=e0, bond_lengths=x, energies=y, ener_thr=1.0)
+        self.assertListEqual(blrange, [1.7474747474747474,
+                                       1.9949494949494948,
+                                       2.242424242424242,
+                                       2.737373737373737,
+                                       3.2676767676767673]
+        )
+
+    def test_is_duplicate(self):
+
+        calculation_setting = {
+            "basis_type": "pw",
+            "bessel_nao_rcut": [6, 7],
+            "lmaxmax": 2
+        }
+        self.assertTrue(
+            sia.is_duplicate("/root/abacus-develop/orbital_generation/SIAB/interface/test/support/Si-trimer-2.6",
+                             calculation_setting)
+        )
+        self.assertFalse(
+            sia.is_duplicate("/root/abacus-develop/orbital_generation/SIAB/interface/test/support/Si-trimer-2.7",
+                             calculation_setting)
+        )
+        calculation_setting = {
+            "basis_type": "pw",
+            "bessel_nao_rcut": [6, 7],
+            "lmaxmax": 3
+        }
+        self.assertFalse(
+            sia.is_duplicate("/root/abacus-develop/orbital_generation/SIAB/interface/test/support/Si-trimer-2.6",
+                             calculation_setting)
+        )
+        self.assertFalse(
+            sia.is_duplicate("/root/abacus-develop/orbital_generation/SIAB/interface/test/support/Si-trimer-2.7",
+                             calculation_setting)
+        )
+        calculation_setting = {
+            "basis_type": "pw",
+            "bessel_nao_rcut": [6, 8],
+            "lmaxmax": 2
+        }
+        self.assertFalse(
+            sia.is_duplicate("/root/abacus-develop/orbital_generation/SIAB/interface/test/support/Si-trimer-2.6",
+                             calculation_setting)
+        )
 
 if __name__ == "__main__":
     unittest.main()

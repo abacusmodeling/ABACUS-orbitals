@@ -128,16 +128,5 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# Orbital Outlog: OUT0.H.cif
-*.log
-*.err
-myhost*
-**/plot*
-INPUT
-**/OUT*
-*_KPT
-*STRU
-**/*_
-
 # virtualenv
 abacus_orbitals/

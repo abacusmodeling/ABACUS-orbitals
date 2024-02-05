@@ -1,0 +1,41 @@
+
+#--------------------------------------------------------------------------------
+#1. CMD & ENV
+#EXE_env    module purge && module load anaconda3_nompi gcc/9.2.0 elpa/2021.05.002/intelmpi2018 intelmpi/2018.update4 2>&1 && source activate pytorch110
+ EXE_mpi    mpirun -np 8
+ EXE_pw     abacus
+#EXE_pw     /home/nic/wszhang/abacus/abacus222_intel-2018u4/ABACUS.mpi
+#EXE_opt    /home/nic/wszhang/abacus/wszhang@github/abacus-develop/tools/SIAB/PyTorchGradient_dpsi/main.py
+
+#-------------------------------------------------------------------------------- 
+#2. Electronic calculatation
+ element     Si          # Element Name
+ Ecut        100         # in Ry
+ Rcut        6 7         # in Bohr
+ Pseudo_dir  /root/abacus-develop/pseudopotentials/SG15_ONCV_v1.0_upf
+ Pseudo_name Si_ONCV_PBE-1.0.upf 
+ sigma       0.01        # energy range for gauss smearing (in Ry) 
+
+#--------------------------------------------------------------------------------
+#3. Reference structure related parameters for PW calculation
+#For the built-in structure types (including 'dimer', 'trimer' and 'tetramer'):
+#STRU Name   #STRU Type  #nbands #MaxL   #nspin  #Bond Length list
+ STRU1       dimer       8       2       1       auto
+ STRU2       trimer      10      2       1       1.9 2.1 2.6
+
+#-------------------------------------------------------------------------------- 
+#4. SIAB calculatation
+ max_steps    200
+# Orbital configure and reference target for each level
+#LevelIndex   #Ref STRU Name    #Ref Bands   #InputOrb    #OrbitalConf
+ Level1       STRU1             4            none         1s1p      
+ Level2       STRU1             4            fix          2s2p1d    
+ Level3       STRU2             6            fix          3s3p2d    
+
+#--------------------------------------------------------------------------------
+#5. Save Orbitals
+#Index       #LevelNum    #OrbitalType
+ Save1       Level1       SZ           
+ Save2       Level2       DZP         
+ Save3       Level3       TZDP        
+

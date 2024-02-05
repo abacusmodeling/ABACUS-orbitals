@@ -33,7 +33,7 @@ def initialize(version: str = "0.1.0",
     return unpacked
 
 # interface to abacus
-import SIAB.interface.submit as sis
+import SIAB.interface.abacus as sia
 def abacus(general: dict,
            reference_shapes: list,
            bond_lengths: list,
@@ -54,11 +54,11 @@ def abacus(general: dict,
     according to present implemented nomenclature of folders, if, element is Si, what returns
     would be like:
     [
-        ["Si_dimer_1.0", "Si_dimer_1.1"], ["Si_trimer_1.0", "Si_trimer_1.1", "Si_trimer_1.2"]
+        ["Si-dimer-1.0", "Si-dimer-1.1"], ["Si-trimer-1.0", "Si-trimer-1.1", "Si-trimer-1.2"]
     ]
     if the bond_lengths is given as [[1.0, 1.1], [1.0, 1.1, 1.2]]
     """
-    return sis.iterate(general=general,
+    return sia.run_all(general=general,
                        reference_shapes=reference_shapes,
                        bond_lengths=bond_lengths,
                        calculation_settings=calculation_settings,
@@ -67,12 +67,11 @@ def abacus(general: dict,
 
 # interface to Spillage optimization
 import SIAB.interface.old_version as siov
-import SIAB.spillage.pytorch_swat.api as sspsa
-import SIAB.spillage as spill                   # new version of backend
+import SIAB.spillage.pytorch_swat.api as SPS_api  # old version of backend
+# import SIAB.spillage.something.api as SpillageSomething_api  # new version of backend
 def spillage(folders: list,
              calculation_settings: list,
              siab_settings: dict,
-             abacus_version: str = "<3.5.1",
              siab_version: str = "0.1.0"):
     """spillage interface
     For being compatible with old version, the one without refactor, there exposes
@@ -84,10 +83,10 @@ def spillage(folders: list,
         # general, only need to convert the index of reference system to the folders collection
         orbital["folder"] = folders[orbital["folder"]]
     if siab_version == "0.1.0":
+        nlevel=len(siab_settings["orbitals"])
         for orb_gen, _, ilevel in siov.convert(calculation_setting=calculation_settings[0],
-                                               siab_settings=siab_settings,
-                                               abacus_version=abacus_version):
+                                               siab_settings=siab_settings):
             """the iteration here will be processed first by rcut and second by zeta notation"""
-            sspsa.driver(params=orb_gen, ilevel=ilevel, nlevel=len(siab_settings["orbitals"]))
+            SPS_api.run(params=orb_gen, ilevel=ilevel, nlevel=nlevel)
     else:
         raise NotImplementedError("SIAB version %s is not supported yet"%siab_version)
