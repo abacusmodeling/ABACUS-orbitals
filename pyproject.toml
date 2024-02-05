@@ -12,7 +12,13 @@ authors = [
 ]
 dependencies = [
     "numpy",
-    "scipy"
+    "scipy",
+    "torch",
+    "torchvision",
+    "torchaudio",
+    "torch_optimizer",
+    "torch_complex",
+    "addict"
 ]
 
 [tool.setuptools]
