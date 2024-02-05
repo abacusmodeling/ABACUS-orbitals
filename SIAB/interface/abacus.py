@@ -105,20 +105,31 @@ def KPOINTS():
 
 def INPUT(calculation_setting: dict,
           suffix: str = "") -> str:
-    """generate INPUT file for orbital generation task"""
+    """generate INPUT file for orbital generation task. This function is designed with following
+    logic:
+    1. user will not use keywords more than this function's consideration
+    2. user may define different values for some keywords, if that happens, overwrite the default
+    3. write to INPUT from the inbuilt_template
+    """
     inbuilt_template = {
-        "suffix": "ABACUS", "stru_file": "STRU", "kpoint_file": "KPT", # wannier_card is deprecated
-        "wannier_card": "INPUTw",
+        "suffix": "ABACUS", "stru_file": "STRU", "kpoint_file": "KPT", 
+        "wannier_card": "INPUTw", # wannier_card is deprecated
         "pseudo_dir": "./",
-        "calculation": "scf", # calculation, definitely to be scf for orbital generation
+        "calculation": "scf",     # calculation, definitely to be scf for orbital generation
         "basis_type": "pw", "ecutwfc": "100",
         "ks_solver": "dav", "nbands": "auto", "scf_thr": "1.0e-7", "scf_nmax": "9000", # scf control
         "ntype": "1", "nspin": "1", # system info
         "lmaxmax": "4", "bessel_nao_rcut": "10", # orbital generation control
         "smearing_method": "gauss", "smearing_sigma": "0.015", # for improving convergence
-        "mixing_type": "broyden", "mixing_beta": "0.8", "mixing_ndim": "8", "mixing_gg0": "1", # mixing control
+        "mixing_type": "broyden", "mixing_beta": "0.8", "mixing_ndim": "8", "mixing_gg0": "0", # mixing control
         "printe": "1" # print energy
     }
+    if "nspin" in calculation_setting.keys():
+        if calculation_setting["nspin"] == 2:
+            inbuilt_template["nspin"] = 2
+            inbuilt_template["mixing_beta"] = 0.4
+            inbuilt_template["mixing_beta_mag"] = 0.4
+            
     result = "INPUT_PARAMETERS"
     for key in calculation_setting.keys():
         if key in inbuilt_template.keys():
@@ -251,7 +262,7 @@ def is_duplicate(folder: str, abacus_setting: dict):
         else:
             value = str(value)
         if original[key] != value:
-            print("original: %s, new: %s\nDifference detected, start a new job."%(original[key], value))
+            print("KEYWORD \"%s\" has different values. Original: %s, new: %s\nDifference detected, start a new job."%(key, original[key], value))
             return False
     rcuts = abacus_setting["bessel_nao_rcut"]
     print("DUPLICATE CHECK-3 pass: INPUT settings are consistent")
@@ -441,6 +452,7 @@ def normal(general: dict,
                            stru_setting=stru_setting)
         if is_duplicate(folder, calculation_setting):
             print("ABACUS calculation on reference structure %s with bond length %s is skipped."%(reference_shape, bond_length))
+            sienv.op("rm", "INPUT-%s KPT-%s STRU-%s INPUTw"%(folder, folder, folder), env="local")
             continue
         archive(footer=folder)
         folders.append(folder)

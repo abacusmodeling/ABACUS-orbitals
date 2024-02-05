@@ -1,7 +1,19 @@
 import SIAB.interface.old_version as siov
 import SIAB.spillage.pytorch_swat.main as sspsm
 def run(params: dict = None, ilevel: int = 0, nlevel: int = 3):
-
+    """Run the spillage calculation"""
+    
+    """convert-back the information organized in the way that is acceptable
+    for the original version of SIAB to the following format:
+    ```python
+    return {
+        "element": element,
+        "ecutwfc": ecutwfc,
+        "rcut": rcut,
+        "zeta_notation": zeta_notation,
+    }
+    ```
+    """
     chkpt = siov.unpack(orb_gen=params)
     folder = siov.folder(unpacked_orb=chkpt)
     if is_duplicate(folder):
