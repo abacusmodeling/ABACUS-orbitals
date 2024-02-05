@@ -1,7 +1,9 @@
 import os
 def read_energy(folder: str,
-                calculation: str = "scf",
-                suffix: str = "ABACUS"):
+                suffix: str,
+                calculation: str = "scf"):
+    if suffix is None:
+        suffix = "ABACUS"
     frunninglog = "%s/OUT.%s/running_%s.log"%(folder, suffix, calculation)
     if not os.path.exists(frunninglog):
         raise FileNotFoundError("running log %s not found."%frunninglog)
