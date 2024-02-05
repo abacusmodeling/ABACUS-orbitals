@@ -57,13 +57,11 @@ def bracket(l, nzeros, return_all=False):
         nzeros : int
             Number of zeros to be returned.
         return_all : bool
-            If True, all the zeros from j_0 to j_l will be returned
-            so that zeros[n][i] is the i-th zero of the n-th order
-            spherical Bessel function (n = 0, 1, ..., l).
+            If True, all the zeros from j_0 to j_l will be returned.
     
     Returns
     -------
-        zeros : list
+        zeros : array or list of array
             If return_all is False, zeros[i] is the i-th zero of the
             l-th order spherical Bessel function.
             If return_all is True, zeros[n][i] is i-th zero of the
@@ -87,19 +85,16 @@ def bracket(l, nzeros, return_all=False):
             stride = 2
             l_start = 2 - l%2
 
-        zeros = [i * np.pi for i in range(1, nz+1)] # zeros of j_0
+        zeros = np.array([i * np.pi for i in range(1, nz+1)]) # zeros of j_0
 
         for ll in range(l_start, l+1, stride):
             return_all and (yield zeros[:nzeros]) # yield when return_all is True. Any better way?
-            zeros = [brentq(jl, zeros[i], zeros[i+1], xtol=1e-14) for i in range(nz-1)]
+            zeros = np.array([brentq(jl, zeros[i], zeros[i+1], xtol=1e-14) for i in range(nz-1)])
             nz -= 1
 
-        if return_all:
-            yield zeros[:nzeros]
-        else:
-            yield from zeros[:nzeros]
+        yield zeros[:nzeros]
 
-    return list(_zerogen())
+    return list(_zerogen()) if return_all else next(_zerogen())
 
 
 JLZEROS = bracket(20, 100, return_all=True)
@@ -124,7 +119,7 @@ class _TestJlZeros(unittest.TestCase):
                 self.assertLess(np.linalg.norm(spherical_jn(l, zeros), np.inf), 1e-14)
 
         lmax = 20
-        nzeros = 50
+        nzeros = 100
         zeros = bracket(lmax, nzeros, return_all=True)
         for l in range(lmax+1):
             self.assertLess(np.linalg.norm(spherical_jn(l, zeros[l]), np.inf), 1e-14)
