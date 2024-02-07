@@ -82,8 +82,7 @@ def jl_trunc(l, q, r, rcut=None, deriv=0):
     '''
     Truncated spherical Bessel functions and derivatives.
 
-    Given a cutoff radius "rcut", the q-th truncated l-th order spherical
-    Bessel function is defined as
+    The q-th rcut-truncated l-th order spherical Bessel function is defined as
 
             spherical_jn(l, JLZEROS[l][q] * r / rcut)
 
@@ -95,7 +94,7 @@ def jl_trunc(l, q, r, rcut=None, deriv=0):
         l : int
             Order of the spherical Bessel function.
         q : int
-            Number of nodes.
+            Wavenumber index. Also the number of nodes.
         r : array of float
             Grid where the function is evaluated.
         rcut : int or float, optional
@@ -144,7 +143,7 @@ def jl_trunc_norm(l, q, rcut):
     return ( rcut**1.5 * np.abs(spherical_jn(l+1, JLZEROS[l][q])) ) / np.sqrt(2)
 
 
-def jl_trunc_reduce(l, n, rcut):
+def jl_reduce(l, n, rcut):
     '''
     This function returns a transformation matrix from truncated spherical Bessel
     functions to orthonormal end-smoothed mixed spherical Bessel basis.
@@ -215,7 +214,7 @@ def coeff_recover(coeff, rcut):
     # temporarily use a column-wise coefficient layout within each l
     coeff_basis = [ np.array(coeff_l).T for coeff_l in coeff ]
 
-    return [ (jl_trunc_reduce(l, coeff_l.shape[0] + 1, rcut) @ coeff_l).T.tolist() \
+    return [ (jl_reduce(l, coeff_l.shape[0] + 1, rcut) @ coeff_l).T.tolist() \
             for l, coeff_l in enumerate(coeff_basis)]
 
 
@@ -262,8 +261,8 @@ def _build_reduced(coeff, rcut, r, orth=False, normalize=False):
     # temporarily change to a column-wise coefficient layout within each l
     coeff_reduced = [ np.array(coeff_l).T for coeff_l in coeff ]
 
-    # The end-smoothed mixed spherical Bessel basis is orthonormal.
-    # If orthgonalization or normalization is requested, it is easier to do it now than later.
+    # It is easier to do orthogonalization or normalization now than later
+    # since the end-smoothed mixed spherical Bessel basis is orthonormal.
     if orth:
         for l, coeff_l in enumerate(coeff_reduced):
             coeff_reduced[l] = np.linalg.qr(coeff_l, mode='reduced')[0]
@@ -325,6 +324,35 @@ import unittest
 
 class _TestRadial(unittest.TestCase):
 
+    def test_inner_prod(self):
+        # checks _inner_prod by verifying the orthogonality
+        # of truncated spherical Bessel functions.
+        rcut = 3.0
+        dr = 0.001
+        r = np.linspace(0, rcut, int(rcut/dr)+1)
+        lmax = 5
+        nq = 10
+        for l in range(lmax+1):
+            k = JLZEROS[l] / rcut
+            for q in range(1, nq):
+                for p in range(q):
+                    self.assertLess(abs(_inner_prod(spherical_jn(l, k[q]*r), \
+                            spherical_jn(l, k[p]*r), r)), 1e-12)
+
+
+    def test_rad_norm(self):
+        # checks _rad_norm by some simple analytical cases.
+        a = 7.0
+        dr = 0.001
+        r = np.linspace(0, a, int(a/dr)+1)
+        self.assertLess(abs(_rad_norm(np.cos(np.pi * r / a), r) \
+                - np.sqrt((2.0 + 3.0/np.pi**2) * a**3 / 12.0)), 1e-12)
+        self.assertLess(abs(_rad_norm(np.sin(np.pi * r / a), r) \
+                - np.sqrt((2.0 - 3.0/np.pi**2) * a**3 / 12.0)), 1e-12)
+        self.assertLess(abs(_rad_norm(np.sin(2.0 * np.pi * r / a), r) \
+                - np.sqrt((8.0 * np.pi**2 - 3) * a**3 / 48.0) / np.pi), 1e-12)
+
+
     def test_smooth(self):
         r = np.linspace(0, 10, 100)
         rcut = 5.0
@@ -339,9 +367,78 @@ class _TestRadial(unittest.TestCase):
         g = _smooth(r, rcut, sigma)
         self.assertTrue(np.all(g[rm] == 1.0 - np.exp(-0.5*((r[rm]-rcut)/sigma)**2)))
         self.assertTrue(np.all(g[rp] == 0.0))
+
+
+    def test_jl_trunc_norm(self):
+        # cross-checks jl_trunc_norm with _rad_norm
+        rcut = 7.0
+        dr = 0.001
+        r = np.linspace(0, rcut, int(rcut/dr) + 1)
+        nzeros = 30
+        for l in range(5):
+            k = JLZEROS[l] / rcut
+            for q in range(nzeros):
+                f = spherical_jn(l, k[q]*r) / jl_trunc_norm(l, q, rcut)
+                self.assertLess(abs(_rad_norm(f, r) - 1.0), 1e-12)
+
+
+    def test_jl_trunc(self):
+        rcut = 5.0
+        dr = 0.001
+        r = np.linspace(0, rcut, int(rcut/dr) + 1)
+
+        # checks via spline interpolation and kinetic energies
+        for l in range(5):
+            kin_ref = (JLZEROS[l] / rcut)**2
+            for q in range(5):
+                norm_fac = 1.0 / jl_trunc_norm(l, q, rcut)
+                f = jl_trunc(l, q, r, rcut, 0) * norm_fac
+                df = jl_trunc(l, q, r, rcut, 1) * norm_fac
+                d2f = jl_trunc(l, q, r, rcut, 2) * norm_fac
+
+                spline = CubicSpline(r, f)
+                df_spline = spline(r, 1)
+                d2f_spline = spline(r, 2)
+
+                self.assertLess(simpson((r * (df-df_spline))**2, r), 1e-12)
+                self.assertLess(simpson((r * (d2f-d2f_spline))**2, r), 1e-9)
+
+                kin = simpson(-2 * r * f * df, r) - simpson(r**2 * f * d2f, r) \
+                        + l*(l+1) * simpson(f**2, r)
+                self.assertLess(abs(kin - kin_ref[q]), 1e-8)
+
     
-    
-    def test_build(self):
+    def test_jl_reduce(self):
+        # checks the transformation by jl_reduce indeed zero-out
+        # the first and second derivatives.
+        lmax = 5
+        rcut = 9.0
+        nq = 10
+        raw = np.zeros((2, nq))
+        for l in range(lmax+1):
+            for q in range(nq):
+                raw[0, q] = jl_trunc(l, q, rcut, deriv=1)
+                raw[1, q] = jl_trunc(l, q, rcut, deriv=2)
+            self.assertLess(np.linalg.norm(raw @ jl_reduce(l, nq, rcut), np.inf), 1e-12)
+
+
+    def test_coeff_recover(self):
+        nzeta = [1, 2, 3, 4]
+        lmax = len(nzeta) - 1
+        rcut = 9.0
+        nq = 10
+
+        coeff = [[np.random.randn(nq-1) for zeta in range(nzeta[l])] for l in range(lmax+1)]
+        coeff_raw = coeff_recover(coeff, rcut) 
+
+        for l in range(lmax+1):
+            raw = np.array(coeff_raw[l]).T
+            reduced = np.array(coeff[l]).T
+            self.assertLess(np.linalg.norm(jl_reduce(l, nq, rcut) @ reduced - raw, np.inf), \
+                    1e-12)
+
+
+    def test_build_raw(self):
         from orbio import read_param, read_nao
 
         param = read_param('./testfiles/ORBITAL_RESULTS.txt')
@@ -366,66 +463,14 @@ class _TestRadial(unittest.TestCase):
                 self.assertLess(np.linalg.norm(chi[l][zeta] - nao['chi'][l][zeta]), 1e-12)
 
 
-    def test_jl_trunc_norm(self):
-        rcut = 7.0
-        dr = 0.001
-        r = np.linspace(0, rcut, int(rcut/dr) + 1)
-        nzeros = 30
-        for l in range(5):
-            k = JLZEROS[l] / rcut
-            for q in range(nzeros):
-                f = spherical_jn(l, k[q]*r) / jl_trunc_norm(l, q, rcut)
-                self.assertLess(abs(_rad_norm(f, r) - 1.0), 1e-12)
-
-    def test_jl_trunc(self):
-        rcut = 5.0
-        dr = 0.001 # we need a find grid to check derivatives
-        r = np.linspace(0, rcut, int(rcut/dr) + 1)
-        for l in range(5):
-            for q in range(20):
-                f = jl_trunc(l, q, r, rcut, 0) / jl_trunc_norm(l, q, rcut)
-                self.assertLess(abs(_rad_norm(f, r) - 1.0), 1e-12)
-
-        # check derivatives via spline interpolation and kinetic energies
-        for l in range(5):
-            kin_ref = (JLZEROS[l] / rcut)**2
-            for q in range(5):
-                norm_fac = 1.0 / jl_trunc_norm(l, q, rcut)
-                f = jl_trunc(l, q, r, rcut, 0) * norm_fac
-                df = jl_trunc(l, q, r, rcut, 1) * norm_fac
-                d2f = jl_trunc(l, q, r, rcut, 2) * norm_fac
-
-                spline = CubicSpline(r, f)
-                df_spline = spline(r, 1)
-                d2f_spline = spline(r, 2)
-
-                self.assertLess(simpson((r * (df-df_spline))**2, r), 1e-12)
-                self.assertLess(simpson((r * (d2f-d2f_spline))**2, r), 1e-9)
-
-                kin = simpson(-2 * r * f * df, r) - simpson(r**2 * f * d2f, r) \
-                        + l*(l+1) * simpson(f**2, r)
-                self.assertLess(abs(kin - kin_ref[q]), 1e-8)
-
-
-    def test_build_from_basis(self):
+    def test_build_reduced(self):
         pass
 
 
-    def test_jl_trunc_reduce(self):
-        l = 3
-        rcut = 10
-        dr = 0.01
-        r = np.linspace(0, rcut, int(rcut/dr)+1)
-        nbes = 20
-        raw = np.zeros((len(r), nbes))
-        for q in range(nbes):
-            raw[:, q] = jl_trunc(l, q, r, rcut, deriv=0)
+    def test_build(self):
+        # see test_build_raw and test_build_reduced
+        pass
 
-        new = raw @ jl_trunc_reduce(l, nbes, rcut)
-
-        #for q in range(min(nbes-1, 5)):
-        #    plt.plot(r, new[:, q])
-        #plt.show()
 
 
 if __name__ == '__main__':
