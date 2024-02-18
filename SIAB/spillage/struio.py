@@ -1,19 +1,19 @@
 '''
-This script contains functions to generate ABACUS STRU files from a "STRU" dict
-and vice versa.
+This script contains functions to generate ABACUS STRU files from a "STRU" dict, and vice versa.
 
 A "STRU" dict contains the following key-value pairs:
 
 'lat' : dict
-    Parameters to determine the lattice vectors. The value of 'lat' is a dict with the following keys:
+    Parameters to determine the lattice vectors. The associated value is a dict with the following key-value pairs:
     'const' : float
         Lattice constant in Bohr.
     'vec' : list of list of float, optional
-        Lattice vectors in unit of stru['lat']['const']. Should not be present if latname is specified in INPUT.
+        Lattice vectors in unit of stru['lat']['const']. Should not be present if 'latname' is specified in INPUT.
     'param' : list of float, optional
         Extra lattice parameters used when latname is specified in INPUT. See reference for details.
 'coord_type' : str
-    Coordinate type in ATOMIC_POSITIONS. See reference for details.
+    Coordinate type in ATOMIC_POSITIONS, could be 'Direct', 'Cartesian', 'Cartesian_angstrom' and several more.
+    See reference for details.
 'species' : list of dict
     A list of atomic species, each of which is a dict containing the following key-value pairs:
     'symbol' : str
