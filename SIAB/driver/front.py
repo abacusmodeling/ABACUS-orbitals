@@ -68,6 +68,7 @@ def abacus(general: dict,
 # interface to Spillage optimization
 import SIAB.interface.old_version as siov
 import SIAB.spillage.pytorch_swat.api as SPS_api  # old version of backend
+import SIAB.include.citation as sicite
 # import SIAB.spillage.something.api as SpillageSomething_api  # new version of backend
 def spillage(folders: list,
              calculation_settings: list,
@@ -90,3 +91,4 @@ def spillage(folders: list,
             SPS_api.run(params=orb_gen, ilevel=ilevel, nlevel=nlevel)
     else:
         raise NotImplementedError("SIAB version %s is not supported yet"%siab_version)
+    return sicite.citation()
