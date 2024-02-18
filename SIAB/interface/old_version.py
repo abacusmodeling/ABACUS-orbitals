@@ -100,8 +100,8 @@ def scan_folder_consistency(folders: list):
     if len(set(shapes)) == 1 and len(set(elements)) == 1:
         return True, elements[0], shapes[0], bond_lengths
     else:
+        print("check Folders return false: ", folders)
         return False, None, None, None
-
 
 def ov_parameters(element: str,
                   orbital_config: list,
