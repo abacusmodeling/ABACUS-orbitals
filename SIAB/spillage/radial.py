@@ -139,6 +139,8 @@ def jl_trunc_norm(l, q, rcut):
 
     N = sqrt( \int_0^{rcut} [ r * spherical_jn(l, JLZEROS[l][q] * r / rcut) ]**2 dr )
 
+    by using the analytical expression of the integral.
+
     '''
     return ( rcut**1.5 * np.abs(spherical_jn(l+1, JLZEROS[l][q])) ) / np.sqrt(2)
 
@@ -170,7 +172,7 @@ def jl_reduce(l, n, rcut):
     For a normalized truncated spherical Bessel function, the ratio between its
     first and second derivative at rcut is always a constant (-rcut/2). Therefore,
     in order to have vanishing first and second derivatives, it is sufficient to
-    focus on the first derivative only.
+    work on the first derivative only.
 
     '''
     norm_fac = np.array([1.0 / jl_trunc_norm(l, q, rcut) for q in range(n)])
@@ -181,7 +183,7 @@ def jl_reduce(l, n, rcut):
     # null space of D
     C = np.linalg.svd(D, full_matrices=True)[2].T[:,1:]
 
-    # diagonalize the kinetic matrix in this subspace ("canonical")
+    # diagonalize the kinetic matrix in this subspace ("canonicalize")
     _, vec = np.linalg.eigh(C.T @ np.diag((JLZEROS[l][:n]/rcut)**2) @ C)
 
     return np.diag(norm_fac) @ C @ vec
@@ -218,14 +220,38 @@ def coeff_recover(coeff, rcut):
             for l, coeff_l in enumerate(coeff_basis)]
 
 
-def _build_raw(coeff, rcut, r, sigma=0.0, orth=False, normalize=False):
+def build_raw(coeff, rcut, r, sigma=0.0, orth=False, normalize=False):
     '''
     Builds a set of numerical radial functions by linear combinations of
     truncated spherical Bessel functions.
 
-    See build() for more details.
+    Parameters
+    ----------
+        coeff : list of list of list of float
+            A nested list of spherical Bessel coefficients organized as coeff[l][zeta][p]
+            where l, zeta and p label the angular momentum, zeta number and basis index
+            respectively.
+        rcut : int or float
+            Cutoff radius.
+        r : array of float
+            Grid where the radial functions are evaluated.
+        sigma : float
+            Smoothing parameter.
+        orth : bool
+            Whether to Gram-Schmidt orthogonalize the radial functions. If True,
+            the resulting radial functions may not be consistent with the given
+            spherical Bessel coefficients.
+        normalize : bool
+            Whether to normalize the radial functions. If True, the resulting
+            radial functions may not be consistent with the given coefficients.
+
+    Returns
+    -------
+        chi : list of list of array of float
+            A nested list of numerical radial functions organized as chi[l][zeta][ir].
 
     '''
+
     g = _smooth(r, rcut, sigma)
     chi = [[None for _ in coeff_l] for coeff_l in coeff]
 
@@ -234,7 +260,7 @@ def _build_raw(coeff, rcut, r, sigma=0.0, orth=False, normalize=False):
             chi[l][zeta] = sum(coeff_lzq * spherical_jn(l, JLZEROS[l][q]*r/rcut) \
                     for q, coeff_lzq in enumerate(coeff_lz))
 
-            chi[l][zeta] *= g # smooth
+            chi[l][zeta] *= g # smooth & truncate
 
             if orth: # Gram-Schmidt
                 chi[l][zeta] -= sum(chi[l][y] * _inner_prod(chi[l][y], chi[l][zeta], r) \
@@ -246,12 +272,33 @@ def _build_raw(coeff, rcut, r, sigma=0.0, orth=False, normalize=False):
     return chi
 
 
-def _build_reduced(coeff, rcut, r, orth=False, normalize=False):
+def build_reduced(coeff, rcut, r, orthonormal=False, normalize=False):
     '''
-    Builds a set of numerical radial functions by linear combinations of end-smoothed
-    mixed spherical Bessel orthonormal basis.
+    Builds a set of numerical radial functions by linear combinations of
+    orthonormal end-smoothed mixed spherical Bessel basis.
 
-    See build() for more details.
+    Parameters
+    ----------
+        coeff : list of list of list of float
+            A nested list of spherical Bessel coefficients organized as coeff[l][zeta][p]
+            where l, zeta and p label the angular momentum, zeta number and basis index
+            respectively.
+        rcut : int or float
+            Cutoff radius.
+        r : array of float
+            Grid where the radial functions are evaluated.
+        orthonormal : bool
+            Whether to orthonormalize the radial functions. If True, the resulting radial
+            functions may not be consistent with the given coefficients.
+        normalize : bool
+            Whether to normalize the radial functions. If True, the resulting radial
+            functions may not be consistent with the given coefficients.
+            If "orthonormal" is True, this option is ignored.
+    
+    Returns
+    -------
+        chi : list of list of array of float
+            A nested list of numerical radial functions organized as chi[l][zeta][ir].
 
     Notes
     -----
@@ -263,58 +310,16 @@ def _build_reduced(coeff, rcut, r, orth=False, normalize=False):
 
     # It is easier to do orthogonalization or normalization now than later
     # since the end-smoothed mixed spherical Bessel basis is orthonormal.
-    if orth:
+    if orthonormal:
         for l, coeff_l in enumerate(coeff_reduced):
             coeff_reduced[l] = np.linalg.qr(coeff_l, mode='reduced')[0]
-
-    if normalize:
+    elif normalize:
         for l, coeff_l in enumerate(coeff_reduced):
             coeff_reduced[l] /= np.linalg.norm(coeff_l, axis=0)
 
     coeff_reduced = [ coeff_l.T.tolist() for coeff_l in coeff_reduced ]
 
-    return _build_raw(coeff_recover(coeff_reduced, rcut), rcut, r, 0.0, False, False)
-
-
-def build(coeff, rcut, r, basis_type, sigma=0.0, orth=False, normalize=False):
-    '''
-    Builds a set of numerical radial functions by linear combinations of
-    spherical Bessel functions.
-    
-    Parameters
-    ----------
-        coeff : list of list of list of float
-            A nested list of spherical Bessel coefficients organized as coeff[l][zeta][p]
-            where l, zeta and p label the angular momentum, zeta number and basis index
-            respectively.
-        rcut : int or float
-            Cutoff radius.
-        r : array of float
-            Grid where the radial functions are evaluated.
-        basis_type : str
-            Type of the spherical Bessel basis. Can be 'raw' or 'reduced'.
-        sigma : float
-            Smoothing parameter. Only used when basis_type is 'raw'.
-        orth : bool
-            Whether to Gram-Schmidt orthogonalize the radial functions. If True,
-            the resulting radial functions may not be consistent with the given
-            spherical Bessel coefficients.
-        normalize : bool
-            Whether to normalize the radial functions. If True, the resulting
-            radial functions may not be consistent with the given coefficients.
-    
-    Returns
-    -------
-        chi : list of list of array of float
-            A nested list of numerical radial functions organized as chi[l][zeta][ir].
-
-    '''
-    if basis_type == 'raw':
-        return _build_raw(coeff, rcut, r, sigma, orth, normalize)
-    elif basis_type == 'reduced':
-        return _build_reduced(coeff, rcut, r, orth, normalize)
-    else:
-        raise ValueError('Unknown basis type: {}'.format(basis_type))
+    return build_raw(coeff_recover(coeff_reduced, rcut), rcut, r, 0.0, False, False)
 
 
 ############################################################
@@ -409,7 +414,7 @@ class _TestRadial(unittest.TestCase):
 
     
     def test_jl_reduce(self):
-        # checks the transformation by jl_reduce indeed zero-out
+        # checks if transformations by jl_reduce indeed zero-out
         # the first and second derivatives.
         lmax = 5
         rcut = 9.0
@@ -444,33 +449,42 @@ class _TestRadial(unittest.TestCase):
         param = read_param('./testfiles/ORBITAL_RESULTS.txt')
         nao = read_nao('./testfiles/In_gga_10au_100Ry_3s3p3d2f.orb')
         r = np.linspace(0, param['rcut'], int(param['rcut']/nao['dr'])+1)
-        chi = build(param['coeff'], param['rcut'], r, 'raw', param['sigma'], True, True)
+        chi = build_raw(param['coeff'], param['rcut'], r, param['sigma'], True, True)
 
-        # check normalization
         for l in range(len(chi)):
             for zeta in range(len(chi[l])):
+                # check normalization
                 self.assertLess(abs(_rad_norm(chi[l][zeta], r) - 1.0), 1e-12)
 
-        # check orthogonality
-        for l in range(len(chi)):
-            for zeta in range(1, len(chi[l])):
+                # check orthogonality
                 for y in range(zeta):
                     self.assertLess(abs(_inner_prod(chi[l][zeta], chi[l][y], r)), 1e-12)
 
-        # cross check with NAO file
-        for l in range(len(chi)):
-            for zeta in range(len(chi[l])):
+                # cross check with NAO file
                 self.assertLess(np.linalg.norm(chi[l][zeta] - nao['chi'][l][zeta]), 1e-12)
 
 
     def test_build_reduced(self):
-        pass
+        nzeta = [1, 2, 3, 4]
+        lmax = len(nzeta) - 1
+        rcut = 9.0
+        nq = 10
+        coeff_reduced = [[np.random.randn(nq-1) for zeta in range(nzeta[l])] for l in range(lmax+1)]
+        coeff_raw = coeff_recover(coeff_reduced, rcut)
 
+        dr = 0.01
+        r = np.linspace(0, rcut, int(rcut/dr)+1)
 
-    def test_build(self):
-        # see test_build_raw and test_build_reduced
-        pass
-
+        for orth, norm in [(True, True), (False, True), (False, False)]:
+            chi_reduced = build_reduced(coeff_reduced, rcut, r, orth, norm)
+            chi_raw = build_raw(coeff_raw, rcut, r, 0.0, orth, norm)
+            for l in range(lmax+1):
+                for zeta in range(nzeta[l]):
+                    # adjust the sign of the reduced chi to match the raw chi
+                    idx = np.argmax(np.abs(chi_raw[l][zeta]))
+                    if chi_raw[l][zeta][idx] * chi_reduced[l][zeta][idx] < 0:
+                        chi_reduced[l][zeta] *= -1
+                    self.assertLess(np.linalg.norm(chi_raw[l][zeta] - chi_reduced[l][zeta], np.inf), 1e-12)
 
 
 if __name__ == '__main__':
