@@ -141,11 +141,11 @@ def run(fname: str,
     # `siab_version` is a temporary parameter, for directly calling the optimizer in spillage/
     # pytorch_swat. For future versions, this parameter will be removed, and `optimizer`
     # in `siab_settings` will be used to call corresponding optimizer.
-    sdf.spillage(folders=folders,
-                 calculation_settings=calculation_settings,
-                 siab_settings=siab_settings,
-                 siab_version=siab_version)
-    
+    citation = sdf.spillage(folders=folders,
+                            calculation_settings=calculation_settings,
+                            siab_settings=siab_settings,
+                            siab_version=siab_version)
+    print(citation)
     return "seems everything is fine"
 
 def finalize(outs: str):

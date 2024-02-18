@@ -267,7 +267,7 @@ lmaxmax             %s
 bessel_nao_rcut     %s
 
 symmetry            0
-nbands             	%s
+nbands                 %s
 
 ecutwfc             %s
 scf_thr             1.0e-7  // about iteration
@@ -409,11 +409,11 @@ def prepare_SIAB_INPUT(iEcut, iRcut, iLevel):
     INPUT_json["file_list"]["linear"] = [ [ pwDataPath_STRU[STRUname][iBL]+"/orb_matrix.1.dat" for iBL in range(nBL_STRU[STRUname]) ] ]
 
     INPUT_json["info"] = {"Nt_all": element, 
-			"Nu":   { element[iElement]:orbConf_to_list(orbConf_Level[iLevelm1][iElement], Llabel, maxL_STRU[STRUname] ) 
-			            for iElement in range(len(element) )  },
-			"Rcut": { element[iElement]:Rcut[iRcut] for iElement in range(len(element)) },
-			"dr":   { element[iElement]:0.01 for iElement in range(len(element)) },
-			"Ecut": { element[iElement]:int(Ecut[iEcut]) for iElement in range(len(element)) }, 
+            "Nu":   { element[iElement]:orbConf_to_list(orbConf_Level[iLevelm1][iElement], Llabel, maxL_STRU[STRUname] ) 
+                        for iElement in range(len(element) )  },
+            "Rcut": { element[iElement]:Rcut[iRcut] for iElement in range(len(element)) },
+            "dr":   { element[iElement]:0.01 for iElement in range(len(element)) },
+            "Ecut": { element[iElement]:int(Ecut[iEcut]) for iElement in range(len(element)) }, 
             "lr": 0.03, 
             "cal_T": False,  "cal_smooth": True, "max_steps": max_steps } 
     
@@ -872,7 +872,7 @@ if __name__=="__main__":
 
             # continue 
             # print(" import mainFunc @ path: ", opt_mainFunc_path )
-    	    # #print("[pyTorch Version: "+torch.__version__+"]" , flush=True )
+            # #print("[pyTorch Version: "+torch.__version__+"]" , flush=True )
             # import main as mainFunc
             mainFunc.main() #!!!
             

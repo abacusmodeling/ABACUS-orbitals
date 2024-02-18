@@ -24,47 +24,47 @@ periodtable = {   'H': 1, 'He': 2, 'Li': 3, 'Be': 4, 'B': 5, 'C': 6, 'N': 7,
                } 
 
 def print_orbital(orb,info_element):
-	""" orb[it][il][iu][r] """
-	for it,orb_t in orb.items():
-		#with open("orb_{0}.dat".format(it),"w") as file:
-		with open("ORBITAL_{0}U.dat".format( periodtable[it] ),"w") as file:
-			print_orbital_head(file,info_element,it)
-			for il,orb_tl in enumerate(orb_t):
-				for iu,orb_tlu in enumerate(orb_tl):
-					print("""                Type                   L                   N""",file=file)
-					print("""                   0                   {0}                   {1}""".format(il,iu),file=file)
-					for ir,orb_tlur in enumerate(orb_tlu):
-						print( '%.14e'%orb_tlur, end="  ",file=file)
-						if ir%4==3:	print(file=file)
-					print(file=file)
-					
-					
+    """ orb[it][il][iu][r] """
+    for it,orb_t in orb.items():
+        #with open("orb_{0}.dat".format(it),"w") as file:
+        with open("ORBITAL_{0}U.dat".format( periodtable[it] ),"w") as file:
+            print_orbital_head(file,info_element,it)
+            for il,orb_tl in enumerate(orb_t):
+                for iu,orb_tlu in enumerate(orb_tl):
+                    print("""                Type                   L                   N""",file=file)
+                    print("""                   0                   {0}                   {1}""".format(il,iu),file=file)
+                    for ir,orb_tlur in enumerate(orb_tlu):
+                        print( '%.14e'%orb_tlur, end="  ",file=file)
+                        if ir%4==3:    print(file=file)
+                    print(file=file)
+                    
+                    
 def plot_orbital(orb,Rcut,dr):
-	for it,orb_t in orb.items():
-		#with open("orb_{0}_plot.dat".format(it),"w") as file:
-		with open("ORBITAL_PLOTU.dat", "w") as file:
-			Nr = int(Rcut[it]/dr[it])+1
-			for ir in range(Nr):
-				print( '%10.6f'%(ir*dr[it]),end="  ",file=file)
-				for il,orb_tl in enumerate(orb_t):
-					for orb_tlu in orb_tl:
-						print( '%18.14f'%orb_tlu[ir],end="  ",file=file)
-				print(file=file)
-				
-				
+    for it,orb_t in orb.items():
+        #with open("orb_{0}_plot.dat".format(it),"w") as file:
+        with open("ORBITAL_PLOTU.dat", "w") as file:
+            Nr = int(Rcut[it]/dr[it])+1
+            for ir in range(Nr):
+                print( '%10.6f'%(ir*dr[it]),end="  ",file=file)
+                for il,orb_tl in enumerate(orb_t):
+                    for orb_tlu in orb_tl:
+                        print( '%18.14f'%orb_tlu[ir],end="  ",file=file)
+                print(file=file)
+                
+                
 def print_orbital_head(file,info_element,it):
-	print( "---------------------------------------------------------------------------", file=file )
-	print( "Element                     {0}".format(it), file=file )
-	print( "Energy Cutoff(Ry)           {0}".format(info_element[it].Ecut), file=file )
-	print( "Radius Cutoff(a.u.)         {0}".format(info_element[it].Rcut), file=file )
-	print( "Lmax                        {0}".format(info_element[it].Nl-1), file=file )
-	l_name = ["S","P","D"]+list(map(chr,range(ord('F'),ord('Z')+1)))
-	for il,iu in enumerate(info_element[it].Nu):
-		print( "Number of {0}orbital-->       {1}".format(l_name[il],iu), file=file )
-	print( "---------------------------------------------------------------------------", file=file )
-	print( "SUMMARY  END", file=file )
-	print( file=file )
-	print( "Mesh                        {0}".format(int(info_element[it].Rcut/info_element[it].dr)+1), file=file )
-	print( "dr                          {0}".format(info_element[it].dr), file=file )
+    print( "---------------------------------------------------------------------------", file=file )
+    print( "Element                     {0}".format(it), file=file )
+    print( "Energy Cutoff(Ry)           {0}".format(info_element[it].Ecut), file=file )
+    print( "Radius Cutoff(a.u.)         {0}".format(info_element[it].Rcut), file=file )
+    print( "Lmax                        {0}".format(info_element[it].Nl-1), file=file )
+    l_name = ["S","P","D"]+list(map(chr,range(ord('F'),ord('Z')+1)))
+    for il,iu in enumerate(info_element[it].Nu):
+        print( "Number of {0}orbital-->       {1}".format(l_name[il],iu), file=file )
+    print( "---------------------------------------------------------------------------", file=file )
+    print( "SUMMARY  END", file=file )
+    print( file=file )
+    print( "Mesh                        {0}".format(int(info_element[it].Rcut/info_element[it].dr)+1), file=file )
+    print( "dr                          {0}".format(info_element[it].dr), file=file )
 
-	
+    
