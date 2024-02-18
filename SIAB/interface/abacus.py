@@ -450,12 +450,14 @@ def normal(general: dict,
         }
         folder = configure(input_setting=calculation_setting,
                            stru_setting=stru_setting)
+        folders.append(folder)
+
         if is_duplicate(folder, calculation_setting):
             print("ABACUS calculation on reference structure %s with bond length %s is skipped."%(reference_shape, bond_length))
             sienv.op("rm", "INPUT-%s KPT-%s STRU-%s INPUTw"%(folder, folder, folder), env="local")
             continue
+        # else...
         archive(footer=folder)
-        folders.append(folder)
         print("""Run ABACUS calculation on reference structure.
 Reference structure: %s
 Bond length: %s"""%(reference_shape, bond_length))

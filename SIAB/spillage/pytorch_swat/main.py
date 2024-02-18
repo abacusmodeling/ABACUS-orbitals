@@ -86,25 +86,30 @@ def main(params: dict = None):
 	#opt = torch.optim.Adam(sum( ([c.real,c.imag] for c in sum(C,[])), []), lr=info_opt.lr, eps=1e-8)
 	#opt = torch.optim.Adam( sum(C.values(),[]), lr=info_opt.lr, eps=1e-20, weight_decay=info_opt.weight_decay)
 	#opt = radam.RAdam( sum(C.values(),[]), lr=info_opt.lr, eps=1e-20 )
-	opt = torch_optimizer.SWATS( sum(C.values(),[]), lr=info_opt.lr, eps=1e-20 )
-
+	print("torch_optimizer.SWATS (Improving Generalization Performance by Switching from Adam to SGD) optimizer is used.\nParameters:\nLearning rate: %s\nEpsilon: %s\n"%(info_opt.lr, 1e-20), flush=True)
+	opt = torch_optimizer.SWATS(sum(C.values(),[]), lr=info_opt.lr, eps=1e-20)
 
 	with open("Spillage.dat","w") as S_file:
 
-		print( "\nSee \"Spillage.dat\" for detail status: " , flush=True )
+		print("Optimization on Spillage function starts, check \"Spillage.dat\" for detailed trajectory.", flush=True)
+		table_header = ["Step", "Spillage"]
 		if info_opt.cal_T:
-			print( '%5s'%"istep", "%20s"%"Spillage", "%20s"%"T.item()", "%20s"%"Loss", flush=True )
+			table_header += ["T-term", "Loss function", "Time"]
+			print("%10s%20s%20s%20s%10s"%(table_header[0],table_header[1],table_header[2],table_header[3],table_header[4]), flush=True)
 		else:
-			print( '%5s'%"istep", "%20s"%"Spillage", flush=True )
+			table_header += ["Time"]
+			print("%10s%20s%10s"%(table_header[0],table_header[1],table_header[2]), flush=True)
 		# initialize the loss_old to be infinity, so that the optimization will start
 		loss_old = np.inf
 		# arbitrarily set the max step to 30000 and if input defines it, use the input value
 		maxSteps = 30000
-		if type(info_opt.max_steps) == int :
-			if info_opt.max_steps > 0 :
+		spillage_ = -1
+		if isinstance(info_opt.max_steps, int):
+			if info_opt.max_steps > 0:
 				maxSteps = info_opt.max_steps
 		# optimization loop starts here
 		for istep in range(maxSteps):
+			time_stepstart = time.time()
 			# START: hack function here to change definition of Spillage
 			Spillage = 0
 			for ist in range(len(info_stru)): # for each structure...
@@ -150,14 +155,16 @@ def main(params: dict = None):
 			else:
 				Loss = Spillage
 
+			duration = time.time() - time_stepstart
+			# convert time unit to seconds
 			if info_opt.cal_T:
-				print_content = [istep, Spillage.item(), T.item(), Loss.item()]
+				print("%10s%20.10e%20.10f%20.10f%10.4f"%(istep, Spillage.item(), T.item(), Loss.item(), duration), file=S_file, flush=True)
+				if not istep%100:
+					print("%10s%20.10e%20.10f%20.10f%10.4f"%(istep, Spillage.item(), T.item(), Loss.item(), duration), flush=True)
 			else:
-				print_content = [istep, Spillage.item()]
-			print(*print_content, sep="\t", file=S_file, flush=True)
-			if not istep%100:
-				print(*print_content, sep="\t", flush=True)
-
+				print("%10s%20.10e%10.4f"%(istep, Spillage.item(), duration), file=S_file, flush=True)
+				if not istep%100:
+					print("%10s%20.10e%10.4f"%(istep, Spillage.item(), duration), flush=True)
 			flag_finish = 0
 			if Loss.item() < loss_old:
 				loss_old = Loss.item()

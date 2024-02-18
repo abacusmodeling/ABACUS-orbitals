@@ -12,7 +12,7 @@
  element     Si          # Element Name
  Ecut        100         # in Ry
  Rcut        6 7         # in Bohr
- Pseudo_dir  /root/abacus-develop/pseudopotentials/SG15_ONCV_v1.0_upf
+ Pseudo_dir  /root/abacus-develop/pseudopotentials/sg15_oncv_upf_2020-02-06/1.0
  Pseudo_name Si_ONCV_PBE-1.0.upf 
  sigma       0.01        # energy range for gauss smearing (in Ry) 
 
@@ -20,7 +20,7 @@
 #3. Reference structure related parameters for PW calculation
 #For the built-in structure types (including 'dimer', 'trimer' and 'tetramer'):
 #STRU Name   #STRU Type  #nbands #MaxL   #nspin  #Bond Length list
- STRU1       dimer       8       2       1       auto
+ STRU1       dimer       8       2       1       1.62 1.82 2.22 2.72 3.22
  STRU2       trimer      10      2       1       1.9 2.1 2.6
 
 #-------------------------------------------------------------------------------- 
@@ -37,5 +37,4 @@
 #Index       #LevelNum    #OrbitalType
  Save1       Level1       SZ           
  Save2       Level2       DZP         
- Save3       Level3       TZDP        
-
+ Save3       Level3       TZDP      
