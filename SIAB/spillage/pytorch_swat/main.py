@@ -104,7 +104,10 @@ SIAB.pytorch_swat starts, numerical atomic orbitals are optimized.
     ###################################
     QI, SI, VI_origin = sspsirqsv.read_QSV(info_stru, info_element, file_list["origin"], V_info)
     if "linear" in file_list.keys():
-        QI_linear, SI_linear, VI_linear = list(zip(*(sspsirqsv.read_QSV(info_stru, info_element, file, V_info) for file in file_list["linear"])))
+        QI_linear, SI_linear, VI_linear = list(zip(*(sspsirqsv.read_QSV(info_stru, 
+                                                                        info_element, 
+                                                                        file, 
+                                                                        V_info) for file in file_list["linear"])))
 	###################################
     # INITIALIZE COEFFICIENTS OF ORB  #
 	###################################
@@ -114,10 +117,10 @@ SIAB.pytorch_swat starts, numerical atomic orbitals are optimized.
     else:
         C = sspsifc.random_C_init(info_element)
     E = sspso.set_E(info_element)
-    sspso.normalize(
-        sspso.generate_orbital(info_element, C, E),
-        {it:info_element[it].dr for it in info_element},
-        C, flag_norm_C=True)
+    sspso.normalize(orb=sspso.generate_orbital(info_element, C, E),
+                    dr={it:info_element[it].dr for it in info_element},
+                    C=C, 
+                    flag_norm_C=True)
 	###################################
 	#    OPTIMIZATION OF ORBITALS     #
 	###################################
@@ -158,8 +161,8 @@ Epsilon: %s"""%(info_opt.lr, 1e-20), flush=True)
         if isinstance(info_opt.max_steps, int):
             if info_opt.max_steps > 0:
                 maxSteps = info_opt.max_steps
-        # delta of spillage is set to None, so that the first iteration will not be considered
-        delta_spill = None
+        # spillage value of the previous step, initialize as 0.
+        _spill_0 = 0
         
 		###################################
 		#    OPTIMIZATION LOOP STARTS     #
@@ -168,6 +171,7 @@ Epsilon: %s"""%(info_opt.lr, 1e-20), flush=True)
         for istep in range(maxSteps):
             # record the time of each step
             time_stepstart = time.time()
+            # --------------------------------
             # START: hack function here to change definition of Spillage
             Spillage = 0
             # for each structure...
@@ -207,6 +211,7 @@ Epsilon: %s"""%(info_opt.lr, 1e-20), flush=True)
                         # Spillage += coeff_dpsi*s1*(cstpsi + s0/fpsi_dpsi)
 
             # END: hack function here to change definition of Spillage
+            # --------------------------------
             # kinetic energy term contribution
             if info_opt.cal_T:
                 T = Opt_Orbital.cal_T(C, E)
@@ -216,15 +221,17 @@ Epsilon: %s"""%(info_opt.lr, 1e-20), flush=True)
                 Loss = Spillage
 			# output the information of the current step
             duration = time.time() - time_stepstart
-            delta_spill = Spillage.item() - delta_spill if delta_spill is not None else Spillage.item()
+            # calculate the change of spillage
+            _dspill = Spillage.item() - _spill_0
+            _spill_0 += _dspill
             if info_opt.cal_T:
                 print(f"{istep:>10}{Spillage.item():>20.10e}{T.item():>20.10f}{Loss.item():>20.10f}{duration:>10.4f}", file=S_file, flush=True)
                 if not istep % 100:
                     print(f"{istep:>10}{Spillage.item():>20.10e}{T.item():>20.10f}{Loss.item():>20.10f}{duration:>10.4f}", flush=True)
             else:
-                print(f"{istep:>10}{Spillage.item():>20.10e}{delta_spill:>20.10e}{duration:>10.4f}", file=S_file, flush=True)
+                print(f"{istep:>10}{Spillage.item():>20.10e}{_dspill:>20.10e}{duration:>10.4f}", file=S_file, flush=True)
                 if not istep % 100:
-                    print(f"{istep:>10}{Spillage.item():>20.10e}{delta_spill:>20.10e}{duration:>10.4f}", flush=True)
+                    print(f"{istep:>10}{Spillage.item():>20.10e}{_dspill:>20.10e}{duration:>10.4f}", flush=True)
                     
             flag_finish = 0
             if Loss.item() < loss_old:
@@ -263,7 +270,8 @@ Epsilon: %s"""%(info_opt.lr, 1e-20), flush=True)
 
     sspsifc.write_C("ORBITAL_RESULTS.txt", C_old, Spillage)
 
-    print("""================================
+    print("""...
+---------------------------------
 Optimization of the orbital ends.
 TOTAL TIME (PyTorch):     %s"""%(time.time()-time_start), flush=True)
 
