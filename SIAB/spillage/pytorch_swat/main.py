@@ -132,7 +132,8 @@ SIAB.pytorch_swat starts, numerical atomic orbitals are optimized.
 torch_optimizer.SWATS (Improving Generalization Performance by Switching from Adam to SGD) optimizer is used.
 Parameters are listed below
 Learning rate: %s
-Epsilon: %s"""%(info_opt.lr, 1e-20), flush=True)
+Epsilon: %s
+Max steps: %s"""%(info_opt.lr, 1e-20, info_opt.max_steps), flush=True)
 
     orb_optimizer = torch_optimizer.SWATS(sum(C.values(),[]), lr=info_opt.lr, eps=1e-20)
 

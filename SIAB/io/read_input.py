@@ -94,6 +94,8 @@ def wash(inp: dict):
     fpseudo = inp["Pseudo_name"][0].strip().replace("\\", "").replace("/", "")
     inp["Pseudo_name"] = fpseudo
 
+    inp["max_steps"] = int(inp["max_steps"][0])
+    
     return inp
 
 def keywords_translate(keyword: str):

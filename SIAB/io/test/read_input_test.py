@@ -19,7 +19,7 @@ class TestReadInput(unittest.TestCase):
                              'bessel_nao_rcut': [6, 7], 
                              'smearing_sigma': 0.01, 
                              'optimizer': 'pytorch.SWAT', 
-                             'max_steps': [200], 
+                             'max_steps': 200, 
                              'spillage_coeff': [0.5, 0.5], 
                              'reference_systems': [
                                  {'shape': 'dimer', 'nbands': 8, 'nspin': 1, 'bond_lengths': [1.8, 2.0, 2.3, 2.8, 3.8]}, 
@@ -54,7 +54,7 @@ class TestReadInput(unittest.TestCase):
               ])
         self.assertDictEqual(result[3], {
             'optimizer': 'pytorch.SWAT', 
-            'max_steps': [200], 
+            'max_steps': 200, 
             'spillage_coeff': [0.5, 0.5], 
             'orbitals': [
                 {'nzeta': [1, 1], 
@@ -93,7 +93,7 @@ class TestReadInput(unittest.TestCase):
             'sigma': 0.01, 
             'STRU1': ['dimer', 8, 2, 1, 1.8, 2.0, 2.3, 2.8, 3.8], 
             'STRU2': ['trimer', 10, 2, 1, 1.9, 2.1, 2.6], 
-            'max_steps': [200], 
+            'max_steps': 200, 
             'Level1': ['STRU1', 4, 'none', '1s1p'], 
             'Level2': ['STRU1', 4, 'fix', '2s2p1d'], 
             'Level3': ['STRU2', 6, 'fix', '3s3p2d'], 
@@ -120,7 +120,7 @@ class TestReadInput(unittest.TestCase):
             'sigma': 0.01, 
             'STRU1': ['dimer', 8, 2, 1, "auto"], 
             'STRU2': ['trimer', 10, 2, 1, 1.9, 2.1, 2.6], 
-            'max_steps': [200], 
+            'max_steps': 200, 
             'Level1': ['STRU1', 4, 'none', '1s1p'], 
             'Level2': ['STRU1', 4, 'fix', '2s2p1d'], 
             'Level3': ['STRU2', 6, 'fix', '3s3p2d'], 
