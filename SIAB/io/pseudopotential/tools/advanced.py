@@ -230,15 +230,23 @@ def ADC_parser(parsed: dict) -> list:
             continue
 
         if line.startswith("Generation configuration:"):
+            read_valence_config = False
             break
 
         if read_valence_config and line[0].isdigit():
             words = line.split()
-            if len(words) == 7:
-                symbol = words[0][-1]
-                if symbol not in result:
-                    result[symbol] = []
-                result[symbol].append(words[0])
+            occ = float(words[3])
+            if occ < 1e-6:
+                print("""PSEUDOPOTENTIAL PARSE - towards_siab
+Warning: present sublayer has occupation number less than 1e-6, this sublayer belongs to valence 
+electron configuration but has actually no electron populated. Present strategy is to ignore this
+sublayer, be sure if this is physical and expected.
+If not happy with this, please change the code in SIAB/io/pseudopotential/tools/advanced.py""")
+                print("Sublayer defined as valence with 0-occ.:", words[0], "-> skipped")
+                continue
+            result.setdefault(words[0][-1], []).append(words[0])
+            
+    print(result)
     # then convert to list
     sequence = ["S", "P", "D", "F", "G", "H", "I", "K", "L", "M", "N"]
     result_list = []
@@ -247,8 +255,11 @@ def ADC_parser(parsed: dict) -> list:
         if symbol in result:
             result_list.append(result[symbol])
         else:
-            if isym > len(result):
+            # it is not so intuitive: there may be the case like s, p and f
+            # but no d, then the result_list should be like [[s], [p], [], [f]]
+            if isym >= len(result):
                 break
             else:
                 result_list.append([])
+
     return parsed["PP_HEADER"]["attrib"]["element"], result_list

@@ -209,7 +209,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list):
     for irs in range(len(user_settings["reference_systems"])):
         result[irs].update({
             "nbands": user_settings["reference_systems"][irs]["nbands"],
-            "lmaxmax": len(minimal_basis) if with_polarization[irs] else len(minimal_basis) - 1,
+            "lmaxmax": len(minimal_basis) if (with_polarization[irs] and 0 not in minimal_basis) else len(minimal_basis) - 1,
             "nspin": user_settings["reference_systems"][irs]["nspin"]
         })
     return result
