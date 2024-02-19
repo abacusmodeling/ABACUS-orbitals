@@ -47,6 +47,8 @@ SIAB.pytorch_swat starts, numerical atomic orbitals are optimized.
         for key, value in params["info"].items():
             info_true.__dict__[key] = value
         info_true.Nl = {it:len(Nu) for it, Nu in info_true.Nu.items()}
+        print("use on-the-fly information pass from front-end to back-end. The information is listed below:")
+        print(info_true)
     ###################################
     # DATA STRUCTURE OF WEIGHT MATRIX #
     ###################################
@@ -85,11 +87,15 @@ SIAB.pytorch_swat starts, numerical atomic orbitals are optimized.
 	###################################
     #   PRINT INFO (NOT LOOKS GOOD)   #
 	###################################
+    print("-"*80, flush=True)
+    print("INFORMATION CHECK - Please check every detail of the information below:", flush=True)
+    print("-"*80, flush=True)
     print("info_kst:", info_kst, sep="\n", end="\n"*2, flush=True)
     print("info_stru:", pprint.pformat(info_stru), sep="\n", end="\n"*2, flush=True)
     print("info_element:", pprint.pformat(info_element, width=40), sep="\n", end="\n"*2, flush=True)
     print("info_opt:", pprint.pformat(info_opt, width=40), sep="\n", end="\n"*2, flush=True)
     print("info_max:", pprint.pformat(info_max), sep="\n", end="\n"*2, flush=True)
+    print("-"*80, flush=True)
     ###################################
     # PHYSICAL MEANING OF Q, S, V     #
     ###################################

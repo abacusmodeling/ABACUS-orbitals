@@ -74,8 +74,17 @@ def zeta_notation_toorbitalconfig(zeta_notation: str,
                         result += str(multiplier[_match.group(2)[0]]) + symbols[i]
                         basis[i] = multiplier[_match.group(2)[0]]
         else:
-            result += "1" + symbols[len(minimal_basis)]
-            basis.append(1)
+            # case 1: no 0 in minimal_basis, means each l has at least one electron
+            if 0 not in minimal_basis:
+                result += "1" + symbols[len(minimal_basis)]
+                basis.append(1)
+            # case 2: 0 in minimal_basis, means some l has no electron
+            # in this case, polarization is added to all l with 0 electron
+            else:
+                for i in range(len(minimal_basis)):
+                    if basis[i] == 0:
+                        result += "1" + symbols[i]
+                        basis[i] = 1
     if as_list:
         return basis
     else:

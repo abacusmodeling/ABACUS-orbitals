@@ -246,7 +246,6 @@ If not happy with this, please change the code in SIAB/io/pseudopotential/tools/
                 continue
             result.setdefault(words[0][-1], []).append(words[0])
             
-    print(result)
     # then convert to list
     sequence = ["S", "P", "D", "F", "G", "H", "I", "K", "L", "M", "N"]
     result_list = []

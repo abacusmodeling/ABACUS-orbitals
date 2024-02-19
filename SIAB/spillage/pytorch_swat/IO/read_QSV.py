@@ -18,7 +18,7 @@ def read_file_head(info,file_list):
     info_true.Ne = dict()
 
     for ist_true,file_name in enumerate(file_list):
-        print(file_name)
+        print("Read file:", file_name)
         with open(file_name,"r") as file:
 
             util.ignore_line(file,4)
@@ -32,8 +32,8 @@ def read_file_head(info,file_list):
             util.ignore_line(file,6)
             Nl_ist = int(file.readline().split()[0])+1
             for it,Nl_C in info.Nl.items():
-                print(it,Nl_ist,Nl_C)
-                assert Nl_ist>=Nl_C
+                print(f"atom symbol: {it}\nnumber of l for present structure: {Nl_ist}\nnumber of l for present coefficients: {Nl_C}")
+                assert Nl_ist >= Nl_C
                 info_true.Nl[it] = Nl_ist
             info_true.Nk[ist_true] = int(file.readline().split()[0])
             info_true.Nb[ist_true] = int(file.readline().split()[0])
