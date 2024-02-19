@@ -47,8 +47,7 @@ SIAB.pytorch_swat starts, numerical atomic orbitals are optimized.
         for key, value in params["info"].items():
             info_true.__dict__[key] = value
         info_true.Nl = {it:len(Nu) for it, Nu in info_true.Nu.items()}
-        print("use on-the-fly information pass from front-end to back-end. The information is listed below:")
-        print(info_true)
+        print("WORKFLOW: use on-the-fly information pass from front-end to back-end.", flush=True)
     ###################################
     # DATA STRUCTURE OF WEIGHT MATRIX #
     ###################################

@@ -265,7 +265,6 @@ def siab_settings(user_settings: dict, minimal_basis: list):
         result["orbitals"][iorb]["nbands_ref"] = orbital["nbands_ref"]
         result["orbitals"][iorb]["folder"] = shapes.index(orbital["shape"])
         
-    print(result)
     return result
 
 def environment_settings(user_settings: dict):
