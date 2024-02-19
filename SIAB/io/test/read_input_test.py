@@ -137,5 +137,18 @@ class TestReadInput(unittest.TestCase):
         }
         result = ri.compatibility_convert(clean_oldversion_input)
 
+    def test_abacus_settings(self):
+        user_settings = ri.parse("SIAB/example_Si/SIAB_INPUT")
+        result = ri.abacus_settings(user_settings, minimal_basis=[["2S"], ["2P"]])
+        self.assertEqual(len(result), 2)
+        result = ri.abacus_settings(user_settings, minimal_basis=[["2S"], [], ["3D"]])
+        self.assertEqual(len(result), 2)
+        for i in result:
+            self.assertEqual(i["lmaxmax"], 2)
+        result = ri.abacus_settings(user_settings, minimal_basis=[["2S"], ["2P"], ["3D"]])
+        self.assertEqual(len(result), 2)
+        for i in result:
+            self.assertEqual(i["lmaxmax"], 3)
+
 if __name__ == "__main__":
     unittest.main()
