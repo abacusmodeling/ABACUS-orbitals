@@ -393,7 +393,8 @@ def convert(calculation_setting: dict,
                               orbital_config=orbital["nzeta"],
                               bessel_nao_rcut=rcut,
                               lmax=orbital["lmax"],
-                              ecutwfc=calculation_setting["ecutwfc"])
+                              ecutwfc=calculation_setting["ecutwfc"],
+                              opt_maxsteps=siab_settings["max_steps"])
                 for orbital in siab_settings["orbitals"]]
         for iorb in range(len(siab_settings["orbitals"])):
             """there is correlation between different sections, not happy with this"""
