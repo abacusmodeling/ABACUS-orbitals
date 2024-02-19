@@ -122,6 +122,7 @@ def INPUT(calculation_setting: dict,
         "lmaxmax": "4", "bessel_nao_rcut": "10", # orbital generation control
         "smearing_method": "gauss", "smearing_sigma": "0.015", # for improving convergence
         "mixing_type": "broyden", "mixing_beta": "0.8", "mixing_ndim": "8", "mixing_gg0": "0", # mixing control
+        "gamma_only": "1", # force gamma point only calculation
         "printe": "1" # print energy
     }
     if "nspin" in calculation_setting.keys():
