@@ -120,7 +120,7 @@ def ov_parameters(element: str,
 
     keys = ["Nt_all", "Nu", "Rcut", "dr", "Ecut", "lr", "cal_T", "cal_smooth", "max_steps"]
     return dict(zip(keys, [[element], 
-                           {element: orbital_config+[0]*(lmax+1-len(orbital_config))}, 
+                           {element: orbital_config+[0]*(lmax+1-len(orbital_config))}, # this is very ugly
                            {element: bessel_nao_rcut}, 
                            {element: dr}, 
                            {element: ecutwfc},
