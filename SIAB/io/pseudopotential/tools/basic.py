@@ -16,7 +16,8 @@ def decompose_data(data):
     else:
         raise ValueError("data is not numeric")
 
-def zeta_notation_toorbitalconfig(zeta_notation: str, minimal_basis: list = None,
+def zeta_notation_toorbitalconfig(zeta_notation: str, 
+                                  minimal_basis: list = None,
                                   as_list: bool = False):
     """convert zeta notation to orbital configuration
     
@@ -26,7 +27,17 @@ def zeta_notation_toorbitalconfig(zeta_notation: str, minimal_basis: list = None
     as_list: bool, if True, return the orbital configuration as a list, otherwise
     return a string. 
     For example if as_list is True, then "DZP" with minimal_basis [1, 1] will return
-    [2, 2, 1]
+    [2, 2, 1].
+
+    NOTE:
+    There is a special case, in minimal_basis there might one (even more) list(s) empty,
+    for example the PSlibrary Norm-Conserving 0.3.1 Mn pseudopotential, the minimal_basis
+    is [["4S"], [], ["3D"]], 3p electrons are pseudized. Then if zeta_notation is "TZ5P", 
+    the result will be [3, 0, 3, 5].
+    However, p orbital is directly important when forming covalent bond, say for MnO4-, 
+    it is sp3 hybridization. But f may also be the one not to be neglected.
+    Therefore, multiplicity of P in this case will be added to all l with 0 electron. Say
+    if zeta_notation is "TZ5P", the result will be [3, 5, 3], string as "3s3d5p".
     """
     is_numeric = True
     for layer in minimal_basis:
@@ -48,13 +59,32 @@ def zeta_notation_toorbitalconfig(zeta_notation: str, minimal_basis: list = None
     for i in range(len(minimal_basis)):
         if basis[i] != 0:
             result += str(basis[i]) + symbols[i]
+    # Polarization
     if _match.group(2) is not None:
         if len(_match.group(2)) > 1:
-            result += str(multiplier[_match.group(2)[0]]) + symbols[len(minimal_basis)]
-            basis.append(multiplier[_match.group(2)[0]])
+            # case 1: no 0 in minimal_basis, means each l has at least one electron
+            if 0 not in minimal_basis:
+                result += str(multiplier[_match.group(2)[0]]) + symbols[len(minimal_basis)]
+                basis.append(multiplier[_match.group(2)[0]])
+            # case 2: 0 in minimal_basis, means some l has no electron
+            # in this case, polarization is added to all l with 0 electron
+            else:
+                for i in range(len(minimal_basis)):
+                    if basis[i] == 0:
+                        result += str(multiplier[_match.group(2)[0]]) + symbols[i]
+                        basis[i] = multiplier[_match.group(2)[0]]
         else:
-            result += "1" + symbols[len(minimal_basis)]
-            basis.append(1)
+            # case 1: no 0 in minimal_basis, means each l has at least one electron
+            if 0 not in minimal_basis:
+                result += "1" + symbols[len(minimal_basis)]
+                basis.append(1)
+            # case 2: 0 in minimal_basis, means some l has no electron
+            # in this case, polarization is added to all l with 0 electron
+            else:
+                for i in range(len(minimal_basis)):
+                    if basis[i] == 0:
+                        result += "1" + symbols[i]
+                        basis[i] = 1
     if as_list:
         return basis
     else:

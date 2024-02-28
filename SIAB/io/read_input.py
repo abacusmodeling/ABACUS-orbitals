@@ -94,6 +94,8 @@ def wash(inp: dict):
     fpseudo = inp["Pseudo_name"][0].strip().replace("\\", "").replace("/", "")
     inp["Pseudo_name"] = fpseudo
 
+    inp["max_steps"] = int(inp["max_steps"][0])
+    
     return inp
 
 def keywords_translate(keyword: str):
@@ -209,7 +211,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list):
     for irs in range(len(user_settings["reference_systems"])):
         result[irs].update({
             "nbands": user_settings["reference_systems"][irs]["nbands"],
-            "lmaxmax": len(minimal_basis) if with_polarization[irs] else len(minimal_basis) - 1,
+            "lmaxmax": len(minimal_basis) if (with_polarization[irs] and [] not in minimal_basis) else len(minimal_basis) - 1,
             "nspin": user_settings["reference_systems"][irs]["nspin"]
         })
     return result
@@ -262,7 +264,7 @@ def siab_settings(user_settings: dict, minimal_basis: list):
                 as_list=True)
         result["orbitals"][iorb]["nbands_ref"] = orbital["nbands_ref"]
         result["orbitals"][iorb]["folder"] = shapes.index(orbital["shape"])
- 
+        
     return result
 
 def environment_settings(user_settings: dict):

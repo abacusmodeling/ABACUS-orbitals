@@ -37,6 +37,18 @@ class TestBasic(unittest.TestCase):
         self.assertEqual(result, "3s6p5d")
         result = basic.zeta_notation_toorbitalconfig("TZ5P", minimal_basis=[["1S"], ["1P", "2P"]], as_list=True)
         self.assertListEqual(result, [3, 6, 5])
+        # test the Mn case: 3d5 4s2, without p orbital
+        result = basic.zeta_notation_toorbitalconfig("DZP", minimal_basis=[["4S"], [], ["3D"]])
+        self.assertEqual(result, "2s2d1p")
+        result = basic.zeta_notation_toorbitalconfig("DZP", minimal_basis=[["4S"], [], ["3D"]], as_list=True)
+        #                             s  p  d
+        self.assertListEqual(result, [2, 1, 2])
+        result = basic.zeta_notation_toorbitalconfig("TZ5P", minimal_basis=[["4S"], [], ["3D"]], as_list=True)
+        #                             s  p  d
+        self.assertListEqual(result, [3, 5, 3])
+        result = basic.zeta_notation_toorbitalconfig("TZ5P", minimal_basis=[["4S"], [], ["3D"]])
+        self.assertEqual(result, "3s3d5p")
+
 
 if __name__ == "__main__":
     unittest.main()

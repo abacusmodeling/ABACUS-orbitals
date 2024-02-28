@@ -8,7 +8,7 @@ cd abacus_orbital_generation
 ```
 Option1: If you prefer to use conda, then run the following commands to create a new conda environment and activate it.
 ```bash
-conda create -n abacus_orbitals python=3.10
+conda create -n abacus_orbitals
 conda activate abacus_orbitals
 ```
 Option2: If you prefer to use virtual environment, then run the following commands to create a new virtual environment and activate it.
@@ -17,9 +17,11 @@ python3 -m venv abacus_orbitals
 source abacus_orbitals/bin/activate
 ```
 ### Installations
-Once the virtual environment is activated, run the following commands to install ABACUS-orbitals.
+*PERFORMANCE NOTE: WE RECOMMEND USE CONDA TO INSTALL `pytorch` PACKAGE BY `conda install pytorch` FIRST AND INSTALL ALL OTHERS BY FOLLOWING INSTRUCTION BELOW*
+*BE AWARE IF Intel-mkl IS SUCCESSFULLY LINKED TO `pytorch`*  
+Once the virtual environment is activated (and mkl is ready), run the following commands to install ABACUS-orbitals.
 ```bash
-pip install . -e
+pip install -e .
 ```
 ## Tutorial (version < 0.2.0)
 Find the tutorial in [Gitbook](https://mcresearch.github.io/abacus-user-guide/abacus-nac3.html) written by [Mohan Chen's Group](https://mcresearch.github.io/).

@@ -7,6 +7,7 @@ class TestToBc(unittest.TestCase):
         result = old_version.ov_parameters(element="H", 
                                            orbital_config=[2, 2, 1], 
                                            bessel_nao_rcut=2.0, 
+                                           lmax=2,
                                            ecutwfc=2.0, 
                                            dr=0.01, 
                                            opt_maxsteps=1000, 
@@ -163,22 +164,25 @@ class TestToBc(unittest.TestCase):
         }
         siab_settings = {
             'optimizer': 'pytorch.SWAT', 
-            'max_steps': [200], 
+            'max_steps': 200, 
             'spillage_coeff': [0.5, 0.5], 
             'orbitals': [
                 {'nzeta': [1, 1], 'nzeta_from': None, 
-                 'nbands_ref': 4, 'folder': [
-                     "Si-dimer-1.4", "Si-dimer-1.6"
-                 ]}, 
+                 'nbands_ref': 4, 
+                 'folder': ["Si-dimer-1.4", "Si-dimer-1.6"],
+                 'lmax': 2
+                 }, 
                 {'nzeta': [2, 2, 1], 'nzeta_from': [1, 1], 
-                 'nbands_ref': "auto", 'folder': [
-                     "Si-trimer-1.4", "Si-trimer-1.6"
-                 ]}
+                 'nbands_ref': "auto", 
+                 'folder': ["Si-trimer-1.4", "Si-trimer-1.6"],
+                 'lmax': 2
+                 }
             ]
         }
         for result in old_version.convert(calculation_setting=calculation_setting,
                                           siab_settings=siab_settings):
-            print(result)
+            pass
+            #print(result)
         """what printed are
 {'file_list': 
     {'origin': [4, 4], 

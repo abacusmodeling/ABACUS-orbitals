@@ -19,7 +19,7 @@ class TestReadInput(unittest.TestCase):
                              'bessel_nao_rcut': [6, 7], 
                              'smearing_sigma': 0.01, 
                              'optimizer': 'pytorch.SWAT', 
-                             'max_steps': [200], 
+                             'max_steps': 200, 
                              'spillage_coeff': [0.5, 0.5], 
                              'reference_systems': [
                                  {'shape': 'dimer', 'nbands': 8, 'nspin': 1, 'bond_lengths': [1.8, 2.0, 2.3, 2.8, 3.8]}, 
@@ -54,7 +54,7 @@ class TestReadInput(unittest.TestCase):
               ])
         self.assertDictEqual(result[3], {
             'optimizer': 'pytorch.SWAT', 
-            'max_steps': [200], 
+            'max_steps': 200, 
             'spillage_coeff': [0.5, 0.5], 
             'orbitals': [
                 {'nzeta': [1, 1], 
@@ -93,7 +93,7 @@ class TestReadInput(unittest.TestCase):
             'sigma': 0.01, 
             'STRU1': ['dimer', 8, 2, 1, 1.8, 2.0, 2.3, 2.8, 3.8], 
             'STRU2': ['trimer', 10, 2, 1, 1.9, 2.1, 2.6], 
-            'max_steps': [200], 
+            'max_steps': 200, 
             'Level1': ['STRU1', 4, 'none', '1s1p'], 
             'Level2': ['STRU1', 4, 'fix', '2s2p1d'], 
             'Level3': ['STRU2', 6, 'fix', '3s3p2d'], 
@@ -120,7 +120,7 @@ class TestReadInput(unittest.TestCase):
             'sigma': 0.01, 
             'STRU1': ['dimer', 8, 2, 1, "auto"], 
             'STRU2': ['trimer', 10, 2, 1, 1.9, 2.1, 2.6], 
-            'max_steps': [200], 
+            'max_steps': 200, 
             'Level1': ['STRU1', 4, 'none', '1s1p'], 
             'Level2': ['STRU1', 4, 'fix', '2s2p1d'], 
             'Level3': ['STRU2', 6, 'fix', '3s3p2d'], 
@@ -136,6 +136,19 @@ class TestReadInput(unittest.TestCase):
             'spillage_coeff': [0.5, 0.5]
         }
         result = ri.compatibility_convert(clean_oldversion_input)
+
+    def test_abacus_settings(self):
+        user_settings = ri.parse("SIAB/example_Si/SIAB_INPUT")
+        result = ri.abacus_settings(user_settings, minimal_basis=[["2S"], ["2P"]])
+        self.assertEqual(len(result), 2)
+        result = ri.abacus_settings(user_settings, minimal_basis=[["2S"], [], ["3D"]])
+        self.assertEqual(len(result), 2)
+        for i in result:
+            self.assertEqual(i["lmaxmax"], 2)
+        result = ri.abacus_settings(user_settings, minimal_basis=[["2S"], ["2P"], ["3D"]])
+        self.assertEqual(len(result), 2)
+        for i in result:
+            self.assertEqual(i["lmaxmax"], 3)
 
 if __name__ == "__main__":
     unittest.main()
