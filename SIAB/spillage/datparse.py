@@ -2,37 +2,10 @@ import re
 import numpy as np
 import itertools
 
-def _parse_overlap_q():
-    pass
+from jlzeros import JLZEROS
+from scipy.special import spherical_jn
+from indexmap import _index_map
 
-
-def _parse_overlap_sq():
-    pass
-
-def _index_map(ntype, natom, lmax):
-    mu = 0
-    index_map = {}
-    for itype in range(ntype):
-        for iatom in range(natom[itype]):
-            for l in range(lmax+1):
-                '''
-                In ABACUS, magnetic quantum numbers are often looped from 0 to 2l
-                (instead of -l to l), and, in terms of the m of real spherical
-                harmonics (as given by module_base/ylm.cpp, in a sign convention
-                consistent with Homeier1996), follow:
-
-                              0, 1, -1, 2, -2, 3, -3, ..., l, -l
-                
-                Here we "demangle" this index so that the returned index_map can be
-                indexed by ordinary magnetic quantum number m \in [-l, l] like
-
-                            mu_index = index_map[(itype, iatom, l, m)]
-
-                '''
-                for mm in range(0, 2*l+1):
-                    m = -mm // 2 if mm % 2 == 0 else (mm + 1) // 2
-                    index_map[(itype, iatom, l, m)] = mu
-                    mu += 1
 
 def read(job_dir):
     '''
@@ -94,52 +67,106 @@ def _read_orb_mat(fpath):
     print('kpts = ', kpt)
     print('wk = ', wk)
 
+    # NOTE In PW calculations, lmax is always the same for all element types,
+    # which is the lmax read above. (Will it be different in the future?)
+
+    ####################################################################
+    #       bijective index map (itype, iatom, l, zeta, m) <-> mu
+    ####################################################################
+    comp2mu, mu2comp = _index_map(ntype, natom, [lmax])
+    #print(comp2mu)
+    #print(mu2comp)
+
+    # number of distinct (itype, iatom, l, m) indices
+    # "talm" stands for "type-atom-l-m"
+    ntalm = len(comp2mu.items())
+    print('ntalm = ', ntalm)
+
+    ####################################################################
+    #                           MO-jY overlap
+    ####################################################################
     mo_jy_start= data.index('<OVERLAP_Q>') + 1
     mo_jy_end = data.index('</OVERLAP_Q>')
-    mo_jy = np.array(data[mo_jy_start:mo_jy_end], dtype=float).view(dtype=complex)
-    print('mo_jy: ', mo_jy[0:5])
+    mo_jy = np.array(data[mo_jy_start:mo_jy_end], dtype=float).view(dtype=complex) \
+            .reshape((nk, nbands, ntalm, nbes))
+    print('mo_jy.shape = ', mo_jy.shape)
 
-    print('angle: ', np.angle(mo_jy[0:10]))
-    print('ratio: ', np.real(mo_jy[0:10]) / np.imag(mo_jy[:10]))
+    ####################################################################
+    #                           Phase Adjustment
+    ####################################################################
+    # NOTE In theory this step should not exist at all!
+    # but currently mo_jy computed by ABACUS does carry some non-zero phase
+    # of unknown origin.
+
+    for ik in range(nk):
+        for ib in range(nbands):
+            idx = np.argmax(np.abs(mo_jy[ik, ib]))
+            mo_jy[ik, ib] *= np.exp(-1j * np.angle(mo_jy[ik, ib].reshape(-1)[idx]))
+            print('ib = {}   max mo_jy imag = {} ' \
+                    .format(ib, np.linalg.norm(np.imag(mo_jy[ik, ib]), np.inf)))
 
 
-    # reshape TBD
+    #for mu in range(ntalm):
+    #    tmp = mo_jy[:, mu, :].reshape(-1)
+    #    idx = np.argmax(np.abs(tmp))
+    #    mo_jy[:, mu, :] *= np.exp(-1j * np.angle(tmp[idx]))
+    #    print('mu = {}   max mo_jy imag = {} ' \
+    #            .format(mu, np.linalg.norm(np.imag(mo_jy[:, mu, :]), np.inf)))
+    
+    #for ib in range(nbands):
+    #    for mu in range(ntalm):
+    #        idx = np.argmax(np.abs(mo_jy[ib, mu]))
+    #        mo_jy[ib, mu] *= np.exp(-1j * np.angle(mo_jy[ib, mu, idx]))
+    #        print('ib = {}   mu = {}   max mo_jy imag = {}   norm = {}' \
+    #            .format(ib, mu, np.linalg.norm(np.imag(mo_jy[ib, mu]), np.inf), \
+    #            np.linalg.norm(mo_jy[ib,mu]) ))
 
 
-
+    ####################################################################
+    #                           jY-jY overlap
+    ####################################################################
     jy_jy_start= data.index('<OVERLAP_Sq>') + 1
     jy_jy_end = data.index('</OVERLAP_Sq>')
     jy_jy = np.array(data[jy_jy_start:jy_jy_end], dtype=float).view(dtype=complex)
 
     # overlap between jY should be real
     assert np.linalg.norm(np.imag(jy_jy), np.inf) < 1e-14
-    jy_jy = np.real(jy_jy)
 
-    # build index map (itype, iatom, l, m) -> mu
-    index_map = _index_map(ntype, natom, lmax)
+    jy_jy = np.real(jy_jy).reshape((nk, ntalm, ntalm, nbes, nbes))
+    print('jy_jy.shape = ', jy_jy.shape)
 
-    # rearrange
-    ovl_jy = {}
-    for itype_pair in itertools.product(range(ntype), repeat=2):
-        ovl_jy[itype_pair] = jy_jy[i[0]*nbes:(i[0]+1)*nbes, i[1]*nbes:(i[1]+1)*nbes]
+    mu = 0
+    #print(jy_jy[mu, mu, :, :])
 
+    _, _, l, _, _ = mu2comp[mu]
 
+    rcut = 6.0
+    print('l = ', l )
+    print('abacus = ', np.diag(jy_jy[1, mu, mu, :, :]))
+    print('abacus (factor fixed) = ', np.diag(jy_jy[1, mu, mu, :, :]) * (np.pi/10)**2)
+    print('exact = ', 0.5 * rcut**3 * spherical_jn(l+1, JLZEROS[l][:nbes])**2 )
+    print('exact (deriv) = ', 0.5 * rcut * (JLZEROS[l][:nbes] * spherical_jn(l+1, JLZEROS[l][:nbes]))**2 )
 
-
+    ####################################################################
+    #                           MO-MO overlap
+    ####################################################################
+    # should be all 1
     mo_mo_start= data.index('<OVERLAP_V>') + 1
     mo_mo_end = data.index('</OVERLAP_V>')
     mo_mo = np.array(data[mo_mo_start:mo_mo_end], dtype=float)
-    assert len(mo_mo) == nbands
+    assert len(mo_mo) == nbands * nk
 
+    mo_mo = mo_mo.reshape((nk, nbands))
     print('mo_mo: ', mo_mo)
 
+    return {'ntype': ntype, 'natom': natom, 'ecutwfc': ecutwfc, \
+            'ecutjlq': ecutjlq, 'rcut': rcut, 'lmax': lmax, 'nk': nk, \
+            'nbands': nbands, 'nbes': nbes, 'kpt': kpt, 'wk': wk, \
+            'jy_jy': jy_jy, 'mo_jy': mo_jy, 'mo_mo': mo_mo, \
+            'comp2mu': comp2mu, 'mu2comp': mu2comp}
 
 
-
-
-
-
-
+    #============FIXME===================
 
 
 ############################################################
@@ -150,9 +177,10 @@ import unittest
 
 class _TestDataRead(unittest.TestCase):
 
-    def test_read(self):
-        fpath = '/home/zuxin/abacus-community/abacus_orbital_generation/tmp/Si-dimer-1.22/orb_matrix_rcut6deriv0.dat'
+    def test_read_orb_mat(self):
+        fpath = '/home/zuxin/abacus-community/abacus_orbital_generation/tmp/Si-dimer-2.0/orb_matrix_rcut6deriv0.dat'
         _read_orb_mat(fpath)
+
 
 
 if __name__ == '__main__':
