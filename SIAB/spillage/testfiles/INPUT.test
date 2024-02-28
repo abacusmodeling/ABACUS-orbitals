@@ -1,0 +1,13 @@
+INPUT_PARAMETERS
+
+calculation    scf# job type
+  
+scf_nmax       100      # number of scf steps
+
+# some comments
+
+orbital_dir    ./testfiles
+
+    # more comments
+
+kspacing 0.1 0.1 0.1
