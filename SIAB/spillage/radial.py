@@ -4,7 +4,7 @@ from scipy.special import spherical_jn
 from jlzeros import JLZEROS
 
 from scipy.interpolate import CubicSpline
-import matplotlib.pyplot as plt
+from scipy.linalg import rq
 
 def _inner_prod(chi1, chi2, r):
     '''
@@ -175,6 +175,9 @@ def jl_reduce(l, n, rcut):
     work on the first derivative only.
 
     '''
+    if n == 1:
+        return np.zeros((1,0))
+
     norm_fac = np.array([1.0 / jl_trunc_norm(l, q, rcut) for q in range(n)])
 
     # first derivative of the normalized truncated spherical Bessel function at rcut
@@ -183,10 +186,17 @@ def jl_reduce(l, n, rcut):
     # null space of D
     C = np.linalg.svd(D, full_matrices=True)[2].T[:,1:]
 
-    # diagonalize the kinetic matrix in this subspace ("canonicalize")
-    _, vec = np.linalg.eigh(C.T @ np.diag((JLZEROS[l][:n]/rcut)**2) @ C)
+    # Instead of a "canonicalization" in terms of the kinetic energy,
+    # we choose to maintain the consistency of results w.r.t. different
+    # numbers of spherical Bessel functions, i.e., the result from N
+    # spherical Bessel functions (which is an N-by-(N-1) matrix) should
+    # be identical to the upper-left N-by-(N-1) block of the result from
+    # any M (M>N) spherical Bessel functions.
+    T = norm_fac.reshape(-1,1) * rq(C)[0] # same as np.diag(norm_fac) @ rq(C)[0]
 
-    return np.diag(norm_fac) @ C @ vec
+    # make sure the largest-magnitude element in each column is positive
+    idx = np.argmax(np.abs(T), axis=0)
+    return T * np.sign(T[idx, range(n-1)])
 
 
 def coeff_recover(coeff, rcut):
@@ -216,7 +226,9 @@ def coeff_recover(coeff, rcut):
     # temporarily use a column-wise coefficient layout within each l
     coeff_basis = [ np.array(coeff_l).T for coeff_l in coeff ]
 
+    # note that (array([]) @ array([])).tolist() gives 0, but we want []
     return [ (jl_reduce(l, coeff_l.shape[0] + 1, rcut) @ coeff_l).T.tolist() \
+            if coeff_l.size > 0 else [] \
             for l, coeff_l in enumerate(coeff_basis)]
 
 
@@ -326,6 +338,7 @@ def build_reduced(coeff, rcut, r, orthonormal=False, normalize=False):
 #                       Test
 ############################################################
 import unittest
+import matplotlib.pyplot as plt
 
 class _TestRadial(unittest.TestCase):
 
@@ -426,6 +439,13 @@ class _TestRadial(unittest.TestCase):
                 raw[1, q] = jl_trunc(l, q, rcut, deriv=2)
             self.assertLess(np.linalg.norm(raw @ jl_reduce(l, nq, rcut), np.inf), 1e-12)
 
+        # checks the consistency of jl_reduce w.r.t. different numbers of basis functions
+        for l in range(lmax+1):
+            T = jl_reduce(l, nq, rcut)
+            for n in range(2, nq):
+                T_ = jl_reduce(l, n, rcut)
+                self.assertLess(np.linalg.norm(T[:n, :n-1] - T_, np.inf), 1e-12)
+
 
     def test_coeff_recover(self):
         nzeta = [1, 2, 3, 4]
@@ -485,6 +505,25 @@ class _TestRadial(unittest.TestCase):
                     if chi_raw[l][zeta][idx] * chi_reduced[l][zeta][idx] < 0:
                         chi_reduced[l][zeta] *= -1
                     self.assertLess(np.linalg.norm(chi_raw[l][zeta] - chi_reduced[l][zeta], np.inf), 1e-12)
+
+
+    # change the function name to test_xxx to activate
+    def est_plot_basis(self):
+        lmax = 10
+        nq = 7
+
+        rcut = 7.0
+        dr = 0.01
+        nr = int(rcut/dr) + 1
+        r = np.linspace(0, rcut, nr)
+
+        coeff_reduced = [np.eye(nq).tolist()] * (lmax+1)
+        chi_reduced = build_reduced(coeff_reduced, rcut, r, False, False)
+
+        l = 3
+        for chi in chi_reduced[l]:
+            plt.plot(r, chi)
+        plt.show()
 
 
 if __name__ == '__main__':
