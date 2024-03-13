@@ -115,6 +115,7 @@ def read_orb_mat(fpath):
     #       bijective index map (itype, iatom, l, zeta, m) <-> mu
     ####################################################################
     comp2mu, mu2comp = _index_map(ntype, natom, lmax)
+    nao = len(comp2mu)
 
     ####################################################################
     #                           MO-jY overlap
@@ -196,13 +197,56 @@ import unittest
 class _TestDatParse(unittest.TestCase):
 
     def test_read_orb_mat(self):
-        fpath = '/home/zuxin/abacus-community/abacus_orbital_generation/tmp/Si-dimer-2.0/orb_matrix_rcut6deriv0.dat'
-        mat0 = read_orb_mat(fpath)
+        fpath = './testfiles/orb_matrix_rcut6deriv0.dat'
+        dat = read_orb_mat(fpath)
 
-        fpath = '/home/zuxin/abacus-community/abacus_orbital_generation/tmp/Si-trimer-1.9/orb_matrix_rcut6deriv1.dat'
-        mat1 = read_orb_mat(fpath)
+        self.assertEqual(dat['ntype'], 1)
+        self.assertEqual(dat['natom'], [3])
+        self.assertEqual(dat['ecutwfc'], 10.0)
+        self.assertEqual(dat['ecutjlq'], 10.0)
+        self.assertEqual(dat['rcut'], 6.0)
+        self.assertEqual(dat['lmax'], [2])
+        self.assertEqual(dat['nbands'], 10)
+        self.assertEqual(dat['nbes'], \
+                int(np.sqrt(dat['ecutjlq']) * dat['rcut'] / np.pi))
+        self.assertEqual(dat['nk'], 1)
+        self.assertTrue(np.all( dat['kpt'] == np.array([[0., 0., 0.]]) ))
+        self.assertTrue(np.all( dat['wk'] == np.array([1.0]) ))
 
-        print(mat0['nk'])
+        nao = dat['natom'][0] * (dat['lmax'][0] + 1)**2
+
+        self.assertEqual(dat['mo_jy'].shape, \
+                (dat['nk'], dat['nbands'], nao, dat['nbes']))
+        self.assertEqual(dat['jy_jy'].shape, \
+                (dat['nk'], nao, nao, dat['nbes'], dat['nbes']))
+        self.assertEqual(dat['mo_mo'].shape, \
+                (dat['nk'], dat['nbands']))
+
+
+        fpath = './testfiles/orb_matrix_rcut7deriv1.dat'
+        dat = read_orb_mat(fpath)
+
+        self.assertEqual(dat['ntype'], 1)
+        self.assertEqual(dat['natom'], [2])
+        self.assertEqual(dat['ecutwfc'], 10.0)
+        self.assertEqual(dat['ecutjlq'], 10.0)
+        self.assertEqual(dat['rcut'], 7.0)
+        self.assertEqual(dat['lmax'], [2])
+        self.assertEqual(dat['nbands'], 8)
+        self.assertEqual(dat['nbes'], \
+                int(np.sqrt(dat['ecutjlq']) * dat['rcut'] / np.pi))
+        self.assertEqual(dat['nk'], 2)
+        self.assertTrue(np.all( dat['kpt'] == np.array([[0., 0., 0.], [0., 0., 0.]]) ))
+        self.assertTrue(np.all( dat['wk'] == np.array([0.5, 0.5]) ))
+
+        nao = dat['natom'][0] * (dat['lmax'][0] + 1)**2
+
+        self.assertEqual(dat['mo_jy'].shape, \
+                (dat['nk'], dat['nbands'], nao, dat['nbes']))
+        self.assertEqual(dat['jy_jy'].shape, \
+                (dat['nk'], nao, nao, dat['nbes'], dat['nbes']))
+        self.assertEqual(dat['mo_mo'].shape, \
+                (dat['nk'], dat['nbands']))
 
 
 if __name__ == '__main__':
