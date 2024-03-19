@@ -38,7 +38,7 @@ def read_orb_mat(fpath):
         rcut : float
             Cutoff radius for spherical Bessel functions.
         lmax : list of int
-            Maximum angular momentum.
+            Maximum angular momentum of each type.
         nbands : int
             Number of bands.
         nbes : int
