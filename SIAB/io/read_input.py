@@ -30,6 +30,7 @@ def json_parse(fname: str = ""):
     return result
 
 def parse(fname: str = "", version: str = "0.1.0"):
+    print("Parse input file:", fname, "orbital generation code version:", version)
     if fname.endswith(".json"):
         return json_parse(fname)
     else:

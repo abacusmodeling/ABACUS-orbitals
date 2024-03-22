@@ -306,7 +306,14 @@ def blscan(general: dict,                  # general settings
     # V(r) = D_e * (1-exp(-a(r-r_e)))^2 + e_0
     # 3. returnbls: get the range of bond lengths corresponding to energies lower than ener_thr
 
-    bls = blscan_guessbls(bl0=db.get_radius(general["element"]) * 2.0,
+    bl0 = db.get_radius(general["element"]) * 2.0
+    if bl0 >= 2.7: # this is quite an empirical threshold
+        print("WARNING: default covalent radius is %4.2f Angstrom, which is larger than 2.7 Angstrom."%bl0)
+        while bl0 > 2.7:
+            bl0 /= 1.1
+            print("SHRINK-> new bond length is %4.2f Angstrom, shrink with factor 1.1"%bl0)
+
+    bls = blscan_guessbls(bl0=bl0,
                           stepsize=stepsize,
                           nstep_bidirection=nstep_bidirection)
     """generate folders"""
@@ -366,7 +373,7 @@ def blscan_fitmorse(bond_lengths: list,
     popt, pcov = curve_fit(f=morse_potential, 
                             xdata=bond_lengths, 
                             ydata=energies,
-                            p0=[-100, 1.0, 2.0, 0.0])
+                            p0=[-100, 1.0, 2.7, -100])
     if pcov is None:
         raise ValueError("fitting failed.")
     elif np.any(np.diag(pcov) < 0):
@@ -380,13 +387,18 @@ def blscan_fitmorse(bond_lengths: list,
     print("%6s: %15.10f %10s (Equilibrium bond length)"%("r_e", popt[2], "Angstrom"))
     print("%6s: %15.10f %10s (Zero point energy)"%("e_0", popt[3], "eV"))
     
+    if popt[2] <= 0:
+        print("bond lengths: ", " ".join([str(bl) for bl in bond_lengths]))
+        print("energies: ", " ".join([str(e) for e in energies]))
+    assert popt[2] > 0 # equilibrium bond length should be positive
+
     return popt[0], popt[1], popt[2], popt[3]
 
 def blscan_returnbls(bl0: float, 
-              ener0: float, 
-              bond_lengths: list, 
-              energies: list, 
-              ener_thr: float = 1.5):
+                     ener0: float, 
+                     bond_lengths: list, 
+                     energies: list, 
+                     ener_thr: float = 1.5):
     """Get the range of bond lengths corresponding to energies lower than ener_thr"""
 
     delta_energies = [e-ener0 for e in energies]
@@ -410,10 +422,28 @@ def blscan_returnbls(bl0: float,
         if delta_energies[i] > ener_thr:
             i_emax_l = i
             break
+
     if i_emax_r == 0:
-        raise ValueError("No bond length found with energy higher than %4.2f eV."%ener_thr)
+        print("""WANRING: No bond length found with energy higher than the best energy threshold %4.2f eV."
+         The highest energy during the search at right side (bond length increase direction) is %4.2f eV."""%(ener_thr, delta_energies[-1]))
+        print("""If not satisfied, please consider:
+1. check the dissociation energy of present element, 
+2. enlarge the search range, 
+3. lower energy threshold.""")
+        print("Set the bond length to the highest energy point...")
+        i_emax_r = len(delta_energies) - 1
+
     if i_emax_l == -1:
-        print("WARNING: No bond length found with energy higher than %4.2f eV."%ener_thr)
+        print("\nSummary of bond lengths and energies:".upper())
+        print("| Bond length (Angstrom) |   Energy (eV)   |")
+        print("|------------------------|-----------------|")
+        for bl, e in zip(bond_lengths, energies):
+            line = "|%24.2f|%17.10f|"%(bl, e)
+            print(line)
+
+        raise ValueError("""WARNING: No bond length found with energy higher than %4.2f eV in bond length
+search in left direction (bond length decrease direction), this is absolutely unacceptable compared with 
+the right direction which may because of low dissociation energy. Exit."""%ener_thr)
 
     indices = [i_emax_l, (i_emax_l+i_emin)//2, i_emin, (i_emax_r+i_emin)//2, i_emax_r]
     print("\nSummary of bond lengths and energies:".upper())

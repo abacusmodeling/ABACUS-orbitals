@@ -279,6 +279,13 @@ Max steps: %s"""%(info_opt.lr, 1e-20, info_opt.max_steps), flush=True)
     print("""...
 ---------------------------------
 Optimization of the orbital ends.
+
+Several files generated:
+Spillage.dat: detailed trajectory of the optimization
+ORBITAL_RESULTS.txt: optimized orbital coefficients
+ORBITAL_*U.dat: numerical atomic orbital before renaming
+ORBITAL_PLOTU.dat: for plot, the first column is the r, latter colomns are the orbitals
+
 TOTAL TIME (PyTorch):     %s"""%(time.time()-time_start), flush=True)
 
 
