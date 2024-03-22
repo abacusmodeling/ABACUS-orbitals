@@ -245,12 +245,12 @@ def is_duplicate(folder: str, abacus_setting: dict):
     if not os.path.isdir(folder):
         return False
     files = os.listdir(folder)
-    print("DUPLICATE CHECK-1 pass: folder %s exists"%folder)
+    print("DUPLICATE CHECK-1 pass: folder %s exists"%folder, flush=True)
     # STAGE2: existence of INPUT files   
     for fcplsry in ["INPUT", "INPUTw"]:
         if fcplsry not in files:
             return False
-    print("DUPLICATE CHECK-2 pass: INPUT and INPUTw exist")
+    print("DUPLICATE CHECK-2 pass: INPUT and INPUTw exist", flush=True)
     # STAGE3: correspondence of INPUT settings
     for key in ["bessel_nao_rcut", "lmaxmax"]:
         if key not in abacus_setting.keys():
@@ -263,10 +263,10 @@ def is_duplicate(folder: str, abacus_setting: dict):
         else:
             value = str(value)
         if original[key] != value:
-            print("KEYWORD \"%s\" has different values. Original: %s, new: %s\nDifference detected, start a new job."%(key, original[key], value))
+            print("KEYWORD \"%s\" has different values. Original: %s, new: %s\nDifference detected, start a new job."%(key, original[key], value), flush=True)
             return False
     rcuts = abacus_setting["bessel_nao_rcut"]
-    print("DUPLICATE CHECK-3 pass: INPUT settings are consistent")
+    print("DUPLICATE CHECK-3 pass: INPUT settings are consistent", flush=True)
     # STAGE4: existence of crucial output files
     if len(rcuts) == 1:
         if "orb_matrix.0.dat" not in files:
@@ -279,7 +279,7 @@ def is_duplicate(folder: str, abacus_setting: dict):
                 return False
             if "orb_matrix_rcut%sderiv1.dat"%rcut not in files:
                 return False
-    print("DUPLICATE CHECK-4 pass: crucial output files exist")
+    print("DUPLICATE CHECK-4 pass: crucial output files exist", flush=True)
     return True
 
 # in the following, defines different tasks
@@ -308,10 +308,10 @@ def blscan(general: dict,                  # general settings
 
     bl0 = db.get_radius(general["element"]) * 2.0
     if bl0 >= 2.7: # this is quite an empirical threshold
-        print("WARNING: default covalent radius is %4.2f Angstrom, which is larger than 2.7 Angstrom."%bl0)
+        print("WARNING: default covalent radius is %4.2f Angstrom, which is larger than 2.7 Angstrom."%bl0, flush=True)
         while bl0 > 2.7:
             bl0 /= 1.1
-            print("SHRINK-> new bond length is %4.2f Angstrom, shrink with factor 1.1"%bl0)
+            print("SHRINK-> new bond length is %4.2f Angstrom, shrink with factor 1.1"%bl0, flush=True)
 
     bls = blscan_guessbls(bl0=bl0,
                           stepsize=stepsize,
@@ -347,7 +347,7 @@ def blscan_guessbls(bl0: float,
     """generate initial guess for bond lengths"""
     blmin = bl0 - stepsize[0]*nstep_bidirection
     blmax = bl0 + stepsize[1]*nstep_bidirection
-    print("Searching bond lengths from %4.2f to %4.2f Angstrom, with stepsize %s."%(blmin, blmax, stepsize))
+    print("Searching bond lengths from %4.2f to %4.2f Angstrom, with stepsize %s."%(blmin, blmax, stepsize), flush=True)
     left = np.linspace(blmin, bl0, nstep_bidirection+1).tolist()
     right = np.linspace(bl0, blmax, nstep_bidirection+1, endpoint=True).tolist()
     bond_lengths = left + right[1:]
@@ -379,17 +379,17 @@ def blscan_fitmorse(bond_lengths: list,
     elif np.any(np.diag(pcov) < 0):
         raise ValueError("fitting failed.")
     elif np.any(np.diag(pcov) > 1e5):
-        print("WARNING: fitting parameters are not accurate.")
+        print("WARNING: fitting parameters are not accurate.", flush=True)
 
-    print("Morse potential fitting results:")
-    print("%6s: %15.10f %10s (Bond dissociation energy)"%("D_e", popt[0], "eV"))
-    print("%6s: %15.10f %10s (Morse potential parameter)"%("a", popt[1], ""))
-    print("%6s: %15.10f %10s (Equilibrium bond length)"%("r_e", popt[2], "Angstrom"))
-    print("%6s: %15.10f %10s (Zero point energy)"%("e_0", popt[3], "eV"))
+    print("Morse potential fitting results:", flush=True)
+    print("%6s: %15.10f %10s (Bond dissociation energy)"%("D_e", popt[0], "eV"), flush=True)
+    print("%6s: %15.10f %10s (Morse potential parameter)"%("a", popt[1], ""), flush=True)
+    print("%6s: %15.10f %10s (Equilibrium bond length)"%("r_e", popt[2], "Angstrom"), flush=True)
+    print("%6s: %15.10f %10s (Zero point energy)"%("e_0", popt[3], "eV"), flush=True)
     
     if popt[2] <= 0:
-        print("bond lengths: ", " ".join([str(bl) for bl in bond_lengths]))
-        print("energies: ", " ".join([str(e) for e in energies]))
+        print("bond lengths: ", " ".join([str(bl) for bl in bond_lengths]), flush=True)
+        print("energies: ", " ".join([str(e) for e in energies]), flush=True)
     assert popt[2] > 0 # equilibrium bond length should be positive
 
     return popt[0], popt[1], popt[2], popt[3]
@@ -425,35 +425,35 @@ def blscan_returnbls(bl0: float,
 
     if i_emax_r == 0:
         print("""WANRING: No bond length found with energy higher than the best energy threshold %4.2f eV."
-         The highest energy during the search at right side (bond length increase direction) is %4.2f eV."""%(ener_thr, delta_energies[-1]))
+         The highest energy during the search at right side (bond length increase direction) is %4.2f eV."""%(ener_thr, delta_energies[-1]), flush=True)
         print("""If not satisfied, please consider:
 1. check the dissociation energy of present element, 
 2. enlarge the search range, 
-3. lower energy threshold.""")
-        print("Set the bond length to the highest energy point...")
+3. lower energy threshold.""", flush=True)
+        print("Set the bond length to the highest energy point...", flush=True)
         i_emax_r = len(delta_energies) - 1
 
     if i_emax_l == -1:
-        print("\nSummary of bond lengths and energies:".upper())
-        print("| Bond length (Angstrom) |   Energy (eV)   |")
-        print("|------------------------|-----------------|")
+        print("\nSummary of bond lengths and energies:".upper(), flush=True)
+        print("| Bond length (Angstrom) |   Energy (eV)   |", flush=True)
+        print("|------------------------|-----------------|", flush=True)
         for bl, e in zip(bond_lengths, energies):
             line = "|%24.2f|%17.10f|"%(bl, e)
-            print(line)
+            print(line, flush=True)
 
         raise ValueError("""WARNING: No bond length found with energy higher than %4.2f eV in bond length
 search in left direction (bond length decrease direction), this is absolutely unacceptable compared with 
 the right direction which may because of low dissociation energy. Exit."""%ener_thr)
 
     indices = [i_emax_l, (i_emax_l+i_emin)//2, i_emin, (i_emax_r+i_emin)//2, i_emax_r]
-    print("\nSummary of bond lengths and energies:".upper())
-    print("| Bond length (Angstrom) |   Energy (eV)   |")
-    print("|------------------------|-----------------|")
+    print("\nSummary of bond lengths and energies:".upper(), flush=True)
+    print("| Bond length (Angstrom) |   Energy (eV)   |", flush=True)
+    print("|------------------------|-----------------|", flush=True)
     for bl, e in zip(bond_lengths, energies):
         line = "|%24.2f|%17.10f|"%(bl, e)
         if bond_lengths.index(bl) in indices:
             line += " <=="
-        print(line)
+        print(line, flush=True)
     return [bond_lengths[i] for i in indices]
 
 # -------------------------------------------#
@@ -484,14 +484,14 @@ def normal(general: dict,
         folders.append(folder)
 
         if is_duplicate(folder, calculation_setting):
-            print("ABACUS calculation on reference structure %s with bond length %s is skipped."%(reference_shape, bond_length))
+            print("ABACUS calculation on reference structure %s with bond length %s is skipped."%(reference_shape, bond_length), flush=True)
             sienv.op("rm", "INPUT-%s KPT-%s STRU-%s INPUTw"%(folder, folder, folder), env="local")
             continue
         # else...
         archive(footer=folder)
         print("""Run ABACUS calculation on reference structure.
 Reference structure: %s
-Bond length: %s"""%(reference_shape, bond_length))
+Bond length: %s"""%(reference_shape, bond_length), flush=True)
         # need a better design here
         _jtg = sienv.submit(folder=folder,
                             module_load_command=env_settings["environment"],

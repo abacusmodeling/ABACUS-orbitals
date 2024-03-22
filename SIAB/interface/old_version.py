@@ -305,6 +305,9 @@ def ov_reference_states(element: str,
         # directly valid
         if orbital["nbands_ref"] == "auto":
         #if True:
+            # actually it is not the correct choice for "auto", instead, a more reasonable
+            # choice is including all occupied bands, and also unoccupied bands as many
+            # as the occupied. In future version, "auto" will be changed to this.
             folder_header = element + "-" + shape
             ishape = reference_shapes.index(shape)
             folders = [folder_header + "-" + str(bond_length) for bond_length in bond_lengths[ishape]]

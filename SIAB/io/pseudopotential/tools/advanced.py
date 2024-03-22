@@ -76,6 +76,9 @@ def valence_electron_configuration(parsed: dict):
     else:
         raise ValueError("Pseudopotential type not recognized")
 
+def z_valence(parsed: dict):
+    return float(parsed["PP_HEADER"]["attrib"]["z_valence"])
+
 def element(parsed: dict):
 
     return parsed["PP_HEADER"]["attrib"]["element"]
