@@ -213,7 +213,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_valence: float):
         # auto set nbands if for reference system the nbands is set to "auto"
         nbands = user_settings["reference_systems"][irs]["nbands"]
         shape = user_settings["reference_systems"][irs]["shape"]
-        nbands = nbands if nbands != "auto" else natom[shape]*z_valence/2
+        nbands = nbands if nbands != "auto" else natom[shape]*z_valence
         # auto set lmaxmax
         lmaxmax = len(minimal_basis) if (with_polarization[irs] and [] not in minimal_basis) else len(minimal_basis) - 1
         # set nspin
