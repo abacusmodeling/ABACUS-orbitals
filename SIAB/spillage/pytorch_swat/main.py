@@ -14,7 +14,8 @@ import SIAB.spillage.pytorch_swat.util as sspsu
 # released/official packages
 import torch
 import torch_optimizer 
-import pprint
+#import pprint
+import SIAB.spillage.pytorch_swat.IO.stdout as sspsistdout
 import numpy as np
 import time
 
@@ -90,10 +91,8 @@ SIAB.pytorch_swat starts, numerical atomic orbitals are optimized.
     print("INFORMATION CHECK - Please check every detail of the information below:", flush=True)
     print("-"*80, flush=True)
     print("info_kst:", info_kst, sep="\n", end="\n"*2, flush=True)
-    print("info_stru:", pprint.pformat(info_stru), sep="\n", end="\n"*2, flush=True)
-    print("info_element:", pprint.pformat(info_element, width=40), sep="\n", end="\n"*2, flush=True)
-    print("info_opt:", pprint.pformat(info_opt, width=40), sep="\n", end="\n"*2, flush=True)
-    print("info_max:", pprint.pformat(info_max), sep="\n", end="\n"*2, flush=True)
+    print(sspsistdout.bundle_print(info_kst=info_kst, info_stru=info_stru, info_element=info_element,
+                                   info_opt=info_opt, info_max=info_max), flush=True)
     print("-"*80, flush=True)
     ###################################
     # PHYSICAL MEANING OF Q, S, V     #

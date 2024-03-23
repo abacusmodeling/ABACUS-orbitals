@@ -1,11 +1,11 @@
 """for evaluate quality of orbital"""
 import numpy as np
 from scipy.interpolate import CubicSpline
-import scipy.integrate as integrate
+from scipy.integrate import simps as simpson # for python 3.6, scipy <= 1.10
 from SIAB.spillage.orbio import read_nao
 
 def rad_norm(r, chi):
-    return np.sqrt( integrate.simpson((r*chi)**2, r) )
+    return np.sqrt( simpson((r*chi)**2, r) )
 
 
 def kinetic(r, l, chi):
@@ -44,7 +44,7 @@ def kinetic(r, l, chi):
 
     # Simpson's rule
 
-    return integrate.simpson(-2 * r * chi * dchi - r**2 * chi * d2chi + l*(l+1) * chi**2, r)
+    return simpson(-2 * r * chi * dchi - r**2 * chi * d2chi + l*(l+1) * chi**2, r)
 
 
 def screen_foreach(r, chi, l, term):
