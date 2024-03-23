@@ -90,7 +90,6 @@ SIAB.pytorch_swat starts, numerical atomic orbitals are optimized.
     print("-"*80, flush=True)
     print("INFORMATION CHECK - Please check every detail of the information below:", flush=True)
     print("-"*80, flush=True)
-    print("info_kst:", info_kst, sep="\n", end="\n"*2, flush=True)
     print(sspsistdout.bundle_print(info_kst=info_kst, info_stru=info_stru, info_element=info_element,
                                    info_opt=info_opt, info_max=info_max), flush=True)
     print("-"*80, flush=True)

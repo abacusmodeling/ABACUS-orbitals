@@ -17,7 +17,7 @@ def kst(info_kst: dict):
     contents += "momentum (lmax) for each atom type: \n"
     contents += "%-5s %-5s %-5s %-5s %-5s\n" % ("Atom", "Rcut", "dr", "ecutwfc", "lmax")
     for key in info_kst["Nt_all"]:
-        contents += "%-5s %-5.2f %-5.2f %-5.2f %-5d\n" % (key, info_kst["Rcut"][key], info_kst["dr"][key], info_kst["ecutwfc"][key], info_kst["Nl"][key])
+        contents += "%-5s %-5.2f %-5.2f %-5.2f %-5d\n" % (key, info_kst["Rcut"][key], info_kst["dr"][key], info_kst["Ecut"][key], info_kst["Nl"][key])
     # key: lr
     contents += "Optimizer Learning Rate: " + str(info_kst["lr"]) + "\n"
     # key: cal_T
@@ -63,6 +63,7 @@ def stru(info_stru: dict):
     # key: Nt_all
     contents =  "PRINT INFO_STRU INFORMATION\n"
     contents += "--------------------------\n"
+
     for i in range(len(info_stru)):
         # loop over all structures
         contents += f"Structure {i}:\n"
@@ -77,6 +78,7 @@ def stru(info_stru: dict):
         contents += "\n"
 
     contents += "PRINT INFO_STRU INFORMATION END.\n\n"
+
     return contents
 
 def element(info_element: dict):
@@ -86,15 +88,17 @@ def element(info_element: dict):
     contents += "--------------------------\n"
     contents += "Element-wise information: \n"
     for element, info in info_element.items():
-        contents += f"Element {element}:\n"
-        contents += "nsphbes: " + str(info["Ne"]) + "\n"
-        contents += "Number of subshells: " + str(info["Nl"]) + "\n"
-        contents += "Orbital configuration: " + ", ".join([str(i)+subshells[i] for i in info["Nu"]]) + "\n"
-        contents += "rcut: " + str(info["Rcut"]) + "\n"
-        contents += "dr: " + str(info["dr"]) + "\n"
-        contents += "atomic index: " + str(info["index"]) + "\n\n"
+        if info is not None:
+            contents += f"Element {element}:\n"
+            contents += "nsphbes: " + str(info["Ne"]) + "\n"
+            contents += "Number of subshells: " + str(info["Nl"]) + "\n"
+            contents += "Orbital configuration: " + ", ".join([str(s)+subshells[i] for i, s in enumerate(info["Nu"])]) + "\n"
+            contents += "rcut: " + str(info["Rcut"]) + "\n"
+            contents += "dr: " + str(info["dr"]) + "\n"
+            contents += "atomic index: " + str(info["index"]) + "\n\n"
 
     contents += "PRINT INFO_ELEMENT INFORMATION END.\n\n"
+
     return contents
 
 def opt(info_opt: dict):
@@ -108,6 +112,7 @@ def opt(info_opt: dict):
     contents += "Max steps: " + str(info_opt["max_steps"]) + "\n"
 
     contents += "PRINT INFO_OPT INFORMATION END.\n\n"
+
     return contents
 
 def the_max(info_max: dict):
@@ -134,7 +139,7 @@ def bundle_print(info_kst: dict,
                  info_opt: dict, 
                  info_max: dict):
 
-    contents = kst(info_kst)
+    contents = kst(info_kst.__dict__)
     contents += stru(info_stru)
     contents += element(info_element)
     contents += opt(info_opt)
