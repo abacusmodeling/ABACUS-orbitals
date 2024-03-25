@@ -354,7 +354,7 @@ def blscan_guessbls(bl0: float,
     return [round(bl, 2) for bl in bond_lengths]
 
 def blscan_fitmorse(bond_lengths: list, 
-                energies: list):
+                    energies: list):
     """fitting morse potential, return D_e, a, r_e, e_0 in the equation below:
 
     V(r) = D_e * (1-exp(-a(r-r_e)))^2 + e_0
@@ -370,10 +370,33 @@ def blscan_fitmorse(bond_lengths: list,
     def morse_potential(r, De, a, re, e0=0.0):
         return De * (1.0 - np.exp(-a*(r-re)))**2.0 + e0
     
+    # precondition the fitting problem, first assert the location of minimum energy point
+    # always be sure there are at least two points on the both
+    # left and right side of the minimum energy point
+    idx_min = energies.index(min(energies))
+    assert idx_min > 1
+    assert idx_min < len(energies) - 2
+    assert len(energies) > 5
+    # set threshold to be 10, this will force the point with the energy no higher than 10 eV
+    cndt_thr = 10
+    ediff = max(energies) - min(energies)
+    conditioned = ediff < cndt_thr # if true, the fitting problem is relatively balanced
+    while not conditioned:
+        # remove the highest energy point
+        idx_remove = energies.index(max(energies))
+        if idx_remove >= idx_min:
+            break # it means all points are evenly distributed around the minimum energy point
+        print("MORSE POTENTIAL FITTING: remove the highest energy point %4.2f eV at bond length %4.2f Angstrom."%(energies[idx_remove], bond_lengths[idx_remove]), flush=True)
+        energies.pop(idx_remove)
+        bond_lengths.pop(idx_remove)
+        # refresh the condition
+        ediff = max(energies) - min(energies)
+        conditioned = ediff < cndt_thr or len(energies) == 5
+
     popt, pcov = curve_fit(f=morse_potential, 
                             xdata=bond_lengths, 
                             ydata=energies,
-                            p0=[-100, 1.0, 2.7, -100])
+                            p0=[2.0, 1.0, 2.7, -100])
     if pcov is None:
         raise ValueError("fitting failed.")
     elif np.any(np.diag(pcov) < 0):
@@ -381,17 +404,18 @@ def blscan_fitmorse(bond_lengths: list,
     elif np.any(np.diag(pcov) > 1e5):
         print("WARNING: fitting parameters are not accurate.", flush=True)
 
+    # MUST SATISFY THE PHYSICAL MEANING
+    assert popt[0] > 0 # D_e, dissociation energy MUST be positive
+    assert popt[1] > 0 # a, Morse potential parameter MUST be positive
+    assert popt[2] > 0 # r_e, equilibrium bond length MUST be positive
+    assert popt[3] < 0 # e_0, zero point energy ALWAYS be negative
+
     print("Morse potential fitting results:", flush=True)
     print("%6s: %15.10f %10s (Bond dissociation energy)"%("D_e", popt[0], "eV"), flush=True)
     print("%6s: %15.10f %10s (Morse potential parameter)"%("a", popt[1], ""), flush=True)
     print("%6s: %15.10f %10s (Equilibrium bond length)"%("r_e", popt[2], "Angstrom"), flush=True)
     print("%6s: %15.10f %10s (Zero point energy)"%("e_0", popt[3], "eV"), flush=True)
     
-    if popt[2] <= 0:
-        print("bond lengths: ", " ".join([str(bl) for bl in bond_lengths]), flush=True)
-        print("energies: ", " ".join([str(e) for e in energies]), flush=True)
-    assert popt[2] > 0 # equilibrium bond length should be positive
-
     return popt[0], popt[1], popt[2], popt[3]
 
 def blscan_returnbls(bl0: float, 
@@ -413,13 +437,13 @@ def blscan_returnbls(bl0: float,
     assert delta_e_l > 0
     assert all(delta_energies) > 0
 
-    i_emax_r, i_emax_l = 0, -1
+    i_emax_r, i_emax_l = 0, -1 # initialize the right index to be the left-most, and vice versa
     for i in range(i_emin, len(delta_energies)):
-        if delta_energies[i] > ener_thr:
+        if delta_energies[i] >= ener_thr:
             i_emax_r = i
             break
-    for i in range(i_emin, 0, -1):
-        if delta_energies[i] > ener_thr:
+    for i in range(i_emin, -1, -1):
+        if delta_energies[i] >= ener_thr:
             i_emax_l = i
             break
 
@@ -435,10 +459,10 @@ def blscan_returnbls(bl0: float,
 
     if i_emax_l == -1:
         print("\nSummary of bond lengths and energies:".upper(), flush=True)
-        print("| Bond length (Angstrom) |   Energy (eV)   |", flush=True)
-        print("|------------------------|-----------------|", flush=True)
-        for bl, e in zip(bond_lengths, energies):
-            line = "|%24.2f|%17.10f|"%(bl, e)
+        print("| Bond length (Angstrom) |   Energy (eV)   | Relative Energy (eV) |", flush=True)
+        print("|------------------------|-----------------|----------------------|", flush=True)
+        for bl, e, de in zip(bond_lengths, energies, delta_energies):
+            line = "|%24.2f|%17.10f|%22.10f|"%(bl, e, de)
             print(line, flush=True)
 
         raise ValueError("""WARNING: No bond length found with energy higher than %4.2f eV in bond length
@@ -447,10 +471,10 @@ the right direction which may because of low dissociation energy. Exit."""%ener_
 
     indices = [i_emax_l, (i_emax_l+i_emin)//2, i_emin, (i_emax_r+i_emin)//2, i_emax_r]
     print("\nSummary of bond lengths and energies:".upper(), flush=True)
-    print("| Bond length (Angstrom) |   Energy (eV)   |", flush=True)
-    print("|------------------------|-----------------|", flush=True)
-    for bl, e in zip(bond_lengths, energies):
-        line = "|%24.2f|%17.10f|"%(bl, e)
+    print("| Bond length (Angstrom) |   Energy (eV)   | Relative Energy (eV) |", flush=True)
+    print("|------------------------|-----------------|----------------------|", flush=True)
+    for bl, e, de in zip(bond_lengths, energies, delta_energies):
+        line = "|%24.2f|%17.10f|%22.10f|"%(bl, e, de)
         if bond_lengths.index(bl) in indices:
             line += " <=="
         print(line, flush=True)
