@@ -39,8 +39,13 @@ class TestReadInput(unittest.TestCase):
 
     def test_unpack_siab_settings(self):
 
+        pseudo = {
+            "element": "Si",
+            "valence_electron_configuration": [["1S"], ["1P"]],
+            "z_valence": 4.0
+        }
         result = ri.parse("SIAB/example_Si/SIAB_INPUT")
-        result = ri.unpack_siab_input(result, "Si", [["1S"], ["1P"]])
+        result = ri.unpack_siab_input(result, pseudo)
         self.assertEqual(len(result), 6)
         self.assertListEqual(result[0], ['dimer', 'trimer'])
         self.assertListEqual(result[1], [[1.8, 2.0, 2.3, 2.8, 3.8], [1.9, 2.1, 2.6]])

@@ -26,10 +26,8 @@ def initialize(version: str = "0.1.0",
         raise FileNotFoundError(
             "Pseudopotential file %s not found"%fpseudo)
     else:
-        pseudo = sipa.towards_siab(fname=fpseudo)
-    unpacked = siri.unpack_siab_input(user_settings, 
-                                      symbol=pseudo["element"], 
-                                      minimal_basis=pseudo["valence_electron_configuration"])
+        pseudopotential = sipa.towards_siab(fname=fpseudo)
+    unpacked = siri.unpack_siab_input(user_settings, pseudopotential)
     return unpacked
 
 # interface to abacus
@@ -77,18 +75,85 @@ def spillage(folders: list,
     """spillage interface
     For being compatible with old version, the one without refactor, there exposes
     a parameter siab_version, which is the version of SIAB, default is "0.1.0".
+
+    Parameters:
+    folders: list of list of str, the folders for each reference shape and bond length,
+    like
+    ```python
+    [
+        ["Si-dimer-1.0", "Si-dimer-1.1"],
+        ["Si-trimer-1.0", "Si-trimer-1.1", "Si-trimer-1.2"]
+    ]
+    ```
+    calculation_settings: list of dict, the contents of INPUT for each reference shape,
+    like
+    ```python
+    [
+        {'pseudo_dir': '/root/abacus-develop/pseudopotentials/SG15_ONCV_v1.0_upf', 
+            'ecutwfc': 100, 
+            'bessel_nao_rcut': [6, 7], 
+            'smearing_sigma': 0.01, 
+            'nbands': 8, 
+            'lmaxmax': 2, 
+            'nspin': 1}, 
+        {'pseudo_dir': '/root/abacus-develop/pseudopotentials/SG15_ONCV_v1.0_upf', 
+            'ecutwfc': 100, 
+            'bessel_nao_rcut': [6, 7], 
+            'smearing_sigma': 0.01, 
+            'nbands': 10, 
+            'lmaxmax': 2, 
+            'nspin': 1}
+    ]
+    ```
+    siab_settings: dict, the settings for SIAB optimization tasks, including informations
+    all about the orbitals, like
+    ```python
+    {
+        'optimizer': 'pytorch.SWAT', 
+        'max_steps': [200], 
+        'spillage_coeff': [0.5, 0.5], 
+        'orbitals': [
+            {'nzeta': [1, 1], 'nzeta_from': None, 'nbands_ref': 4, 'folder': 0}, 
+            {'nzeta': [2, 2, 1], 'nzeta_from': [1, 1], 'nbands_ref': 4, 'folder': 0}, 
+            {'nzeta': [3, 3, 2], 'nzeta_from': [2, 2, 1], 'nbands_ref': 6, 'folder': 1}
+        ]
+    }
+    ```
     """
+    # because it is orbital that is generated one-by-one, it is reasonable to iterate
+    # the orbitals...
+    # NOTE: the following loop move necessary information for orbital generation from 
+    # calculation_settings to siab_settings, so to make decouple between these
+    # two dicts -> but this can be done earlier. The reason why do it here is because
+    # the conversion from newly designed data structure, calculation_settings, and
+    # siab_settings, to the old version of SIAB, is taken place here.
     for orbital in siab_settings["orbitals"]:
+        # MOVE: copy lmax information from calculation_settings to siab_settings
         # for old version SIAB, but lmax can be read from orb_matrix*.dat for better design
+        # in that way, not needed to import lmaxmax information from calculation_settings
         orbital["lmax"] = calculation_settings[orbital["folder"]]["lmaxmax"]
-        # general, only need to convert the index of reference system to the folders collection
+        # the key "folder" has a more reasonable alternative: "abacus_setup"
+
+        # MOVE: let siab_settings know exactly what folders are used for orbital generation
+        # in folders, folders are stored collectively according to reference structure
+        # and the "abacus_setup" is then expanded to the corresponding folder
+        # therefore this setup is to expand the "folder" key to the corresponding folder
+        # list
         orbital["folder"] = folders[orbital["folder"]]
+    
+    # iteratively generate numerical atomic orbitals here
     if siab_version == "0.1.0":
         nlevel=len(siab_settings["orbitals"])
         for orb_gen, _, ilevel in siov.convert(calculation_setting=calculation_settings[0],
                                                siab_settings=siab_settings):
             """the iteration here will be processed first by rcut and second by zeta notation"""
-            SPS_api.run(params=orb_gen, ilevel=ilevel, nlevel=nlevel)
+            forb, quality = SPS_api.run(params=orb_gen, ilevel=ilevel, nlevel=nlevel)
+            # instantly print the quality of the orbital generated
+            print("Report: quality of the orbital %s is:"%forb, flush=True)
+            for l in range(len(quality)):
+                print("l = %d: %s"%(l, " ".join(["%10.8e"%q for q in quality[l] if q is not None])), flush=True)
+
     else:
+        # reserve for new implementation of orbital optimization
         raise NotImplementedError("SIAB version %s is not supported yet"%siab_version)
     return sicite.citation()

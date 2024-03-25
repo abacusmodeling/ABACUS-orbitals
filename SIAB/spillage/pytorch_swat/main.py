@@ -14,7 +14,8 @@ import SIAB.spillage.pytorch_swat.util as sspsu
 # released/official packages
 import torch
 import torch_optimizer 
-import pprint
+#import pprint
+import SIAB.spillage.pytorch_swat.IO.stdout as sspsistdout
 import numpy as np
 import time
 
@@ -89,11 +90,8 @@ SIAB.pytorch_swat starts, numerical atomic orbitals are optimized.
     print("-"*80, flush=True)
     print("INFORMATION CHECK - Please check every detail of the information below:", flush=True)
     print("-"*80, flush=True)
-    print("info_kst:", info_kst, sep="\n", end="\n"*2, flush=True)
-    print("info_stru:", pprint.pformat(info_stru), sep="\n", end="\n"*2, flush=True)
-    print("info_element:", pprint.pformat(info_element, width=40), sep="\n", end="\n"*2, flush=True)
-    print("info_opt:", pprint.pformat(info_opt, width=40), sep="\n", end="\n"*2, flush=True)
-    print("info_max:", pprint.pformat(info_max), sep="\n", end="\n"*2, flush=True)
+    print(sspsistdout.bundle_print(info_kst=info_kst, info_stru=info_stru, info_element=info_element,
+                                   info_opt=info_opt, info_max=info_max), flush=True)
     print("-"*80, flush=True)
     ###################################
     # PHYSICAL MEANING OF Q, S, V     #
@@ -279,6 +277,13 @@ Max steps: %s"""%(info_opt.lr, 1e-20, info_opt.max_steps), flush=True)
     print("""...
 ---------------------------------
 Optimization of the orbital ends.
+
+Several files generated:
+Spillage.dat: detailed trajectory of the optimization
+ORBITAL_RESULTS.txt: optimized orbital coefficients
+ORBITAL_*U.dat: numerical atomic orbital before renaming
+ORBITAL_PLOTU.dat: for plot, the first column is the r, latter colomns are the orbitals
+
 TOTAL TIME (PyTorch):     %s"""%(time.time()-time_start), flush=True)
 
 

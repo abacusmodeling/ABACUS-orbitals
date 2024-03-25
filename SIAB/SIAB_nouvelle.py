@@ -163,4 +163,4 @@ def main(command_line: bool = True):
 
 if __name__ == '__main__':
 
-    main(command_line=False)
+    main(command_line=True)
