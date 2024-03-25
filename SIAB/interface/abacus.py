@@ -245,12 +245,12 @@ def is_duplicate(folder: str, abacus_setting: dict):
     if not os.path.isdir(folder):
         return False
     files = os.listdir(folder)
-    print("DUPLICATE CHECK-1 pass: folder %s exists"%folder)
+    print("DUPLICATE CHECK-1 pass: folder %s exists"%folder, flush=True)
     # STAGE2: existence of INPUT files   
     for fcplsry in ["INPUT", "INPUTw"]:
         if fcplsry not in files:
             return False
-    print("DUPLICATE CHECK-2 pass: INPUT and INPUTw exist")
+    print("DUPLICATE CHECK-2 pass: INPUT and INPUTw exist", flush=True)
     # STAGE3: correspondence of INPUT settings
     for key in ["bessel_nao_rcut", "lmaxmax"]:
         if key not in abacus_setting.keys():
@@ -263,10 +263,10 @@ def is_duplicate(folder: str, abacus_setting: dict):
         else:
             value = str(value)
         if original[key] != value:
-            print("KEYWORD \"%s\" has different values. Original: %s, new: %s\nDifference detected, start a new job."%(key, original[key], value))
+            print("KEYWORD \"%s\" has different values. Original: %s, new: %s\nDifference detected, start a new job."%(key, original[key], value), flush=True)
             return False
     rcuts = abacus_setting["bessel_nao_rcut"]
-    print("DUPLICATE CHECK-3 pass: INPUT settings are consistent")
+    print("DUPLICATE CHECK-3 pass: INPUT settings are consistent", flush=True)
     # STAGE4: existence of crucial output files
     if len(rcuts) == 1:
         if "orb_matrix.0.dat" not in files:
@@ -279,7 +279,7 @@ def is_duplicate(folder: str, abacus_setting: dict):
                 return False
             if "orb_matrix_rcut%sderiv1.dat"%rcut not in files:
                 return False
-    print("DUPLICATE CHECK-4 pass: crucial output files exist")
+    print("DUPLICATE CHECK-4 pass: crucial output files exist", flush=True)
     return True
 
 # in the following, defines different tasks
@@ -306,7 +306,14 @@ def blscan(general: dict,                  # general settings
     # V(r) = D_e * (1-exp(-a(r-r_e)))^2 + e_0
     # 3. returnbls: get the range of bond lengths corresponding to energies lower than ener_thr
 
-    bls = blscan_guessbls(bl0=db.get_radius(general["element"]) * 2.0,
+    bl0 = db.get_radius(general["element"]) * 2.0
+    if bl0 >= 2.7: # this is quite an empirical threshold
+        print("WARNING: default covalent radius is %4.2f Angstrom, which is larger than 2.7 Angstrom."%bl0, flush=True)
+        while bl0 > 2.7:
+            bl0 /= 1.1
+            print("SHRINK-> new bond length is %4.2f Angstrom, shrink with factor 1.1"%bl0, flush=True)
+
+    bls = blscan_guessbls(bl0=bl0,
                           stepsize=stepsize,
                           nstep_bidirection=nstep_bidirection)
     """generate folders"""
@@ -340,14 +347,14 @@ def blscan_guessbls(bl0: float,
     """generate initial guess for bond lengths"""
     blmin = bl0 - stepsize[0]*nstep_bidirection
     blmax = bl0 + stepsize[1]*nstep_bidirection
-    print("Searching bond lengths from %4.2f to %4.2f Angstrom, with stepsize %s."%(blmin, blmax, stepsize))
+    print("Searching bond lengths from %4.2f to %4.2f Angstrom, with stepsize %s."%(blmin, blmax, stepsize), flush=True)
     left = np.linspace(blmin, bl0, nstep_bidirection+1).tolist()
     right = np.linspace(bl0, blmax, nstep_bidirection+1, endpoint=True).tolist()
     bond_lengths = left + right[1:]
     return [round(bl, 2) for bl in bond_lengths]
 
 def blscan_fitmorse(bond_lengths: list, 
-                energies: list):
+                    energies: list):
     """fitting morse potential, return D_e, a, r_e, e_0 in the equation below:
 
     V(r) = D_e * (1-exp(-a(r-r_e)))^2 + e_0
@@ -363,30 +370,59 @@ def blscan_fitmorse(bond_lengths: list,
     def morse_potential(r, De, a, re, e0=0.0):
         return De * (1.0 - np.exp(-a*(r-re)))**2.0 + e0
     
+    # precondition the fitting problem, first assert the location of minimum energy point
+    # always be sure there are at least two points on the both
+    # left and right side of the minimum energy point
+    idx_min = energies.index(min(energies))
+    assert idx_min > 1
+    assert idx_min < len(energies) - 2
+    assert len(energies) > 5
+    # set threshold to be 10, this will force the point with the energy no higher than 10 eV
+    cndt_thr = 10
+    ediff = max(energies) - min(energies)
+    conditioned = ediff < cndt_thr # if true, the fitting problem is relatively balanced
+    while not conditioned:
+        # remove the highest energy point
+        idx_remove = energies.index(max(energies))
+        if idx_remove >= idx_min:
+            break # it means all points are evenly distributed around the minimum energy point
+        print("MORSE POTENTIAL FITTING: remove the highest energy point %4.2f eV at bond length %4.2f Angstrom."%(energies[idx_remove], bond_lengths[idx_remove]), flush=True)
+        energies.pop(idx_remove)
+        bond_lengths.pop(idx_remove)
+        # refresh the condition
+        ediff = max(energies) - min(energies)
+        conditioned = ediff < cndt_thr or len(energies) == 5
+
     popt, pcov = curve_fit(f=morse_potential, 
                             xdata=bond_lengths, 
                             ydata=energies,
-                            p0=[-100, 1.0, 2.0, 0.0])
+                            p0=[2.0, 1.0, 2.7, -100])
     if pcov is None:
         raise ValueError("fitting failed.")
     elif np.any(np.diag(pcov) < 0):
         raise ValueError("fitting failed.")
     elif np.any(np.diag(pcov) > 1e5):
-        print("WARNING: fitting parameters are not accurate.")
+        print("WARNING: fitting parameters are not accurate.", flush=True)
 
-    print("Morse potential fitting results:")
-    print("%6s: %15.10f %10s (Bond dissociation energy)"%("D_e", popt[0], "eV"))
-    print("%6s: %15.10f %10s (Morse potential parameter)"%("a", popt[1], ""))
-    print("%6s: %15.10f %10s (Equilibrium bond length)"%("r_e", popt[2], "Angstrom"))
-    print("%6s: %15.10f %10s (Zero point energy)"%("e_0", popt[3], "eV"))
+    # MUST SATISFY THE PHYSICAL MEANING
+    assert popt[0] > 0 # D_e, dissociation energy MUST be positive
+    assert popt[1] > 0 # a, Morse potential parameter MUST be positive
+    assert popt[2] > 0 # r_e, equilibrium bond length MUST be positive
+    assert popt[3] < 0 # e_0, zero point energy ALWAYS be negative
+
+    print("Morse potential fitting results:", flush=True)
+    print("%6s: %15.10f %10s (Bond dissociation energy)"%("D_e", popt[0], "eV"), flush=True)
+    print("%6s: %15.10f %10s (Morse potential parameter)"%("a", popt[1], ""), flush=True)
+    print("%6s: %15.10f %10s (Equilibrium bond length)"%("r_e", popt[2], "Angstrom"), flush=True)
+    print("%6s: %15.10f %10s (Zero point energy)"%("e_0", popt[3], "eV"), flush=True)
     
     return popt[0], popt[1], popt[2], popt[3]
 
 def blscan_returnbls(bl0: float, 
-              ener0: float, 
-              bond_lengths: list, 
-              energies: list, 
-              ener_thr: float = 1.5):
+                     ener0: float, 
+                     bond_lengths: list, 
+                     energies: list, 
+                     ener_thr: float = 1.5):
     """Get the range of bond lengths corresponding to energies lower than ener_thr"""
 
     delta_energies = [e-ener0 for e in energies]
@@ -401,29 +437,47 @@ def blscan_returnbls(bl0: float,
     assert delta_e_l > 0
     assert all(delta_energies) > 0
 
-    i_emax_r, i_emax_l = 0, -1
+    i_emax_r, i_emax_l = 0, -1 # initialize the right index to be the left-most, and vice versa
     for i in range(i_emin, len(delta_energies)):
-        if delta_energies[i] > ener_thr:
+        if delta_energies[i] >= ener_thr:
             i_emax_r = i
             break
-    for i in range(i_emin, 0, -1):
-        if delta_energies[i] > ener_thr:
+    for i in range(i_emin, -1, -1):
+        if delta_energies[i] >= ener_thr:
             i_emax_l = i
             break
+
     if i_emax_r == 0:
-        raise ValueError("No bond length found with energy higher than %4.2f eV."%ener_thr)
+        print("""WANRING: No bond length found with energy higher than the best energy threshold %4.2f eV."
+         The highest energy during the search at right side (bond length increase direction) is %4.2f eV."""%(ener_thr, delta_energies[-1]), flush=True)
+        print("""If not satisfied, please consider:
+1. check the dissociation energy of present element, 
+2. enlarge the search range, 
+3. lower energy threshold.""", flush=True)
+        print("Set the bond length to the highest energy point...", flush=True)
+        i_emax_r = len(delta_energies) - 1
+
     if i_emax_l == -1:
-        print("WARNING: No bond length found with energy higher than %4.2f eV."%ener_thr)
+        print("\nSummary of bond lengths and energies:".upper(), flush=True)
+        print("| Bond length (Angstrom) |   Energy (eV)   | Relative Energy (eV) |", flush=True)
+        print("|------------------------|-----------------|----------------------|", flush=True)
+        for bl, e, de in zip(bond_lengths, energies, delta_energies):
+            line = "|%24.2f|%17.10f|%22.10f|"%(bl, e, de)
+            print(line, flush=True)
+
+        raise ValueError("""WARNING: No bond length found with energy higher than %4.2f eV in bond length
+search in left direction (bond length decrease direction), this is absolutely unacceptable compared with 
+the right direction which may because of low dissociation energy. Exit."""%ener_thr)
 
     indices = [i_emax_l, (i_emax_l+i_emin)//2, i_emin, (i_emax_r+i_emin)//2, i_emax_r]
-    print("\nSummary of bond lengths and energies:".upper())
-    print("| Bond length (Angstrom) |   Energy (eV)   |")
-    print("|------------------------|-----------------|")
-    for bl, e in zip(bond_lengths, energies):
-        line = "|%24.2f|%17.10f|"%(bl, e)
+    print("\nSummary of bond lengths and energies:".upper(), flush=True)
+    print("| Bond length (Angstrom) |   Energy (eV)   | Relative Energy (eV) |", flush=True)
+    print("|------------------------|-----------------|----------------------|", flush=True)
+    for bl, e, de in zip(bond_lengths, energies, delta_energies):
+        line = "|%24.2f|%17.10f|%22.10f|"%(bl, e, de)
         if bond_lengths.index(bl) in indices:
             line += " <=="
-        print(line)
+        print(line, flush=True)
     return [bond_lengths[i] for i in indices]
 
 # -------------------------------------------#
@@ -454,14 +508,14 @@ def normal(general: dict,
         folders.append(folder)
 
         if is_duplicate(folder, calculation_setting):
-            print("ABACUS calculation on reference structure %s with bond length %s is skipped."%(reference_shape, bond_length))
+            print("ABACUS calculation on reference structure %s with bond length %s is skipped."%(reference_shape, bond_length), flush=True)
             sienv.op("rm", "INPUT-%s KPT-%s STRU-%s INPUTw"%(folder, folder, folder), env="local")
             continue
         # else...
         archive(footer=folder)
         print("""Run ABACUS calculation on reference structure.
 Reference structure: %s
-Bond length: %s"""%(reference_shape, bond_length))
+Bond length: %s"""%(reference_shape, bond_length), flush=True)
         # need a better design here
         _jtg = sienv.submit(folder=folder,
                             module_load_command=env_settings["environment"],

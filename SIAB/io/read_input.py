@@ -30,6 +30,7 @@ def json_parse(fname: str = ""):
     return result
 
 def parse(fname: str = "", version: str = "0.1.0"):
+    print("Parse input file:", fname, "orbital generation code version:", version)
     if fname.endswith(".json"):
         return json_parse(fname)
     else:
@@ -194,7 +195,7 @@ def plaintext_convert_tojson(inp: dict):
         else:
             result[key] = value
 
-def abacus_settings(user_settings: dict, minimal_basis: list):
+def abacus_settings(user_settings: dict, minimal_basis: list, z_valence: float):
 
     # copy all possible shared parameters
     all_params = abacus_params()
@@ -207,13 +208,18 @@ def abacus_settings(user_settings: dict, minimal_basis: list):
         index_shape = shape_index_mapping.index(user_settings["orbitals"][iorb]["shape"])
         if user_settings["orbitals"][iorb]["zeta_notation"].endswith("P"):
             with_polarization[index_shape] = True
-    
+    natom = {"dimer": 2, "trimer": 3, "tetramer": 4}
     for irs in range(len(user_settings["reference_systems"])):
-        result[irs].update({
-            "nbands": user_settings["reference_systems"][irs]["nbands"],
-            "lmaxmax": len(minimal_basis) if (with_polarization[irs] and [] not in minimal_basis) else len(minimal_basis) - 1,
-            "nspin": user_settings["reference_systems"][irs]["nspin"]
-        })
+        # auto set nbands if for reference system the nbands is set to "auto"
+        nbands = user_settings["reference_systems"][irs]["nbands"]
+        shape = user_settings["reference_systems"][irs]["shape"]
+        nbands = nbands if nbands != "auto" else natom[shape]*z_valence
+        # auto set lmaxmax
+        lmaxmax = len(minimal_basis) if (with_polarization[irs] and [] not in minimal_basis) else len(minimal_basis) - 1
+        # set nspin
+        nspin = user_settings["reference_systems"][irs]["nspin"]
+        # update
+        result[irs].update({"nbands": nbands, "lmaxmax": lmaxmax, "nspin": nspin})
     return result
 
 import SIAB.io.pseudopotential.tools.basic as siptb
@@ -284,12 +290,15 @@ def description(symbol: str, user_settings: dict):
     }
 
 def unpack_siab_input(user_settings: dict,
-                      symbol: str, 
-                      minimal_basis: list):
+                      pseudopotential: dict):
+    
+    symbol = pseudopotential["element"]
+    minimal_basis = pseudopotential["valence_electron_configuration"]
+    z_valence = pseudopotential["z_valence"]
 
     shapes = [rs["shape"] for rs in user_settings["reference_systems"]]
     bond_lengths = [rs["bond_lengths"] for rs in user_settings["reference_systems"]]
-    abacus = abacus_settings(user_settings, minimal_basis)
+    abacus = abacus_settings(user_settings, minimal_basis, z_valence)
     siab = siab_settings(user_settings, minimal_basis)
     env = environment_settings(user_settings)
     general = description(symbol, user_settings)
