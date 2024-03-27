@@ -11,124 +11,138 @@ class SpillOpt:
     '''
     Orbital generation by minimizing the spillage.
 
-
     Attributes
     ----------
         config : list
-            A list of 2-tuples like (orb_dat, dorb_dat). Each pair corresponds
-            to a geometric configuration, where orb_dat and dorb_dat are data
+            A list of 2-tuples like (ovlp_dat, op_dat). Each pair corresponds
+            to a geometric configuration, where ovlp_dat and op_dat are data
             read from orb_matrix_rcutXderiv0.dat and orb_matrix_rcutXderiv1.dat.
             See read_orb_mat in datparse.py for details.
-        T : dict
-            A dictionary of transformation matrices from the truncated spherical
-            Bessel function to the orthonormal end-smoothed mixed spherical Bessel
-            basis. The key is the cutoff radius and the value is a list of
-            transformation matrices indexed by the order of the spherical Bessel
-            function.
-        coef_frozen: nested list
+            NOTE: data files are subject to change in the future.
+        T : list
+            A list of transformation matrices (corresponding to different order)
+            from the truncated spherical Bessel functions to the orthonormal
+            end-smoothed mixed spherical Bessel basis. 
+        coef_frozen: list
             Coefficients in terms of the end-smoothed mixed spherical Bessel basis
             for the "frozen" orbitals that do not participate in the optimization.
             coef_frozen[itype][l][zeta] is a list of floats that specifies an orbital.
-        frozen_frozen : list of np.ndarray
-            Matrix elements between the frozen orbitals for each configuration.
-        mo_frozen: list of np.ndarray
-            Matrix elements between MOs and frozen orbitals for each configuration.
-        mo_frozen_tilde : list of np.ndarray
-            Matrix elements between MOs and dual frozen orbitals for each configuration.
+        frozen_frozen : list
+            A list of 2-tuples (np.ndarray, np.ndarray). Each pair corresponds to a
+            configuration; the arrays are the overlap and operator matrix elements
+            between the frozen orbitals.
+        mo_frozen: list
+            A list of 2-tuples (np.ndarray, np.ndarray). Each pair corresponds to a
+            configuration; the arrays are the overlap and operator matrix elements
+            between the MOs and frozen orbitals.
+        mo_frozen_dual : list of np.ndarray
+            Similar to mo_frozen, but the matrix elements are transformed to between
+            the MOs and dual frozen orbitals.
 
     '''
 
     def __init__(self):
         self.reset()
 
+
     def reset(self):
         '''
+        Clears all configurations and related data.
+
         '''
         self.config = []
-        self.T = {}
+        self.rcut = None
+        self.T = []
 
         self.coef_frozen = None
         self.frozen_frozen = None
         self.mo_frozen = None
-        self.mo_frozen_tilde = None
+        self.mo_frozen_dual = None
 
 
-    def add_config(self, orb_dat, dorb_dat):
+    def add_config(self, ovlp_dat, op_dat):
         '''
         '''
-        self.config.append((orb_dat, dorb_dat))
+        # Checks if the cutoff radii are consistent.
+        assert ovlp_dat['rcut'] == op_dat['rcut']
+        if self.rcut is None:
+            self.rcut = ovlp_dat['rcut']
+        else:
+            assert self.rcut == ovlp_dat['rcut']
+
+        self.config.append((ovlp_dat, op_dat))
 
         # The table of jl transformation matrix should cover the largest lmax and nbes
-        # among all configurations.
-        self._update_transform_table(orb_dat['rcut'], orb_dat['nbes'], max(orb_dat['lmax']))
-        self._update_transform_table(dorb_dat['rcut'], dorb_dat['nbes'], max(dorb_dat['lmax']))
+        # among all configurations. NOTE: the value of 'lmax' is a list.
+        self._update_transform_table(max(ovlp_dat['nbes'], op_dat['nbes']),
+                                     max(ovlp_dat['lmax'] + op_dat['lmax']))
 
 
     def _tab_frozen(self, coef_frozen):
         '''
-        Tabulates the frozen-orbital-related matrix elements.
+        Tabulates the frozen-orbital-related matrix elements, including
+
+        <frozen|frozen>     <frozen|op|frozen>
+        <mo|frozen>         <mo|op|frozen>
+        <mo|frozen's dual>    <mo|op|frozen's dual>
 
         '''
         self.coef_frozen = coef_frozen
 
-        self.frozen_frozen = [(\
-                self._ao_ao(coef_frozen, coef_frozen, orb_dat['jy_jy'], \
-                                    orb_dat['mu2comp'], orb_dat['rcut']), \
-                self._ao_ao(coef_frozen, coef_frozen, dorb_dat['jy_jy'], \
-                                    dorb_dat['mu2comp'], dorb_dat['rcut']) \
-                ) for orb_dat, dorb_dat in self.config]
+        self.frozen_frozen = [(
+            self._ao_ao(coef_frozen, coef_frozen, ovlp_dat['jy_jy'],
+                        ovlp_dat['mu2comp'], ovlp_dat['rcut']),
+            self._ao_ao(coef_frozen, coef_frozen, op_dat['jy_jy'], 
+                        op_dat['mu2comp'], op_dat['rcut'])
+            ) for ovlp_dat, op_dat in self.config]
 
-        self.mo_frozen = [(\
-                self._mo_ao(coef_frozen, orb_dat['mo_jy'], orb_dat['mu2comp'], \
-                                    orb_dat['rcut']), \
-                self._mo_ao(coef_frozen, dorb_dat['mo_jy'], dorb_dat['mu2comp'], \
-                                    dorb_dat['rcut']) \
-                ) for orb_dat, dorb_dat in self.config]
+        self.mo_frozen = [(
+            self._mo_ao(coef_frozen, ovlp_dat['mo_jy'], ovlp_dat['mu2comp'],
+                        ovlp_dat['rcut']),
+            self._mo_ao(coef_frozen, op_dat['mo_jy'], op_dat['mu2comp'],
+                        op_dat['rcut'])
+            ) for ovlp_dat, op_dat in self.config]
 
-        self.mo_frozen_tilde = [(\
-                self._make_tilde(X[0], S[0]), \
-                self._make_tilde(X[1], S[0]) \
-                ) for X, S in zip(self.mo_frozen, self.frozen_frozen)]
+        self.mo_frozen_dual = [(
+            self._make_dual(X[0], S[0]),
+            self._make_dual(X[1], S[0])
+            ) for X, S in zip(self.mo_frozen, self.frozen_frozen)]
 
     
-    def _make_tilde(self, X, S):
+    def _make_dual(self, X, S):
         '''
-        Given two 3-d arrays X and S, returns a 3-d array Xtilde such that
+        Given two 3-d arrays X and S, returns a 3-d array Xdual such that
 
-            Xtilde[i] = X[i] * inv(S[i])
+            Xdual[i] = X[i] * inv(S[i])
 
         '''
+        assert len(X.shape) == 3 and len(S.shape) == 3
         return np.array([np.linalg.solve(S[i].T, X[i].T).T for i in range(X.shape[0])])
 
 
-    def _update_transform_table(self, rcut, nbes, lmax):
+    def _update_transform_table(self, nbes, lmax):
         '''
-        Updates the table of jl transformation matrix.
+        Updates the list of jl transformation matrix.
 
-        The table stores transformation matrices from the truncated spherical
-        Bessel function to the orthonormal end-smoothed mixed spherical Bessel
-        basis. Given rcut and lmax, the transformation is guaranteed to be
+        The list, indexed by l, stores transformation matrices from the truncated
+        spherical Bessel function to the orthonormal end-smoothed mixed spherical
+        Bessel basis. Given rcut and l, the transformation is guaranteed to be
         consistent with respect to different nbes, i.e., the transformation
         matrix for nbes = N is a submatrix of the transformation matrix for
         nbes = M, if N < M.
 
-        The table, self.T, is a dictionary with rcut as the key and a list of
-        transformation matrices as the value. The list is indexed by l, which
-        is the order of the spherical Bessel function.
-
         '''
-        if rcut not in self.T:
-            self.T[rcut] = [jl_reduce(l, nbes, rcut) for l in range(lmax+1)]
+        _lmax = len(self.T) - 1
+        _nbes = self.T[0].shape[0] if self.T else 0 # tabulated matrix size
+
+        if not self.T or _nbes < nbes:
+            # If the list is empty, or the tabulated matrix size is too small,
+            # tabulate the whole list.
+            self.T = [jl_reduce(l, nbes, self.rcut) for l in range(max(lmax, _lmax)+1)]
         else:
-            # If the key already exists, check if the tabulated matrix size
-            # is large enough. If not, re-tabulate the the whole list;
-            # If yes, append to the existing list if the new lmax is larger.
-            _nbes = self.T[rcut][0].shape[0] # tabulated matrix size
-            _lmax = len(self.T[rcut])-1 # max tabulated l
-            if _nbes < nbes:
-                self.T[rcut] = [jl_reduce(l, nbes, rcut) for l in range(max(lmax, _lmax)+1)]
-            else:
-                self.T[rcut] += [jl_reduce(l, _nbes, rcut) for l in range(_lmax+1, lmax+1)]
+            # If the tabulated matrix size is large enough, append to the existing
+            # list if the new lmax is larger.
+            self.T += [jl_reduce(l, _nbes, self.rcut) for l in range(_lmax+1, lmax+1)]
 
 
     def _gen_q2zeta(self, coef, mu2comp, nbes, rcut):
@@ -172,7 +186,7 @@ class SpillOpt:
 
     def _ao_ao(self, coef_bra, coef_ket, jy_jy, jy_mu2comp, rcut):
         '''
-        Given matrix elements evaluated in the jY basis, builds the matrix
+        Given matrix elements evaluated between jY, builds the matrix
         elements between pseudo-atomic orbitals specified by the given
         orthonormal end-smoothed mixed spherical Bessel coefficients.
 
@@ -199,20 +213,17 @@ class SpillOpt:
         # basis transformation matrix from the truncated spherical Bessel
         # function to the pseudo-atomic orbital
         M_bra = block_diag(*self._gen_q2zeta(coef_bra, jy_mu2comp, nbes, rcut))
+        M_ket = block_diag(*self._gen_q2zeta(coef_ket, jy_mu2comp, nbes, rcut)) \
+                if coef_ket is not None else M_bra
 
-        if coef_ket is None:
-            M_ket = M_bra
-        else:
-            M_ket = block_diag(*self._gen_q2zeta(coef_ket, jy_mu2comp, nbes, rcut))
-
-        return np.array([M_bra.T.conj() \
-                        @ jy_jy[ik].transpose((0,2,1,3)).reshape((nao*nbes, nao*nbes)) \
-                        @ M_ket for ik in range(nk)])
-
+        # '@' would broadcast
+        return M_bra.T.conj() \
+                @ jy_jy.transpose((0,1,3,2,4)).reshape((nk, nao*nbes, nao*nbes)) \
+                @ M_ket
 
     def _mo_ao(self, coef, mo_jy, jy_mu2comp, rcut, ibands=None):
         '''
-        Given matrix elements evaluated between MO and jY basis, builds the matrix
+        Given matrix elements evaluated between MO and jY, builds the matrix
         elements between MO and pseudo-atomic orbitals specified by the given
         orthonormal end-smoothed mixed spherical Bessel coefficients.
 
@@ -244,8 +255,8 @@ class SpillOpt:
         # function to the pseudo-atomic orbital
         M = block_diag(*self._gen_q2zeta(coef, jy_mu2comp, nbes, rcut))
 
-        return np.array([mo_jy[ik].reshape((nbands, nao*nbes))[ibands,:] @ M \
-                        for ik in range(nk)])
+        # '@' would broadcast
+        return mo_jy.reshape((nk, nbands, nao*nbes))[:,ibands,:] @ M
 
 
     def _spillage_0(self, coef, ibands):
@@ -263,20 +274,20 @@ class SpillOpt:
             Y = self._mo_ao(coef, dat['mo_jy'], dat['mu2comp'], dat['rcut'], ibands)
 
             if self.coef_frozen is None:
-                Ytilde = self._make_tilde(Y, W)
-                s0 += 1.0 - (wk * Ytilde * Y.conj()).sum().real / len(ibands)
+                Ydual = self._make_dual(Y, W)
+                s0 += 1.0 - (wk * Ydual * Y.conj()).sum().real / len(ibands)
             else:
                 S = self.frozen_frozen[i]
                 X = self.mo_frozen[i][:, ibands, :]
-                Xtilde = self.mo_frozen_tilde[i][:, ibands, :]
+                Xdual = self.mo_frozen_dual[i][:, ibands, :]
 
                 Z = self._ao_ao(coef_frozen, coef, dat['jy_jy'], dat['mu2comp'], dat['rcut'])
 
-                V = Y - Xtilde @ Z # '@' would broadcast
-                Vtilde = self._make_tilde(V, W)
+                V = Y - Xdual @ Z # '@' would broadcast
+                Vdual = self._make_dual(V, W)
 
-                s0 += 1.0 - (wk * Xtilde * X.conj()).sum().real / len(ibands) \
-                        - (wk * Vtilde * V.conj()).sum().real / len(ibands)
+                s0 += 1.0 - (wk * Xdual * X.conj()).sum().real / len(ibands) \
+                        - (wk * Vdual * V.conj()).sum().real / len(ibands)
 
         return s0
 
@@ -306,39 +317,39 @@ class _TestSpillOpt(unittest.TestCase):
     def test_update_transform_table(self):
         orbgen = SpillOpt()
 
-        rcut = 5.0
+        orbgen.rcut = 5.0
         nbes = 30
         lmax = 2
 
-        orbgen._update_transform_table(rcut, nbes, lmax)
-        self.assertEqual(len(orbgen.T[rcut]), lmax+1)
+        orbgen._update_transform_table(nbes, lmax)
+        self.assertEqual(len(orbgen.T), lmax+1)
         
         # a smaller lmax & nbes would not alter the table
-        orbgen._update_transform_table(rcut, nbes, 1)
-        self.assertEqual(len(orbgen.T[rcut]), lmax+1)
+        orbgen._update_transform_table(nbes, 1)
+        self.assertEqual(len(orbgen.T), lmax+1)
 
-        orbgen._update_transform_table(rcut, 10, lmax)
-        self.assertEqual(orbgen.T[rcut][0].shape[0], nbes)
+        orbgen._update_transform_table(10, lmax)
+        self.assertEqual(orbgen.T[0].shape[0], nbes)
 
-        orbgen._update_transform_table(rcut, 10, 1)
-        self.assertEqual(len(orbgen.T[rcut]), lmax+1)
-        self.assertEqual(orbgen.T[rcut][0].shape[0], nbes)
+        orbgen._update_transform_table(10, 1)
+        self.assertEqual(len(orbgen.T), lmax+1)
+        self.assertEqual(orbgen.T[0].shape[0], nbes)
 
         # a larger lmax/nbes would extend the table
         lmax = 4
-        orbgen._update_transform_table(rcut, nbes, lmax)
-        self.assertEqual(len(orbgen.T[rcut]), lmax+1)
+        orbgen._update_transform_table(nbes, lmax)
+        self.assertEqual(len(orbgen.T), lmax+1)
 
         nbes = 40
-        orbgen._update_transform_table(rcut, nbes, 2)
-        self.assertEqual(len(orbgen.T[rcut]), lmax+1)
-        self.assertEqual(orbgen.T[rcut][0].shape[0], nbes)
+        orbgen._update_transform_table(nbes, 2)
+        self.assertEqual(len(orbgen.T), lmax+1)
+        self.assertEqual(orbgen.T[0].shape[0], nbes)
 
         nbes = 50
         lmax = 7
-        orbgen._update_transform_table(rcut, nbes, lmax)
-        self.assertEqual(len(orbgen.T[rcut]), lmax+1)
-        self.assertEqual(orbgen.T[rcut][0].shape[0], nbes)
+        orbgen._update_transform_table(nbes, lmax)
+        self.assertEqual(len(orbgen.T), lmax+1)
+        self.assertEqual(orbgen.T[0].shape[0], nbes)
 
     
     def test_add_config(self):
@@ -352,19 +363,21 @@ class _TestSpillOpt(unittest.TestCase):
         orbgen.add_config(mat, dmat)
 
         self.assertEqual(len(orbgen.config), 1)
-        self.assertEqual(len(orbgen.T[mat['rcut']]), max(mat['lmax'])+1)
+        self.assertEqual(len(orbgen.T), max(mat['lmax'])+1)
         self.assertDictEqual(orbgen.config[0][0], mat)
         self.assertDictEqual(orbgen.config[0][1], dmat)
+
+        orbgen.reset()
 
         mat = read_orb_mat(folder + 'orb_matrix_rcut7deriv0.dat')
         dmat = read_orb_mat(folder + 'orb_matrix_rcut7deriv1.dat')
 
         orbgen.add_config(mat, dmat)
 
-        self.assertEqual(len(orbgen.config), 2)
-        self.assertEqual(len(orbgen.T[mat['rcut']]), max(mat['lmax'])+1)
-        self.assertDictEqual(orbgen.config[1][0], mat)
-        self.assertDictEqual(orbgen.config[1][1], dmat)
+        self.assertEqual(len(orbgen.config), 1)
+        self.assertEqual(len(orbgen.T), max(mat['lmax'])+1)
+        self.assertDictEqual(orbgen.config[0][0], mat)
+        self.assertDictEqual(orbgen.config[0][1], dmat)
 
 
     def test_tab_frozen(self):
