@@ -170,6 +170,10 @@ def read_orb_mat(fpath):
     assert np.linalg.norm(np.imag(jy_jy.reshape(-1)), np.inf) < 1e-12
     jy_jy = np.real(jy_jy)
 
+    # NOTE permute jy_jy such that it has a shape of (nk, nao, nbes, nao, nbes)
+    # which is more convenient for later use.
+    jy_jy = jy_jy.transpose((0, 1, 3, 2, 4))
+
     ####################################################################
     #                           MO-MO overlap
     ####################################################################
@@ -187,6 +191,17 @@ def read_orb_mat(fpath):
             'nbands': nbands, 'nbes': nbes, 'kpt': kpt, 'wk': wk, \
             'jy_jy': jy_jy, 'mo_jy': mo_jy, 'mo_mo': mo_mo, \
             'comp2mu': comp2mu, 'mu2comp': mu2comp}
+
+
+def are_consistent(dat1, dat2):
+    '''
+    Check if two dat files corresponds to the same system.
+
+    '''
+    return dat1['mu2comp'] == dat2['mu2comp'] and \
+            dat1['rcut'] == dat2['rcut'] and \
+            np.all(dat1['wk'] == dat2['wk']) and \
+            np.all(dat1['kpt'] == dat2['kpt'])
 
 
 ############################################################
@@ -217,8 +232,10 @@ class _TestDatParse(unittest.TestCase):
 
         self.assertEqual(dat['mo_jy'].shape, \
                 (dat['nk'], dat['nbands'], nao, dat['nbes']))
+        #self.assertEqual(dat['jy_jy'].shape, \
+        #        (dat['nk'], nao, nao, dat['nbes'], dat['nbes']))
         self.assertEqual(dat['jy_jy'].shape, \
-                (dat['nk'], nao, nao, dat['nbes'], dat['nbes']))
+                (dat['nk'], nao, dat['nbes'], nao, dat['nbes']))
         self.assertEqual(dat['mo_mo'].shape, \
                 (dat['nk'], dat['nbands']))
 
@@ -243,8 +260,10 @@ class _TestDatParse(unittest.TestCase):
 
         self.assertEqual(dat['mo_jy'].shape, \
                 (dat['nk'], dat['nbands'], nao, dat['nbes']))
+#        self.assertEqual(dat['jy_jy'].shape, \
+#                (dat['nk'], nao, nao, dat['nbes'], dat['nbes']))
         self.assertEqual(dat['jy_jy'].shape, \
-                (dat['nk'], nao, nao, dat['nbes'], dat['nbes']))
+                (dat['nk'], nao, dat['nbes'], nao, dat['nbes']))
         self.assertEqual(dat['mo_mo'].shape, \
                 (dat['nk'], dat['nbands']))
 
