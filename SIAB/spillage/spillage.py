@@ -150,9 +150,9 @@ def _mo_ao(coef, mo_jy, jy_mu2comp, rcut, ibands=None):
     return mo_jy.reshape(nk, nbands, nao*nbes)[:,ibands,:] @ M
 
 
-class SpillOpt:
+class Spillage:
     '''
-    Orbital generation by minimizing the spillage.
+    Generalized spillage function and its optimization.
 
     Attributes
     ----------
@@ -272,9 +272,9 @@ class SpillOpt:
             self.T += [jl_reduce(l, _nbes, self.rcut) for l in range(_lmax+1, lmax+1)]
 
 
-
     # FIXME 
-    # this should be a special case of the generalized spillage
+    # this should be a special case of the generalized spillage function
+    # with op = ovlp
     # instead of a separate function
     def _spillage_0(self, coef, ibands):
         '''
@@ -352,6 +352,87 @@ class SpillOpt:
                         - 2.0 * (wk * V_dual * dV.conj()).real.sum() / nbands
 
         return nest((spill_0_grad/len(self.config)).tolist(), patn)
+
+
+    def _spillage2(self, iconf, coef, ibands, with_grad=False):
+        '''
+        Generalized spillage function and its gradient.
+
+        '''
+        ovlp, op = self.config[iconf]
+        nbands = len(ibands)
+
+        # the number & weight of k-points
+        nk, wk = op['nk'], op['wk']
+
+        # <mo|op|mo> / nbands
+        spill = (wk @ op['mo_mo']).real.sum() / nbands
+
+        W = _ao_ao(coef, ovlp['jy_jy'], ovlp['mu2comp'], ovlp['rcut'])
+        Y = _mo_ao(coef, ovlp['mo_jy'], ovlp['mu2comp'], ovlp['rcut'], ibands)
+
+        W_op = _ao_ao(coef, op['jy_jy'], op['mu2comp'], op['rcut'])
+        Y_op = _mo_ao(coef, op['mo_jy'], op['mu2comp'], op['rcut'], ibands)
+
+        # reshape the weight of k-points to enable broadcasting
+        wk = wk.reshape(nk, 1, 1)
+
+        V = Y
+        V_op = Y_op
+        if self.coef_frozen is not None:
+            X_dual = self.mo_frozen_dual[iconf][0][:, ibands, :]
+            X_op = self.mo_frozen[iconf][1][:, ibands, :]
+            S_op = self.frozen_frozen[iconf][1]
+            spill += (wk * (X_dual @ S_op) * X_dual.conj()).real.sum() / nbands \
+                    - 2.0 * (wk * X_dual * X_op.conj()).real.sum() / nbands
+
+            V_op -= X_dual @ _ao_ao((self.coef_frozen, coef), op['jy_jy'],
+                                         op['mu2comp'], op['rcut'])
+            V -= X_dual @ _ao_ao((self.coef_frozen, coef), ovlp['jy_jy'],
+                                      ovlp['mu2comp'], ovlp['rcut'])
+
+        V_dual = _make_dual(V, W)
+
+        spill += (wk * (V_dual @ W_op) * V_dual.conj()).real.sum() / nbands \
+                - 2.0 * (wk * V_dual * V_op.conj()).real.sum() / nbands
+
+        if with_grad:
+            patn = nestpat(coef) # nesting pattern
+            sz = len(flatten(coef))
+            spill_grad = np.zeros(sz)
+
+            for i in range(sz):
+                c = np.zeros(sz)
+                c[i] = 1
+                coef_d = nest(c.tolist(), patn)
+
+                dY = _mo_ao(coef_d, ovlp['mo_jy'], ovlp['mu2comp'], ovlp['rcut'], ibands)
+                dW = _ao_ao((coef_d, coef), ovlp['jy_jy'], ovlp['mu2comp'], ovlp['rcut'])
+                dW += dW.transpose((0,2,1)).conj()
+
+                dY_op = _mo_ao(coef_d, op['mo_jy'], op['mu2comp'], op['rcut'], ibands)
+                dW_op = _ao_ao((coef_d, coef), op['jy_jy'], op['mu2comp'], op['rcut'])
+                dW_op += dW_op.transpose((0,2,1)).conj()
+
+                dV = dY
+                dV_op = dY_op
+                if self.coef_frozen is not None:
+                    dV -= X_dual @ _ao_ao((self.coef_frozen, coef_d), ovlp['jy_jy'], 
+                                               ovlp['mu2comp'], ovlp['rcut'])
+                    dV_op -= X_dual @ _ao_ao((self.coef_frozen, coef_d), op['jy_jy'],
+                                                  op['mu2comp'], op['rcut'])
+
+                # FIXME dV & dV_op should be tabulated
+                # FIXME dW & dW_op can be reduced to mo_ao calls, instead of ao_ao calls
+                spill_grad[i] += (wk * (V_dual @ dW_op) * V_dual.conj()).sum().real / nbands \
+                        - 2.0 * (wk * V_dual * dV_op.conj()).sum().real / nbands \
+                        + 2.0 * (wk * _make_dual(dV - V_dual @ dW, W) 
+                                 * (V_dual @ W_op - V_op).conj()).real.sum() / nbands
+
+            spill_grad = nest(spill_grad.tolist(), patn)
+
+        return (spill, spill_grad) if with_grad else spill
+
 
 
     def _spillage(self, coef, ibands):
@@ -484,10 +565,10 @@ class SpillOpt:
 ############################################################
 import unittest
 
-class _TestSpillOpt(unittest.TestCase):
+class _TestSpillage(unittest.TestCase):
 
     def test_update_transform_table(self):
-        orbgen = SpillOpt()
+        orbgen = Spillage()
 
         orbgen.rcut = 5.0
         nbes = 30
@@ -525,7 +606,7 @@ class _TestSpillOpt(unittest.TestCase):
 
     
     def test_add_config(self):
-        orbgen = SpillOpt()
+        orbgen = Spillage()
 
         folder = '/home/zuxin/abacus-community/abacus_orbital_generation/tmp/Si-dimer-2.0/'
 
@@ -570,7 +651,7 @@ class _TestSpillOpt(unittest.TestCase):
 
 
     def test_tab_frozen(self):
-        orbgen = SpillOpt()
+        orbgen = Spillage()
 
         folder = '/home/zuxin/abacus-community/abacus_orbital_generation/tmp/Si-dimer-2.0/'
 
@@ -605,7 +686,6 @@ class _TestSpillOpt(unittest.TestCase):
 
 
     def test_ao_ao(self):
-        orbgen = SpillOpt()
         mat = read_orb_mat('./testfiles/orb_matrix_rcut6deriv0.dat')
         #mat = read_orb_mat('./testfiles/orb_matrix_rcut7deriv1.dat')
 
@@ -625,7 +705,6 @@ class _TestSpillOpt(unittest.TestCase):
 
 
     def test_mo_ao(self):
-        orbgen = SpillOpt()
         mat = read_orb_mat('./testfiles/orb_matrix_rcut6deriv0.dat')
 
         # 2s2p1d
@@ -646,7 +725,7 @@ class _TestSpillOpt(unittest.TestCase):
         #plt.show()
 
     def test_spillage_0(self):
-        orbgen = SpillOpt()
+        orbgen = Spillage()
 
         folder = '/home/zuxin/abacus-community/abacus_orbital_generation/tmp/Si-dimer-2.0/'
 
@@ -698,12 +777,23 @@ class _TestSpillOpt(unittest.TestCase):
         coef_m[0][0][0][3] -= dc
         spill_m = orbgen._spillage(coef_m, ibands)
 
-        dspill = (spill_p - spill_m) / (2 * dc)
+        dspill_fd = (spill_p - spill_m) / (2 * dc)
 
         print('')
-        print('dspill  (finite diff) = ', dspill)
+        print('dspill  (finite diff) = ', dspill_fd)
 
-        print('dspill  ( analytic  ) = ', orbgen._spillage_grad(coef, ibands)[0][0][0][3])
+        dspill = orbgen._spillage_grad(coef, ibands)
+        
+        print('dspill  ( analytic  ) = ', dspill[0][0][0][3])
+
+        
+        res = orbgen._spillage2(0, coef, ibands, True)
+        print('spill = ', orbgen._spillage(coef, ibands), res[0])
+        print('dspill = ', dspill)
+        print(res[1])
+        
+        res = orbgen._spillage2(0, coef, ibands, False)
+        print(res)
 
         #print('generalized spillage = ', orbgen._spillage(coef, ibands))
 
