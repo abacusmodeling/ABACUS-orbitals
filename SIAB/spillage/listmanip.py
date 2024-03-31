@@ -1,13 +1,45 @@
-def flatten(x):
+def flatten(x, return_index=False):
     '''
-    Flattens a nested list.
+    Flattens a nested list and optionally attaches the original indices.
 
     '''
-    def _recursive_flatten(x):
-        return [elem for i in x for elem in _recursive_flatten(i)] if isinstance(x, list) else [x]
+    def _flatten(x):
+        for i, elem in enumerate(x):
+            if isinstance(elem, list):
+                for sub_elem in _flatten(elem):
+                    yield (sub_elem[0], (i,) + sub_elem[1]) if return_index else sub_elem
+            else:
+                yield (elem, (i,)) if return_index else elem
 
     assert isinstance(x, list)
-    return _recursive_flatten(x)
+    return list(_flatten(x))
+
+
+def retrive(x, index):
+    '''
+    Retrives an element from a nested list.
+
+    '''
+    def _retrieve(x, index):
+        return x[index[0]] if len(index) == 1 else _retrieve(x[index[0]], index[1:])
+
+    assert isinstance(x, list) and isinstance(index, tuple)
+    return _retrieve(x, index)
+
+
+def assign(x, index, value):
+    '''
+    Assigns an value to an element in a nested list.
+
+    '''
+    def _assign(x, index, value):
+        if len(index) == 1:
+            x[index[0]] = value
+        else:
+            _assign(x[index[0]], index[1:], value)
+
+    assert isinstance(x, list) and isinstance(index, tuple)
+    _assign(x, index, value)
 
 
 def nest(x, pattern):
@@ -117,17 +149,53 @@ class _TestListManip(unittest.TestCase):
 
     def test_flatten(self):
         x = [[[]]]
-        self.assertEqual(flatten(x), [])
+        self.assertEqual(flatten(x, False), [])
+        self.assertEqual(flatten(x, True), [])
     
         x = [[], [], []]
-        self.assertEqual(flatten(x), [])
+        self.assertEqual(flatten(x, False), [])
+        self.assertEqual(flatten(x, True), [])
     
         x = [[[], 1]]
-        self.assertEqual(flatten(x), [1])
+        self.assertEqual(flatten(x, False), [1])
+        self.assertEqual(flatten(x, True), [(1,(0,1))])
     
-        x = [[1, [2, 3], [], 4], [[[5]]], [[]]]
-        self.assertEqual(flatten(x), [1, 2, 3, 4, 5])
-    
+        x = [[1, [2, 3], [], 4], [[[5]]], [[]], 6]
+        self.assertEqual(flatten(x, False), [1, 2, 3, 4, 5, 6])
+        self.assertEqual(flatten(x, True),
+                         [(1, (0,0)), (2, (0,1,0)), (3, (0,1,1)),
+                          (4, (0,3)), (5, (1,0,0,0)), (6, (3,))])
+
+
+    def test_retrieve(self):
+        x = [[1, 2], 3, [[4, 5], 6], 7]
+
+        self.assertEqual(retrive(x, (0, 0)), 1)
+        self.assertEqual(retrive(x, (0, 1)), 2)
+        self.assertEqual(retrive(x, (1,)), 3)
+        self.assertEqual(retrive(x, (2, 0, 0)), 4)
+        self.assertEqual(retrive(x, (2, 0, 1)), 5)
+        self.assertEqual(retrive(x, (2, 1)), 6)
+        self.assertEqual(retrive(x, (3,)), 7)
+
+
+    def test_assign(self):
+        x = [[1, 2], 3, [[4, 5], 6], 7]
+        assign(x, (0, 0), 0)
+        self.assertEqual(x, [[0, 2], 3, [[4, 5], 6], 7])
+        assign(x, (0, 1), 0)
+        self.assertEqual(x, [[0, 0], 3, [[4, 5], 6], 7])
+        assign(x, (1,), 0)
+        self.assertEqual(x, [[0, 0], 0, [[4, 5], 6], 7])
+        assign(x, (2, 0, 0), 0)
+        self.assertEqual(x, [[0, 0], 0, [[0, 5], 6], 7])
+        assign(x, (2, 0, 1), 0)
+        self.assertEqual(x, [[0, 0], 0, [[0, 0], 6], 7])
+        assign(x, (2, 1), 0)
+        self.assertEqual(x, [[0, 0], 0, [[0, 0], 0], 7])
+        assign(x, (3,), 0)
+        self.assertEqual(x, [[0, 0], 0, [[0, 0], 0], 0])
+
     
     def test_nest(self):
         x = []

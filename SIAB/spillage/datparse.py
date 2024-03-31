@@ -193,12 +193,12 @@ def read_orb_mat(fpath):
             'comp2mu': comp2mu, 'mu2comp': mu2comp}
 
 
-def are_consistent(dat1, dat2):
+def _assert_consistency(dat1, dat2):
     '''
     Check if two dat files corresponds to the same system.
 
     '''
-    return dat1['mu2comp'] == dat2['mu2comp'] and \
+    assert dat1['mu2comp'] == dat2['mu2comp'] and \
             dat1['rcut'] == dat2['rcut'] and \
             np.all(dat1['wk'] == dat2['wk']) and \
             np.all(dat1['kpt'] == dat2['kpt'])

@@ -199,6 +199,11 @@ def jl_reduce(l, n, rcut):
     return T * np.sign(T[idx, range(n-1)])
 
 
+# precompute jl_reduce for rcut = 1, 2, ..., 15 with lmax=7
+JL_REDUCE = {rcut : [jl_reduce(l, 100, rcut) for l in range(8)]
+             for rcut in np.arange(1, 16, dtype=float)}
+
+
 def coeff_recover(coeff, rcut):
     '''
     Converts the coefficients w.r.t the orthonormal end-smoothed mixed spherical
