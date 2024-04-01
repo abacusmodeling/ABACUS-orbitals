@@ -52,10 +52,13 @@ def read_orb_mat(fpath):
             k-point weights.
         mo_jy : np.ndarray
             Overlap between MOs and jYs.
-            Shape: (nk, nbands, nao, nbes)
+            Shape: (nk, nbands, nao*nbes)
         jy_jy : np.ndarray
             Overlap between jYs.
-            Shape: (nk, nao, nao, nbes, nbes)
+            Shape: (nk, nao*nbes, nao*nbes)
+            Note: the original jy_jy data assumed a shape of
+            (nk, nao, nao, nbes, nbes), which is permuted and
+            reshaped for convenience.
         mo_mo : np.ndarray
             Overlap between MOs.
             Shape: (nk, nbands)
@@ -124,7 +127,7 @@ def read_orb_mat(fpath):
     mo_jy_end = data.index('</OVERLAP_Q>')
     mo_jy = np.array(data[mo_jy_start:mo_jy_end], dtype=float) \
             .view(dtype=complex) \
-            .reshape((nk, nbands, nao, nbes))
+            .reshape((nk, nbands, nao*nbes))
 
     ####################################################################
     #                           Phase Adjustment
@@ -170,9 +173,9 @@ def read_orb_mat(fpath):
     assert np.linalg.norm(np.imag(jy_jy.reshape(-1)), np.inf) < 1e-12
     jy_jy = np.real(jy_jy)
 
-    # NOTE permute jy_jy such that it has a shape of (nk, nao, nbes, nao, nbes)
+    # NOTE permute jy_jy from (nk, nao, nao, nbes, nbes) to (nk, nao, nbes, nao, nbes)
     # which is more convenient for later use.
-    jy_jy = jy_jy.transpose((0, 1, 3, 2, 4))
+    jy_jy = jy_jy.transpose((0, 1, 3, 2, 4)).reshape((nk, nao*nbes, nao*nbes))
 
     ####################################################################
     #                           MO-MO overlap
@@ -231,11 +234,11 @@ class _TestDatParse(unittest.TestCase):
         nao = dat['natom'][0] * (dat['lmax'][0] + 1)**2
 
         self.assertEqual(dat['mo_jy'].shape, \
-                (dat['nk'], dat['nbands'], nao, dat['nbes']))
+                (dat['nk'], dat['nbands'], nao*dat['nbes']))
         #self.assertEqual(dat['jy_jy'].shape, \
         #        (dat['nk'], nao, nao, dat['nbes'], dat['nbes']))
         self.assertEqual(dat['jy_jy'].shape, \
-                (dat['nk'], nao, dat['nbes'], nao, dat['nbes']))
+                (dat['nk'], nao*dat['nbes'], nao*dat['nbes']))
         self.assertEqual(dat['mo_mo'].shape, \
                 (dat['nk'], dat['nbands']))
 
@@ -259,11 +262,9 @@ class _TestDatParse(unittest.TestCase):
         nao = dat['natom'][0] * (dat['lmax'][0] + 1)**2
 
         self.assertEqual(dat['mo_jy'].shape, \
-                (dat['nk'], dat['nbands'], nao, dat['nbes']))
-#        self.assertEqual(dat['jy_jy'].shape, \
-#                (dat['nk'], nao, nao, dat['nbes'], dat['nbes']))
+                (dat['nk'], dat['nbands'], nao*dat['nbes']))
         self.assertEqual(dat['jy_jy'].shape, \
-                (dat['nk'], nao, dat['nbes'], nao, dat['nbes']))
+                (dat['nk'], nao*dat['nbes'], nao*dat['nbes']))
         self.assertEqual(dat['mo_mo'].shape, \
                 (dat['nk'], dat['nbands']))
 

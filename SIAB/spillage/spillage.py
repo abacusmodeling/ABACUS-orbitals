@@ -10,6 +10,8 @@ from copy import deepcopy
 
 def _mrdivide(X, S):
     '''
+    Right matrix division.
+
     Given two 3-d arrays X and S, returns a 3-d array X_dual such that
 
         X_dual[k] = X[k] @ inv(S[k])
@@ -23,9 +25,12 @@ def _wsum_fro(w, A, B, return_real=True, rowwise=False):
     '''
     Weighted sum of Frobenius inner products.
 
-    The Frobenius inner product can be defined as
+    The Frobenius inner product between two matrices or vectors is defined as
 
         <X, Y> \equiv Tr(X @ Y.T.conj()) = (X * Y.conj()).sum()
+
+    NOTE: the inner product is assumed to have the Hermitian conjugate on the
+    second argument, not the first.
 
     Given a 1-d array w and two 3-d arrays A and B, if `rowwise` is False,
     this function computes the weighted sum of the slice-wise Frobenius
@@ -37,13 +42,6 @@ def _wsum_fro(w, A, B, return_real=True, rowwise=False):
     computed as
 
         res[i] = \sum_k w[k] * <A[k,i], B[k,i]>
-
-    in which case the returned value will be a 1-d array.
-
-    Note
-    ----
-    The inner product is assumed to have the Hermitian conjugate
-    on B, rather than on A.
 
     '''
     tmp = w.reshape(w.size, 1, 1) * A * B.conj()
@@ -103,11 +101,11 @@ def _gen_q2zeta(coef, mu2comp, nbes, rcut):
             yield JL_REDUCE[rcut][l][:nbes,:nbes-1] @ C
 
 
-def _ao_ao(coef, jy_jy, jy_mu2comp, rcut):
+def _jy2ao(coef, array, lin2comp, rcut):
     '''
-    Matrix elements between pseudo-atomic orbitals.
+    Basis transformation from jY to pseudo-atomic orbitals.
 
-    This function transforms matrix elements in the jY basis to the
+    This function transforms matrix elements in some jY basis to the
     matrix elements between pseudo-atomic orbitals specified by the
     given coefficients in the orthonormal end-smoothed mixed spherical
     Bessel basis.
@@ -123,7 +121,7 @@ def _ao_ao(coef, jy_jy, jy_mu2comp, rcut):
             in which case the ket and bra will be transformed by
             the respective coefficients. If either is None, the
             corresponding transformation will be skipped.
-        jy_jy : np.ndarray, shape (nk, nao, nbes, nao, nbes)
+        jy_jy : np.ndarray, shape (nk, nao*nbes, nao*nbes)
             The original matrix in jY basis as read from an
             orb_matrix_rcutXderivY.dat file. See also Notes.
         jy_mu2comp : dict
@@ -140,59 +138,55 @@ def _ao_ao(coef, jy_jy, jy_mu2comp, rcut):
     takes care of this permutation.
 
     '''
-    nk, nao, nbes = jy_jy.shape[0], jy_jy.shape[1], jy_jy.shape[-1]
-    tmp = jy_jy.reshape(nk, nao*nbes, nao*nbes)
-
     if isinstance(coef, list):
-        M = block_diag(*_gen_q2zeta(coef, jy_mu2comp, nbes, rcut))
-        tmp = M.T @ tmp @ M
+        nbes = array.shape[1] // len(lin2comp)
+        M = block_diag(*_gen_q2zeta(coef, lin2comp, nbes, rcut))
+        array = M.T @ array @ M
     else:
         coef_bra, coef_ket = coef
 
         if coef_bra is not None:
-            tmp = block_diag(*_gen_q2zeta(coef_bra, jy_mu2comp, nbes, rcut)).T @ tmp
+            nbes = array.shape[1] // len(lin2comp)
+            array = block_diag(*_gen_q2zeta(coef_bra, lin2comp, nbes, rcut)).T @ array
 
         if coef_ket is not None:
-            tmp = tmp @ block_diag(*_gen_q2zeta(coef_ket, jy_mu2comp, nbes, rcut))
+            nbes = array.shape[2] // len(lin2comp)
+            array = array @ block_diag(*_gen_q2zeta(coef_ket, lin2comp, nbes, rcut))
 
-    return tmp
+    return array
 
 
-def _mo_ao(coef, mo_jy, jy_mu2comp, rcut, ibands=None):
+def _overlap_spillage(ovlp, coef, ibands, coef_frozen=None):
     '''
-    Matrix elements between MO and pseudo-atomic orbitals.
+    Standard spillage function (overlap spillage).
 
-    This function transforms matrix elements between MO and jY to the
-    matrix elements between MO and pseudo-atomic orbitals specified by
-    the given coefficients in the orthonormal end-smoothed mixed spherical
-    Bessel basis.
-
-    Parameters
-    ----------
-        coef : nested list
-            The coefficients of pseudo-atomic orbitals in the
-            orthonormal end-smoothed mixed spherical Bessel basis,
-            where coef[itype][l][zeta] is a list of float that
-            specifies a pseudo-atomic orbital.
-        mo_jy : np.ndarray
-            The original matrix elements evaluated between MO and jY
-            as read from the orb_matrix_rcutXderivY.dat file.
-            Shape: (nk, nbands, nao, nbes)
-        jy_mu2comp : dict
-            Index map mu -> (itype, iatom, l, zeta, m).
-            NOTE: zeta is supposed to be 0 for all mu.
-        rcut : float
-            Cutoff radius.
-        ibands : list or range
-            Indices for the bands (MO) to be considered.
+    Note
+    ----
+    This function is not supposed to be used in the optimization.
+    As a special case of the generalized spillage (op = I), it serves
+    as a cross-check for the implementation of the generalized spillage.
 
     '''
-    nk, nbands, nao, nbes = mo_jy.shape
-    ibands = range(nbands) if ibands is None else ibands
+    spill = (ovlp['wk'] @ ovlp['mo_mo'][:, ibands]).real.sum()
 
-    M = block_diag(*_gen_q2zeta(coef, jy_mu2comp, nbes, rcut))
+    mo_jy = ovlp['mo_jy'][:, ibands, :]
 
-    return mo_jy.reshape(nk, nbands, nao*nbes)[:,ibands,:] @ M
+    V = _jy2ao((None, coef), mo_jy, ovlp['mu2comp'], ovlp['rcut'])
+    W = _jy2ao(coef, ovlp['jy_jy'], ovlp['mu2comp'], ovlp['rcut'])
+
+    if coef_frozen is not None:
+        X = _jy2ao((None, coef_frozen), mo_jy, ovlp['mu2comp'], ovlp['rcut'])
+        S = _jy2ao(coef_frozen, ovlp['jy_jy'], ovlp['mu2comp'], ovlp['rcut'])
+
+        X_dual = _mrdivide(X, S)
+        spill -= _wsum_fro(ovlp['wk'], X_dual, X)
+
+        V -= X_dual @ _jy2ao((coef_frozen, coef), ovlp['jy_jy'],
+                             ovlp['mu2comp'], ovlp['rcut'])
+
+    spill -= _wsum_fro(ovlp['wk'], _mrdivide(V, W), V)
+
+    return spill / len(ibands)
 
 
 class Spillage:
@@ -207,21 +201,6 @@ class Spillage:
             read from orb_matrix_rcutXderiv0.dat and orb_matrix_rcutXderiv1.dat
             (subject to minor changes, e.g., permutation of ndarrays).
             NOTE: data files are subject to change in the future.
-        coef_frozen: list
-            Coefficients in terms of the end-smoothed mixed spherical Bessel basis
-            for the "frozen" orbitals that do not participate in the optimization.
-            coef_frozen[itype][l][zeta] is a list of floats that specifies an orbital.
-        frozen_frozen : list
-            A list of 2-tuples (np.ndarray, np.ndarray). Each pair corresponds to a
-            configuration; the arrays are the overlap and operator matrix elements
-            between the frozen orbitals.
-        mo_frozen: list
-            A list of 2-tuples (np.ndarray, np.ndarray). Each pair corresponds to a
-            configuration; the arrays are the overlap and operator matrix elements
-            between the MOs and frozen orbitals.
-        mo_frozen_dual : list of np.ndarray
-            Similar to mo_frozen, but the matrix elements are transformed to between
-            the MOs and the dual of frozen orbitals.
 
     '''
 
@@ -234,20 +213,22 @@ class Spillage:
         self.rcut = None
 
         self._reset_frozen()
-        self._reset_dV()
+        self._reset_deriv()
 
 
     def _reset_frozen(self):
-        self.coef_frozen = None
         self.spill_frozen = None
-        self.frozen_frozen = None
-        self.mo_frozen = None
-        self.mo_frozen_dual = None
+
+        self.mo_projfrozen_jy = None
+        self.mo_projfrozen_op_jy = None
 
     
-    def _reset_dV(self):
+    def _reset_deriv(self):
         self.dV = ()
         self.dV_op = ()
+
+        self.dao_jy = ()
+        self.dao_op_jy = ()
 
 
     def add_config(self, ovlp_dat, op_dat):
@@ -274,35 +255,34 @@ class Spillage:
         '''
         Tabulates quantities related to the frozen-orbitals, including
 
-        <frozen|frozen>         <frozen|op|frozen>
-        <mo|frozen>             <mo|op|frozen>
         <mo|frozen's dual>      
 
         '''
-        self.coef_frozen = coef_frozen
-
         frozen_frozen, frozen_op_frozen = zip(*[(
-            _ao_ao(coef_frozen, ovlp['jy_jy'], ovlp['mu2comp'], ovlp['rcut']),
-            _ao_ao(coef_frozen, op['jy_jy'], op['mu2comp'], op['rcut'])
+            _jy2ao(coef_frozen, ovlp['jy_jy'], ovlp['mu2comp'], ovlp['rcut']),
+            _jy2ao(coef_frozen, op['jy_jy'], op['mu2comp'], op['rcut'])
             ) for ovlp, op in self.config])
 
         mo_frozen, mo_op_frozen = zip(*[(
-            _mo_ao(coef_frozen, ovlp['mo_jy'], ovlp['mu2comp'], ovlp['rcut']),
-            _mo_ao(coef_frozen, op['mo_jy'], op['mu2comp'], op['rcut'])
+            _jy2ao((None, coef_frozen), ovlp['mo_jy'], ovlp['mu2comp'], ovlp['rcut']),
+            _jy2ao((None, coef_frozen), op['mo_jy'], op['mu2comp'], op['rcut'])
             ) for ovlp, op in self.config])
 
         mo_frozen_dual = [_mrdivide(X, S) for X, S in zip(mo_frozen, frozen_frozen)]
 
-        wks = [op['wk'] for _, op in self.config]
+        self.mo_projfrozen_jy, self.mo_projfrozen_op_jy = zip(*[(
+            X_dual @ _jy2ao((coef_frozen, None), ovlp['jy_jy'], ovlp['mu2comp'], ovlp['rcut']),
+            X_dual @ _jy2ao((coef_frozen, None), op['jy_jy'], op['mu2comp'], op['rcut'])
+            ) for X_dual, (ovlp, op) in zip(mo_frozen_dual, self.config)])
 
-        self.mo_frozen_dual = mo_frozen_dual
+        wks = [op['wk'] for _, op in self.config]
         self.spill_frozen = [_wsum_fro(wk, X_dual @ S_op, X_dual, rowwise=True)
                              - 2.0 * _wsum_fro(wk, X_dual, X_op, rowwise=True)
                              for wk, X_dual, X_op, S_op in
                              zip(wks, mo_frozen_dual, mo_op_frozen, frozen_op_frozen)]
 
 
-    def _tab_dV(self, coef):
+    def _tab_deriv(self, coef):
         '''
         Tabulates the derivatives of
 
@@ -311,8 +291,8 @@ class Spillage:
 
         or, if frozen orbitals are present, the derivatives of
 
-                <mo|(1-|frozen_dual><frozen|)|ao>
-                <mo|(1-|frozen_dual><frozen|)|op|ao>
+                <mo|( 1 - |frozen_dual><frozen| )|ao>
+                <mo|( 1 - |frozen_dual><frozen| )|op|ao>
 
         with respect to the coefficients.
 
@@ -322,56 +302,33 @@ class Spillage:
         The only useful information of coef is its nesting pattern.
         
         '''
-        pat = nestpat(coef) # nesting pattern
         sz = len(flatten(coef))
-        _c = np.eye(sz)
+        _c = [nest(ci.tolist(), nestpat(coef)) for ci in np.eye(sz)]
 
-        def _dV(op, X_dual): # here `op` could also take an ovlp
-            dV = np.array([_mo_ao(nest(ci.tolist(), pat), op['mo_jy'],
-                                  op['mu2comp'], op['rcut']) for ci in _c])
+        _dY = lambda op: \
+                np.array([_jy2ao((None, ci), op['mo_jy'], op['mu2comp'], op['rcut'])
+                          for ci in _c])
 
-            if self.coef_frozen is not None:
-                dV -= np.array([X_dual @ _ao_ao((self.coef_frozen, nest(ci.tolist(), pat)),
-                                                op['jy_jy'], op['mu2comp'], op['rcut'])
-                                for ci in _c])
-            return dV
+        _XdZ = lambda op, mo_projfrozen_op_jy: \
+                np.array([_jy2ao((None, ci), mo_projfrozen_op_jy,
+                                 op['mu2comp'], op['rcut']) for ci in _c])
 
-        self.dV, self.dV_op = zip(*[(_dV(ovlp, X_dual), _dV(op, X_dual)) \
-                for X_dual, (ovlp, op) in zip(self.mo_frozen_dual, self.config)])
+        dV = [(_dY(ovlp), _dY(op)) for ovlp, op in self.config]
+
+        if self.spill_frozen is not None:
+            dV = [(dY - _XdZ(ovlp, mo_projfrozen_jy), dY_op - _XdZ(op, mo_projfrozen_op_jy))
+                  for (dY, dY_op), (ovlp, op), mo_projfrozen_jy, mo_projfrozen_op_jy
+                  in zip(dV, self.config, self.mo_projfrozen_jy, self.mo_projfrozen_op_jy)]
+
+        self.dV, self.dV_op = zip(*dV)
 
 
-    def _overlap_spillage(self, iconf, coef, ibands):
-        '''
-        Standard spillage function (overlap spillage) and its gradient.
+        _dao_jy = lambda op: \
+                np.array([_jy2ao((ci, None), op['jy_jy'], op['mu2comp'], op['rcut'])
+                          for ci in _c])
 
-        Note
-        ----
-        This function is not supposed to be used in the optimization.
-        As a specific case of the generalized spillage (op = I), it
-        provides a cross-check for the implementation of the generalized
-        spillage.
-
-        '''
-        ovlp = self.config[iconf][0]
-        wk = ovlp['wk']
-
-        spill = (wk @ ovlp['mo_mo'][:, ibands]).real.sum()
-
-        W = _ao_ao(coef, ovlp['jy_jy'], ovlp['mu2comp'], ovlp['rcut'])
-        V = _mo_ao(coef, ovlp['mo_jy'], ovlp['mu2comp'], ovlp['rcut'], ibands)
-
-        if self.coef_frozen is not None:
-            X = _mo_ao(self.coef_frozen, ovlp['mo_jy'], ovlp['mu2comp'], ovlp['rcut'], ibands)
-            X_dual = self.mo_frozen_dual[iconf][:, ibands, :]
-            spill -= _wsum_fro(wk, X_dual, X)
-
-            V -= X_dual @ _ao_ao((self.coef_frozen, coef), ovlp['jy_jy'],
-                                 ovlp['mu2comp'], ovlp['rcut'])
-
-        V_dual = _mrdivide(V, W)
-        spill -= _wsum_fro(wk, V_dual, V)
-
-        return spill / len(ibands)
+        self.dao_jy, self.dao_op_jy = zip(*[(_dao_jy(ovlp), _dao_jy(op))
+                                            for (ovlp, op) in self.config])
 
 
     def _generalize_spillage(self, iconf, coef, ibands, with_grad=False):
@@ -380,61 +337,52 @@ class Spillage:
 
         '''
         ovlp, op = self.config[iconf]
-        wk = op['wk']
 
-        spill = (wk @ op['mo_mo'][:, ibands]).real.sum()
+        spill = (op['wk'] @ op['mo_mo'][:,ibands]).real.sum()
 
-        V = _mo_ao(coef, ovlp['mo_jy'], ovlp['mu2comp'], ovlp['rcut'], ibands)
-        V_op = _mo_ao(coef, op['mo_jy'], op['mu2comp'], op['rcut'], ibands)
+        V = _jy2ao((None, coef), ovlp['mo_jy'][:,ibands,:], ovlp['mu2comp'], ovlp['rcut'])
+        V_op = _jy2ao((None, coef), op['mo_jy'][:,ibands,:], op['mu2comp'], op['rcut'])
 
-        if self.coef_frozen is not None:
+        if self.spill_frozen is not None:
             spill += self.spill_frozen[iconf][ibands].sum()
 
-            X_dual = self.mo_frozen_dual[iconf][:, ibands, :]
+            V -= _jy2ao((None, coef), self.mo_projfrozen_jy[iconf][:,ibands,:],
+                        ovlp['mu2comp'], ovlp['rcut'])
+            V_op -= _jy2ao((None, coef), self.mo_projfrozen_op_jy[iconf][:,ibands,:],
+                           op['mu2comp'], op['rcut'])
 
-            # TODO the left half of the _ao_ao below might be tabulated,
-            # thereby reducing to an mo_ao calculation
-            V -= X_dual @ _ao_ao((self.coef_frozen, coef),
-                                 ovlp['jy_jy'], ovlp['mu2comp'], ovlp['rcut'])
-            V_op -= X_dual @ _ao_ao((self.coef_frozen, coef),
-                                    op['jy_jy'], op['mu2comp'], op['rcut'])
-
-        W = _ao_ao(coef, ovlp['jy_jy'], ovlp['mu2comp'], ovlp['rcut'])
-        W_op = _ao_ao(coef, op['jy_jy'], op['mu2comp'], op['rcut'])
+        W = _jy2ao(coef, ovlp['jy_jy'], ovlp['mu2comp'], ovlp['rcut'])
+        W_op = _jy2ao(coef, op['jy_jy'], op['mu2comp'], op['rcut'])
 
         V_dual = _mrdivide(V, W)
-        spill += _wsum_fro(wk, V_dual @ W_op, V_dual) - 2.0 * _wsum_fro(wk, V_dual, V_op)
+        spill += _wsum_fro(op['wk'], V_dual @ W_op, V_dual) \
+                - 2.0 * _wsum_fro(op['wk'], V_dual, V_op)
 
         spill /= len(ibands)
 
         if with_grad:
-            pattern = nestpat(coef) # nesting pattern
             sz = len(flatten(coef))
             spill_grad = np.zeros(sz)
-            _c = np.eye(sz)
 
             for i in range(sz):
-                dV = self.dV[iconf][i][:,ibands,:]
-                dV_op = self.dV_op[iconf][i][:,ibands,:]
-
-                coef_d = nest(_c[i].tolist(), pattern)
-
-                # TODO the left half of the _ao_ao below might be tabulated,
-                # thereby reducing to an mo_ao calculation and completely get
-                # rid of the meaningless coef_d
-                dW = _ao_ao((coef_d, coef), ovlp['jy_jy'], ovlp['mu2comp'], ovlp['rcut'])
+                # (d/dcoef[i])<ao|ao>
+                dW = _jy2ao((None, coef), self.dao_jy[iconf][i],
+                            ovlp['mu2comp'], ovlp['rcut'])
                 dW += dW.transpose((0,2,1)).conj()
 
-                dW_op = _ao_ao((coef_d, coef), op['jy_jy'], op['mu2comp'], op['rcut'])
+                # (d/dcoef[i])<ao|op|ao>
+                dW_op = _jy2ao((None, coef), self.dao_op_jy[iconf][i],
+                               ovlp['mu2comp'], ovlp['rcut'])
                 dW_op += dW_op.transpose((0,2,1)).conj()
 
-                spill_grad[i] = _wsum_fro(wk, V_dual @ dW_op, V_dual) \
-                        - 2.0 * _wsum_fro(wk, V_dual, dV_op) \
-                        + 2.0 * _wsum_fro(wk, _mrdivide(dV - V_dual @ dW, W),
-                                              V_dual @ W_op - V_op)
-            
+                spill_grad[i] = _wsum_fro(op['wk'], V_dual @ dW_op, V_dual) \
+                        - 2.0 * _wsum_fro(op['wk'], V_dual, self.dV_op[iconf][i][:,ibands,:]) \
+                        + 2.0 * _wsum_fro(op['wk'], _mrdivide(self.dV[iconf][i][:,ibands,:]
+                                                              - V_dual @ dW, W),
+                                          V_dual @ W_op - V_op)
+
             spill_grad /= len(ibands)
-            spill_grad = nest(spill_grad.tolist(), pattern)
+            spill_grad = nest(spill_grad.tolist(), nestpat(coef))
 
         return (spill, spill_grad) if with_grad else spill
 
@@ -443,15 +391,6 @@ class Spillage:
         '''
         '''
         pass
-
-
-
-
-
-
-
-
-
 
 
 ############################################################
@@ -529,7 +468,7 @@ class _TestSpillage(unittest.TestCase):
                     jl_reduce(l, nbes, rcut) @ np.array(coef[itype][l]).T))
 
 
-    def test_ao_ao(self):
+    def test_jy2ao(self):
         ovlp = read_orb_mat('./testfiles/orb_matrix_rcut6deriv0.dat')
 
         # 2s2p1d
@@ -540,40 +479,19 @@ class _TestSpillage(unittest.TestCase):
         nao = sum(len(coef_tl) * (2*l+1) * ovlp['natom'][it]
                   for it, coef_t in enumerate(coef) for l, coef_tl in enumerate(coef_t))
 
-        S = _ao_ao(coef, ovlp['jy_jy'], ovlp['mu2comp'], ovlp['rcut'])
+        S = _jy2ao(coef, ovlp['jy_jy'], ovlp['mu2comp'], ovlp['rcut'])
         self.assertEqual(S.shape, (ovlp['nk'], nao, nao))
 
         # overlap matrix should be hermitian
         for Sk in S:
             self.assertLess(np.linalg.norm(Sk-Sk.T.conj(), np.inf), 1e-12)
 
-        # check one-sided transformation
-        njy = ovlp['jy_jy'][0,0,0].size
+        # ensure one-sided transformations do not alter the shape of the other side
+        tmp = _jy2ao((coef, None), ovlp['jy_jy'], ovlp['mu2comp'], ovlp['rcut'])
+        self.assertEqual((ovlp['nk'], nao, ovlp['jy_jy'].shape[2]), tmp.shape)
 
-        tmp = _ao_ao((coef, None), ovlp['jy_jy'], ovlp['mu2comp'], ovlp['rcut'])
-        self.assertEqual(tmp.shape, (ovlp['nk'], nao, njy))
-
-        tmp = _ao_ao((None, coef), ovlp['jy_jy'], ovlp['mu2comp'], ovlp['rcut'])
-        self.assertEqual(tmp.shape, (ovlp['nk'], njy, nao))
-
-
-    def test_mo_ao(self):
-        ovlp = read_orb_mat('./testfiles/orb_matrix_rcut6deriv0.dat')
-
-        # 2s2p1d
-        coef = [[np.eye(2, ovlp['nbes']-1).tolist(),
-                 np.eye(2, ovlp['nbes']-1).tolist(),
-                 np.eye(1, ovlp['nbes']-1).tolist()]]
-
-        nao = sum(len(coef_tl) * (2*l+1) * ovlp['natom'][it]
-                  for it, coef_t in enumerate(coef) for l, coef_tl in enumerate(coef_t))
-
-        ibands = range(1, 4)
-        X = _mo_ao(coef, ovlp['mo_jy'], ovlp['mu2comp'], ovlp['rcut'], ibands)
-        self.assertEqual(X.shape, (ovlp['nk'], len(ibands), nao))
-
-        X = _mo_ao(coef, ovlp['mo_jy'], ovlp['mu2comp'], ovlp['rcut'])
-        self.assertEqual(X.shape, (ovlp['nk'], ovlp['nbands'], nao))
+        tmp = _jy2ao((None, coef), ovlp['jy_jy'], ovlp['mu2comp'], ovlp['rcut'])
+        self.assertEqual((ovlp['nk'], ovlp['jy_jy'].shape[1], nao), tmp.shape)
 
 
     def test_add_config(self):
@@ -602,7 +520,6 @@ class _TestSpillage(unittest.TestCase):
         self.assertEqual(len(orbgen.config), 1)
         self.assertDictEqual(orbgen.config[0][0], mat)
         self.assertDictEqual(orbgen.config[0][1], dmat)
-
 
 
     def test_tab_frozen(self):
@@ -644,7 +561,7 @@ class _TestSpillage(unittest.TestCase):
                 np.random.randn(1, mat['nbes']-1).tolist()]]
 
         orbgen._tab_frozen(coef_frozen)
-        orbgen._tab_dV(coef)
+        orbgen._tab_deriv(coef)
 
         dc = 1e-6
         coef_p = deepcopy(coef)
@@ -669,8 +586,9 @@ class _TestSpillage(unittest.TestCase):
         orbgen.reset()
         orbgen.add_config(mat, mat)
         orbgen._tab_frozen(coef_frozen)
+        spill_ref = _overlap_spillage(mat, coef, ibands, coef_frozen)
         spill = orbgen._generalize_spillage(0, coef, ibands, False)
-        spill_ref = orbgen._overlap_spillage(0, coef, ibands)
+
         print('spill ref = ', spill_ref)
         print('spill     = ', spill)
 
