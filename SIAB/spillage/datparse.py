@@ -62,11 +62,12 @@ def read_orb_mat(fpath):
         mo_mo : np.ndarray
             Overlap between MOs.
             Shape: (nk, nbands)
-        comp2mu, mu2comp : dict
-            Bijective index map (itype, iatom, l, zeta, m) <-> mu.
-            comp2mu: (itype, iatom, l, zeta, m) -> mu
-            mu2comp: mu -> (itype, iatom, l, zeta, m)
-            zeta is always 0 in the present code.
+        comp2lin, lin2comp : dict
+            Bijective index map between the composite and the
+            lineaerized index.
+            comp2lin: (itype, iatom, l, zeta, m) -> mu
+            lin2comp: mu -> (itype, iatom, l, zeta, m)
+            NOTE: zeta is always 0 in the present code.
 
     Notes
     -----
@@ -115,10 +116,10 @@ def read_orb_mat(fpath):
     wk = kinfo[:, 3]
 
     ####################################################################
-    #       bijective index map (itype, iatom, l, zeta, m) <-> mu
+    #   bijective map between the composite and linearized index
     ####################################################################
-    comp2mu, mu2comp = _index_map(ntype, natom, lmax)
-    nao = len(comp2mu)
+    comp2lin, lin2comp = _index_map(ntype, natom, lmax)
+    nao = len(comp2lin)
 
     ####################################################################
     #                           MO-jY overlap
@@ -193,7 +194,7 @@ def read_orb_mat(fpath):
             'ecutjlq': ecutjlq, 'rcut': rcut, 'lmax': lmax, 'nk': nk, \
             'nbands': nbands, 'nbes': nbes, 'kpt': kpt, 'wk': wk, \
             'jy_jy': jy_jy, 'mo_jy': mo_jy, 'mo_mo': mo_mo, \
-            'comp2mu': comp2mu, 'mu2comp': mu2comp}
+            'comp2lin': comp2lin, 'lin2comp': lin2comp}
 
 
 def _assert_consistency(dat1, dat2):
@@ -201,7 +202,7 @@ def _assert_consistency(dat1, dat2):
     Check if two dat files corresponds to the same system.
 
     '''
-    assert dat1['mu2comp'] == dat2['mu2comp'] and \
+    assert dat1['lin2comp'] == dat2['lin2comp'] and \
             dat1['rcut'] == dat2['rcut'] and \
             np.all(dat1['wk'] == dat2['wk']) and \
             np.all(dat1['kpt'] == dat2['kpt'])
