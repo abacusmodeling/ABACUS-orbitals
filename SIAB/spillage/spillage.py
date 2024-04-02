@@ -43,23 +43,23 @@ def _sum_fro(w, A, B, return_real=True, rowwise=False):
     '''
     tmp = w.reshape(w.size, 1, 1) * A * B.conj()
     tmp = tmp.real if return_real else tmp
-    return tmp.sum((0,2) if rowwise else None)
+    return tmp.sum((-3,-1) if rowwise else (-3,-2,-1))
 
 
-def _q2zeta(coef, lin2comp, nbes, rcut, use_sparse=False):
+def _jy2ao(coef, lin2comp, nbes, rcut):
     '''
     Basis transformation matrix from the truncated spherical Bessel
     function to the pseudo-atomic orbital.
 
-    This generator is used to build up the transformation matrix from
-    some jY ([spherical Bessel] x [spherical harmonics]) basis arranged
-    in the lexicographic order of (itype, iatom, l, m, q) (q being the
-    index for spherical Bessel functions) to some pseudo-atomic orbital
-    basis arranged in the lexicographic order of (itype, iatom, l, m, zeta).
+    This function constructs the transformation matrix from some jY
+    ([spherical Bessel] x [spherical harmonics]) basis arranged in the
+    lexicographic order of (itype, iatom, l, m, q) (q being the index
+    for spherical Bessel functions) to some pseudo-atomic orbital basis
+    arranged in the lexicographic order of (itype, iatom, l, m, zeta).
 
     Given "lin2comp" that provides the linear-to-composite index map for
-    (itype, iatom, l, m), the entire transformation matrix will block diagonal,
-    with each block corresponding to a specific q->zeta.
+    (itype, iatom, l, m), the entire transformation matrix is a block
+    diagonal matrix, with each block corresponding to a specific q->zeta.
 
 
     Parameters
@@ -91,7 +91,6 @@ def _q2zeta(coef, lin2comp, nbes, rcut, use_sparse=False):
 
     '''
     from scipy.linalg import block_diag
-    from scipy.sparse import block_diag as sp_block_diag
 
     def _gen_q2zeta(coef, lin2comp, nbes, rcut):
         if coef is None:
@@ -110,11 +109,11 @@ def _q2zeta(coef, lin2comp, nbes, rcut, use_sparse=False):
                 C[:len(coef[itype][l][0])] = np.array(coef[itype][l]).T
                 yield JL_REDUCE[rcut][l][:nbes,:nbes-1] @ C
 
-    return sp_block_diag(_gen_q2zeta(coef, lin2comp, nbes, rcut)) if use_sparse \
-            else block_diag(*_gen_q2zeta(coef, lin2comp, nbes, rcut))
+    return block_diag(*_gen_q2zeta(coef, lin2comp, nbes, rcut))
 
-
-def _jy2ao(coef, arr, lin2comp, rcut):
+# TODO should get rid of this function
+# and use the one above instead
+def _obsolete(coef, arr, lin2comp, rcut):
     '''
     Basis transformation from jY to pseudo-atomic orbitals.
 
@@ -160,25 +159,20 @@ def _jy2ao(coef, arr, lin2comp, rcut):
     in datparse.py takes care of these operations.
 
     '''
-    use_sparse = False
-    it_works = (len(arr.shape) == 2 or not use_sparse) # whether '@' works
-
     if isinstance(coef, list):
-        nbes = arr.shape[1] // len(lin2comp)
-        M = _q2zeta(coef, lin2comp, nbes, rcut, use_sparse)
-        arr = M.T @ arr @ M if it_works else np.array([M.T @ m @ M for m in arr])
+        nbes = arr.shape[-1] // len(lin2comp)
+        M = _jy2ao(coef, lin2comp, nbes, rcut)
+        arr = M.T @ arr @ M
     else:
         coef_bra, coef_ket = coef
 
         if coef_bra is not None:
-            nbes = arr.shape[1] // len(lin2comp)
-            M = _q2zeta(coef_bra, lin2comp, nbes, rcut, use_sparse).T
-            arr = M @ arr if it_works else np.array([M @ m for m in arr])
+            nbes = arr.shape[-2] // len(lin2comp)
+            arr = _jy2ao(coef_bra, lin2comp, nbes, rcut).T @ arr
 
         if coef_ket is not None:
-            nbes = arr.shape[2] // len(lin2comp)
-            M = _q2zeta(coef_ket, lin2comp, nbes, rcut, use_sparse)
-            arr = arr @ M if it_works else np.array([m @ M for m in arr])
+            nbes = arr.shape[-1] // len(lin2comp)
+            arr = arr @ _jy2ao(coef_ket, lin2comp, nbes, rcut)
 
     return arr
 
@@ -194,22 +188,24 @@ def _overlap_spillage(ovlp, coef, ibands, coef_frozen=None):
     as a cross-check for the implementation of the generalized spillage.
 
     '''
-    spill = (ovlp['wk'] @ ovlp['mo_mo'][:, ibands]).real.sum()
+    spill = (ovlp['wk'] @ ovlp['mo_mo'][:,ibands]).real.sum()
 
-    mo_jy = ovlp['mo_jy'][:, ibands, :]
+    mo_jy = ovlp['mo_jy'][:,ibands,:]
+    jy2ao = _jy2ao(coef, ovlp['lin2comp'], ovlp['nbes'], ovlp['rcut'])
 
-    V = _jy2ao((None, coef), mo_jy, ovlp['lin2comp'], ovlp['rcut'])
-    W = _jy2ao(coef, ovlp['jy_jy'], ovlp['lin2comp'], ovlp['rcut'])
+    V = mo_jy @ jy2ao
+    W = jy2ao.T @ ovlp['jy_jy'] @ jy2ao
 
     if coef_frozen is not None:
-        X = _jy2ao((None, coef_frozen), mo_jy, ovlp['lin2comp'], ovlp['rcut'])
-        S = _jy2ao(coef_frozen, ovlp['jy_jy'], ovlp['lin2comp'], ovlp['rcut'])
+        jy2frozen = _jy2ao(coef_frozen, ovlp['lin2comp'], ovlp['nbes'], ovlp['rcut'])
+
+        X = mo_jy @ jy2frozen
+        S = jy2frozen.T @ ovlp['jy_jy'] @ jy2frozen
 
         X_dual = _mrdiv(X, S)
         spill -= _sum_fro(ovlp['wk'], X_dual, X)
 
-        V -= X_dual @ _jy2ao((coef_frozen, coef), ovlp['jy_jy'],
-                             ovlp['lin2comp'], ovlp['rcut'])
+        V -= X_dual @ jy2frozen.T @ ovlp['jy_jy'] @ jy2ao
 
     spill -= _sum_fro(ovlp['wk'], _mrdiv(V, W), V)
 
@@ -283,20 +279,22 @@ class Spillage:
         for each configuration.
 
         '''
+        jy2frozen_all = [_jy2ao(coef_frozen, ox['lin2comp'], ox['nbes'], ox['rcut'])
+                         for ox,_ in self.config]
+
         frozen_frozen, frozen_op_frozen = zip(*[
-            [_jy2ao(coef_frozen, op['jy_jy'], op['lin2comp'], op['rcut'])
-             for op in dat] for dat in self.config])
+            [jy2frozen.T @ ox['jy_jy'] @ jy2frozen for ox in dat]
+            for dat, jy2frozen in zip(self.config, jy2frozen_all)])
 
         mo_frozen, mo_op_frozen = zip(*[
-            [_jy2ao((None, coef_frozen), op['mo_jy'], op['lin2comp'], op['rcut'])
-             for op in dat] for dat in self.config])
+            [ox['mo_jy'] @ jy2frozen for ox in dat]
+            for dat, jy2frozen in zip(self.config, jy2frozen_all)])
 
         mo_frozen_dual = [_mrdiv(X, S) for X, S in zip(mo_frozen, frozen_frozen)]
 
-        self.M = [[
-            X_dual @ _jy2ao((coef_frozen, None), op['jy_jy'], op['lin2comp'], op['rcut'])
-            for op in dat # loop ov & op
-            ] for X_dual, dat in zip(mo_frozen_dual, self.config)] # loop config
+        self.M = [[X_dual @ jy2frozen.T @ ox['jy_jy'] for ox in dat]
+                  for X_dual, dat, jy2frozen in \
+                          zip(mo_frozen_dual, self.config, jy2frozen_all)]
 
         wks = [op['wk'] for _, op in self.config]
         self.spill_frozen = [_sum_fro(wk, X_dual @ S_op, X_dual, rowwise=True)
@@ -334,22 +332,22 @@ class Spillage:
         _c = [nest(ci.tolist(), nestpat(coef)) for ci in np.eye(sz)]
 
         # Part-1: derivatives of <mo|ao> and <mo|op|ao>
-        self.dV = np.array([[[_jy2ao((None, ci), op['mo_jy'], op['lin2comp'], op['rcut'])
-                              for ci in _c] # loop coef
-                             for op in dat] # loop ov & op
-                            for dat in self.config]) # loop config
+        self.dV = [[np.array([_obsolete((None, ci), ox['mo_jy'], ox['lin2comp'], ox['rcut'])
+                              for ci in _c]) # loop coef
+                    for ox in dat] # loop ov & op
+                   for dat in self.config] # loop config
 
         # if frozen orbitals are present, subtract from the previous results
         # <mo|frozen_dual><frozen|ao> and <mo|frozen_dual><frozen|op|ao>
         if self.spill_frozen is not None:
-            self.dV -= np.array([[[_jy2ao((None, ci), M, op['lin2comp'], op['rcut'])
-                                   for ci in _c] # loop coef
-                                  for op, M in zip(dat, M_)] # loop ov & op
-                                 for dat, M_ in zip(self.config, self.M)]) # loop config
+            self.dV = [[dV_ox - np.array([_obsolete((None, ci), M_ox, ox['lin2comp'], ox['rcut'])
+                                          for ci in _c]) # loop coef
+                        for dV_ox, ox, M_ox in zip(dV, dat, M)] # loop ov & op
+                       for dV, dat, M in zip(self.dV, self.config, self.M)] # loop config
 
         # Part-2: derivatives of <ao|jy>
-        self.dJ = [[np.array([_jy2ao((ci, None), op['jy_jy'], op['lin2comp'], op['rcut'])
-                              for ci in _c]) for op in dat] for dat in self.config]
+        self.dJ = [[np.array([_obsolete((ci, None), ox['jy_jy'], ox['lin2comp'], ox['rcut'])
+                              for ci in _c]) for ox in dat] for dat in self.config]
 
 
     def _generalize_spillage(self, iconf, coef, ibands, with_grad=False):
@@ -362,8 +360,8 @@ class Spillage:
         spill = (op['wk'] @ op['mo_mo'][:,ibands]).real.sum()
 
         # <mo|ao> and <mo|op|ao>
-        V_ov = _jy2ao((None, coef), ov['mo_jy'][:,ibands,:], ov['lin2comp'], ov['rcut'])
-        V_op = _jy2ao((None, coef), op['mo_jy'][:,ibands,:], op['lin2comp'], op['rcut'])
+        V_ov = _obsolete((None, coef), ov['mo_jy'][:,ibands,:], ov['lin2comp'], ov['rcut'])
+        V_op = _obsolete((None, coef), op['mo_jy'][:,ibands,:], op['lin2comp'], op['rcut'])
 
         if self.spill_frozen is not None:
             spill += self.spill_frozen[iconf][ibands].sum()
@@ -373,14 +371,15 @@ class Spillage:
 
             # if frozen orbitals are present, subtract from the previous V
             # <mo|frozen_dual><frozen|ao> and <mo|frozen_dual><frozen|op|ao> respectively
-            V_ov -= _jy2ao((None, coef), M_ov[:,ibands,:], ov['lin2comp'], ov['rcut'])
-            V_op -= _jy2ao((None, coef), M_op[:,ibands,:], op['lin2comp'], op['rcut'])
+            V_ov -= _obsolete((None, coef), M_ov[:,ibands,:], ov['lin2comp'], ov['rcut'])
+            V_op -= _obsolete((None, coef), M_op[:,ibands,:], op['lin2comp'], op['rcut'])
 
         # <ao|ao> and <ao|op|ao>
-        W_ov = _jy2ao(coef, ov['jy_jy'], ov['lin2comp'], ov['rcut'])
-        W_op = _jy2ao(coef, op['jy_jy'], op['lin2comp'], op['rcut'])
+        W_ov = _obsolete(coef, ov['jy_jy'], ov['lin2comp'], ov['rcut'])
+        W_op = _obsolete(coef, op['jy_jy'], op['lin2comp'], op['rcut'])
 
         V_ov_dual = _mrdiv(V_ov, W_ov)
+        VV = V_ov_dual.transpose((0,2,1)).conj() @ V_ov_dual
 
         spill += _sum_fro(op['wk'], V_ov_dual @ W_op, V_ov_dual) \
                 - 2.0 * _sum_fro(op['wk'], V_ov_dual, V_op)
@@ -389,24 +388,19 @@ class Spillage:
         if with_grad:
             dJ_ov, dJ_op = self.dJ[iconf]
 
-            sz = len(flatten(coef))
-            spill_grad = np.zeros(sz)
+            j2zeta = _jy2ao(coef, ov['lin2comp'], ov['nbes'], ov['rcut'])
+            dW_ov = dJ_ov @ j2zeta
+            dW_op = dJ_op @ j2zeta
+            dW_ov += dW_ov.transpose((0,1,3,2)).conj()
+            dW_op += dW_op.transpose((0,1,3,2)).conj()
 
-            for i in range(sz):
-                # (d/dcoef[i])<ao|ao> and (d/dcoef[i])<ao|op|ao>
-                dW_ov = _jy2ao((None, coef), dJ_ov[i], ov['lin2comp'], ov['rcut'])
-                dW_ov += dW_ov.transpose((0,2,1)).conj()
+            dV_ov = self.dV[iconf][0][:,:,ibands,:]
+            dV_op = self.dV[iconf][1][:,:,ibands,:]
 
-                dW_op = _jy2ao((None, coef), dJ_op[i], op['lin2comp'], op['rcut'])
-                dW_op += dW_op.transpose((0,2,1)).conj()
-
-                # (d/dcoef[i])V_ov and (d/dcoef[i])V_op
-                dV_ov = self.dV[iconf][0][i][:,ibands,:]
-                dV_op = self.dV[iconf][1][i][:,ibands,:]
-                spill_grad[i] = _sum_fro(op['wk'], V_ov_dual @ dW_op, V_ov_dual) \
-                        - 2.0 * _sum_fro(op['wk'], V_ov_dual, dV_op) \
-                        + 2.0 * _sum_fro(op['wk'], _mrdiv(dV_ov - V_ov_dual @ dW_ov, W_ov),
-                                         V_ov_dual @ W_op - V_op)
+            spill_grad = _sum_fro(op['wk'], dW_op, VV) \
+                 - 2.0 * _sum_fro(op['wk'], V_ov_dual, dV_op) \
+                 + 2.0 * _sum_fro(op['wk'], dV_ov - V_ov_dual @ dW_ov,
+                                  _mrdiv(V_ov_dual @ W_op - V_op, W_ov))
 
             spill_grad /= len(ibands)
             spill_grad = nest(spill_grad.tolist(), nestpat(coef))
@@ -415,26 +409,30 @@ class Spillage:
 
 
 
-    def opt(self, coef0, coef_frozen, ibands):
+    def opt(self, coef_init, coef_frozen, ibands):
         '''
         '''
-        self._tab_frozen
-        self._tab_deriv
+        self._tab_frozen(coef_frozen)
+        self._tab_deriv(coef_init)
 
-        pat = nestpat(coef0)
+        pat = nestpat(coef_init)
+        nconf = len(self.config)
 
         def f(c):
-            sp, spgrad = self._generalize_spillage(0, nest(c.tolist(), pat), ibands, True)
-            return (sp, flatten(spgrad))
+            spill, spill_grad = zip(*[
+                self._generalize_spillage(iconf, nest(c.tolist(), pat), ibands, True)
+                for iconf in range(nconf)])
+            return (sum(spill) / nconf,
+                    sum(np.array(flatten(g)) for g in spill_grad) / nconf)
 
-        def _callback(c):
-            spill = self._generalize_spillage(0, nest(c.tolist(), pat), ibands, False)
-            print('spill = ', spill)
+        options = {'maxiter': 1000, 'disp': True}
 
-        options = {'maxiter': 10000, 'disp': True}
+        c0 = flatten(coef_init)
+        bounds = [(-1.0, 1.0) for _ in c0]
 
-        res = minimize(f, flatten(coef0), jac=True, method='L-BFGS-B', options=options)
+        res = minimize(f, c0, jac=True, method='L-BFGS-B', bounds=bounds, options=options)
         coef_opt = nest(res.x.tolist(), pat)
+        print(coef_opt)
 
         coef_opt = [[[np.array(coef_tlz) / np.linalg.norm(np.array(coef_tlz))
                       for coef_tlz in coef_tl] for coef_tl in coef_t] for coef_t in coef_opt]
@@ -475,8 +473,8 @@ class _TestSpillage(unittest.TestCase):
         nrow = 3
         ncol = 4
         w = np.random.rand(nk)
-        X = np.random.randn(nk, nrow, ncol)
-        Y = np.random.randn(nk, nrow, ncol)
+        X = np.random.randn(nk, nrow, ncol) + 1j * np.random.randn(nk, nrow, ncol)
+        Y = np.random.randn(nk, nrow, ncol) + 1j * np.random.randn(nk, nrow, ncol)
 
         wsum = 0.0
         for wk, Xk, Yk in zip(w, X, Y):
@@ -485,7 +483,7 @@ class _TestSpillage(unittest.TestCase):
         self.assertAlmostEqual(_sum_fro(w, X, Y, False), wsum)
         self.assertAlmostEqual(_sum_fro(w, X, Y, True), wsum.real)
 
-        wsum = np.zeros(nrow)
+        wsum = np.zeros(nrow, dtype=complex)
         for i in range(nrow):
             for k in range(nk):
                 wsum[i] += w[k] * (X[k,i] @ Y[k,i].T.conj())
@@ -494,7 +492,7 @@ class _TestSpillage(unittest.TestCase):
         self.assertTrue( np.allclose(_sum_fro(w, X, Y, True, True), wsum.real) )
 
 
-    def test_q2zeta(self):
+    def test_jy2ao(self):
         ntype = 3
         natom = [1, 2, 3]
         lmax = [2, 1, 0]
@@ -512,7 +510,7 @@ class _TestSpillage(unittest.TestCase):
                   for l in range(lmax[itype]+1)]
                 for itype in range(ntype) ]
 
-        M = _q2zeta(coef, lin2comp, nbes, rcut)
+        M = _jy2ao(coef, lin2comp, nbes, rcut)
 
         icol = 0
         for mu, (itype, iatom, l, _, m) in lin2comp.items():
@@ -523,7 +521,7 @@ class _TestSpillage(unittest.TestCase):
             icol += nzeta
 
 
-    def test_jy2ao(self):
+    def test_obsolete(self):
         ovlp = read_orb_mat('./testfiles/orb_matrix_rcut6deriv0.dat')
 
         # 2s2p1d
@@ -534,7 +532,7 @@ class _TestSpillage(unittest.TestCase):
         nao = sum(len(coef_tl) * (2*l+1) * ovlp['natom'][it]
                   for it, coef_t in enumerate(coef) for l, coef_tl in enumerate(coef_t))
 
-        S = _jy2ao(coef, ovlp['jy_jy'], ovlp['lin2comp'], ovlp['rcut'])
+        S = _obsolete(coef, ovlp['jy_jy'], ovlp['lin2comp'], ovlp['rcut'])
         self.assertEqual(S.shape, (ovlp['nk'], nao, nao))
 
         # overlap matrix should be hermitian
@@ -542,10 +540,10 @@ class _TestSpillage(unittest.TestCase):
             self.assertLess(np.linalg.norm(Sk-Sk.T.conj(), np.inf), 1e-12)
 
         # ensure one-sided transformations do not alter the shape of the other side
-        tmp = _jy2ao((coef, None), ovlp['jy_jy'], ovlp['lin2comp'], ovlp['rcut'])
+        tmp = _obsolete((coef, None), ovlp['jy_jy'], ovlp['lin2comp'], ovlp['rcut'])
         self.assertEqual((ovlp['nk'], nao, ovlp['jy_jy'].shape[2]), tmp.shape)
 
-        tmp = _jy2ao((None, coef), ovlp['jy_jy'], ovlp['lin2comp'], ovlp['rcut'])
+        tmp = _obsolete((None, coef), ovlp['jy_jy'], ovlp['lin2comp'], ovlp['rcut'])
         self.assertEqual((ovlp['nk'], ovlp['jy_jy'].shape[1], nao), tmp.shape)
 
 
@@ -554,8 +552,8 @@ class _TestSpillage(unittest.TestCase):
 
         folder = '/home/zuxin/abacus-community/abacus_orbital_generation/tmp/Si-dimer-2.0/'
 
-        mat = read_orb_mat(folder + 'orb_matrix_rcut6deriv0.dat')
-        dmat = read_orb_mat(folder + 'orb_matrix_rcut6deriv1.dat')
+        mat = read_orb_mat(folder + 'orb_matrix.0.dat')
+        dmat = read_orb_mat(folder + 'orb_matrix.1.dat')
         rcut = mat['rcut']
 
         orbgen.add_config(mat, dmat)
@@ -566,8 +564,8 @@ class _TestSpillage(unittest.TestCase):
 
         orbgen.reset()
 
-        mat = read_orb_mat(folder + 'orb_matrix_rcut7deriv0.dat')
-        dmat = read_orb_mat(folder + 'orb_matrix_rcut7deriv1.dat')
+        mat = read_orb_mat(folder + 'orb_matrix.0.dat')
+        dmat = read_orb_mat(folder + 'orb_matrix.1.dat')
         rcut = mat['rcut']
 
         orbgen.add_config(mat, dmat)
@@ -582,8 +580,8 @@ class _TestSpillage(unittest.TestCase):
 
         folder = '/home/zuxin/abacus-community/abacus_orbital_generation/tmp/Si-dimer-2.0/'
 
-        mat = read_orb_mat(folder + 'orb_matrix_rcut6deriv0.dat')
-        dmat = read_orb_mat(folder + 'orb_matrix_rcut6deriv1.dat')
+        mat = read_orb_mat(folder + 'orb_matrix.0.dat')
+        dmat = read_orb_mat(folder + 'orb_matrix.1.dat')
 
         orbgen.add_config(mat, dmat)
         orbgen._tab_frozen([[np.eye(2, mat['nbes']-1).tolist() for l in range(3)]])
@@ -592,12 +590,18 @@ class _TestSpillage(unittest.TestCase):
     def test_spillage(self):
         orbgen = Spillage()
 
-        folder = '/home/zuxin/abacus-community/abacus_orbital_generation/tmp/Si-dimer-2.0/'
+        topdir = '/home/zuxin/abacus-community/abacus_orbital_generation/tmp/'
+        #confdir = ['Si-dimer-2.0', 'Si-dimer-2.2', 'Si-trimer-2.1', 'Si-trimer-2.3']
+        confdir = ['Si-dimer-2.0', 'Si-dimer-2.2']
 
-        mat = read_orb_mat(folder + 'orb_matrix_rcut6deriv0.dat')
-        dmat = read_orb_mat(folder + 'orb_matrix_rcut6deriv1.dat')
+        print('read to add config...')
 
-        orbgen.add_config(mat, dmat)
+        for conf in confdir:
+            folder = topdir + conf + '/'
+            mat = read_orb_mat(folder + 'orb_matrix.0.dat')
+            dmat = read_orb_mat(folder + 'orb_matrix.1.dat')
+            orbgen.add_config(mat, dmat)
+            print('config added: ', conf)
 
         coef = [[np.eye(2, mat['nbes']-1).tolist(), \
                 np.eye(2, mat['nbes']-1).tolist(), \
@@ -615,42 +619,49 @@ class _TestSpillage(unittest.TestCase):
                 np.random.randn(2, mat['nbes']-1).tolist(), \
                 np.random.randn(1, mat['nbes']-1).tolist()]]
 
+        print('tab frozen...')
         orbgen._tab_frozen(coef_frozen)
+
+        print('tab deriv...')
         orbgen._tab_deriv(coef)
 
         dc = 1e-6
         coef_p = deepcopy(coef)
         coef_p[0][0][0][3] += dc
-        spill_p = orbgen._generalize_spillage(0, coef_p, ibands, False)
+        spill_p = orbgen._generalize_spillage(1, coef_p, ibands, False)
 
         coef_m = deepcopy(coef)
         coef_m[0][0][0][3] -= dc
-        spill_m = orbgen._generalize_spillage(0, coef_m, ibands, False)
+        spill_m = orbgen._generalize_spillage(1, coef_m, ibands, False)
 
         dspill_fd = (spill_p - spill_m) / (2 * dc)
 
         print('')
         start = time.time()
-        dspill = orbgen._generalize_spillage(0, coef, ibands, True)[1]
+        dspill = orbgen._generalize_spillage(1, coef, ibands, True)[1]
         print('time = ', time.time() - start)
 
         print('dspill  ( analytic  ) = ', dspill[0][0][0][3])
         print('dspill  (finite diff) = ', dspill_fd)
 
-        coef0 = [[np.random.randn(2, mat['nbes']-1).tolist(),
-                  np.random.randn(2, mat['nbes']-1).tolist(),
-                  np.random.randn(1, mat['nbes']-1).tolist()]]
-        orbgen.opt(coef0, coef_frozen, range(8))
+        #coef0 = [[np.random.rand(2, mat['nbes']-1).tolist(),
+        #          np.random.rand(2, mat['nbes']-1).tolist(),
+        #          np.random.rand(1, mat['nbes']-1).tolist()]]
+        coef0 = [[np.eye(2, mat['nbes']-1).tolist(),
+                  np.eye(2, mat['nbes']-1).tolist(),
+                  np.eye(1, mat['nbes']-1).tolist()]]
+
+        orbgen.opt(coef0, coef_frozen, range(4))
 
 
-        orbgen.reset()
-        orbgen.add_config(mat, mat)
-        orbgen._tab_frozen(coef_frozen)
-        spill_ref = _overlap_spillage(mat, coef, ibands, coef_frozen)
-        spill = orbgen._generalize_spillage(0, coef, ibands, False)
+        #orbgen.reset()
+        #orbgen.add_config(mat, mat)
+        #orbgen._tab_frozen(coef_frozen)
+        #spill_ref = _overlap_spillage(mat, coef, ibands, coef_frozen)
+        #spill = orbgen._generalize_spillage(0, coef, ibands, False)
 
-        print('spill ref = ', spill_ref)
-        print('spill     = ', spill)
+        #print('spill ref = ', spill_ref)
+        #print('spill     = ', spill)
 
 
 
