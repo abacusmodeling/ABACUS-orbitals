@@ -5,17 +5,21 @@ from listmanip import flatten, nest, nestpat
 import numpy as np
 from scipy.optimize import minimize
 
-def _mrdiv(X, S):
+from copy import deepcopy
+import time
+
+def _mrdiv(X, Y):
     '''
     Right matrix division.
 
-    Given two 3-d arrays X and S, returns a 3-d array X_dual such that
+    Given two 3-d arrays X and Y, returns a 3-d array Z such that
 
-        X_dual[k] = X[k] @ inv(S[k])
+        Z[k] = X[k] @ inv(Y[k])
 
     '''
-    assert len(X.shape) == 3 and len(S.shape) == 3
-    return np.array([np.linalg.solve(Sk.T, Xk.T).T for Xk, Sk in zip(X, S)])
+    # TODO explore the possibility of using scipy.linalg.solve with assume_a='sym'
+    assert len(X.shape) == 3 and len(Y.shape) == 3
+    return np.array([np.linalg.solve(Yk.T, Xk.T).T for Xk, Yk in zip(X, Y)])
 
 
 def _rfrob(X, Y, rowwise=False):
@@ -42,18 +46,16 @@ def _rfrob(X, Y, rowwise=False):
 
 def _jy2ao(coef, lin2comp, nbes, rcut):
     '''
-    Basis transformation matrix from the truncated spherical Bessel
-    function to the pseudo-atomic orbital.
+    Basis transformation matrix from truncated spherical Bessel functions
+    to pseudo-atomic orbitals.
 
     This function constructs the transformation matrix from some jY
     ([spherical Bessel] x [spherical harmonics]) basis arranged in the
     lexicographic order of (itype, iatom, l, m, q) (q being the index
     for spherical Bessel functions) to some pseudo-atomic orbital basis
     arranged in the lexicographic order of (itype, iatom, l, m, zeta).
-
-    Given "lin2comp" that provides the linear-to-composite index map for
-    (itype, iatom, l, m), the entire transformation matrix is a block
-    diagonal matrix, with each block corresponding to a specific q->zeta.
+    The entire transformation matrix is block-diagonal, with each block
+    corresponding to a specific q->zeta.
 
 
     Parameters
@@ -87,16 +89,11 @@ def _jy2ao(coef, lin2comp, nbes, rcut):
     from scipy.linalg import block_diag
 
     def _gen_q2zeta(coef, lin2comp, nbes, rcut):
-        if coef is None:
-            return
-
         for mu in lin2comp:
             itype, _, l, _, _ = lin2comp[mu]
             if l >= len(coef[itype]) or len(coef[itype][l]) == 0:
-                # The yielded matrices will be diagonally concatenated
-                # by scipy.linalg.block_diag. Therefore, even if the
-                # coefficient is not provided, the generator should
-                # yield the zero matrix with the appropriate size
+                # The generator should yield a zero matrix with the
+                # appropriate size when no coefficient is provided.
                 yield np.zeros((nbes, 0))
             else:
                 C = np.zeros((nbes-1, len(coef[itype][l])))
@@ -141,6 +138,15 @@ def _overlap_spillage(ovlp, coef, ibands, coef_frozen=None):
     return spill / len(ibands)
 
 
+def _list_normalize(coef):
+    '''
+    Returns the normalized list of coefficients.
+
+    '''
+    c = np.array(coef)
+    return (c / np.linalg.norm(c)).tolist()
+
+
 class Spillage:
     '''
     Generalized spillage function and its optimization.
@@ -148,11 +154,30 @@ class Spillage:
     Attributes
     ----------
         config : list
-            A list of 2-tuples like (ovlp_dat, op_dat). Each pair corresponds
-            to a geometric configuration, where ovlp_dat and op_dat are data
-            read from orb_matrix_rcutXderiv0.dat and orb_matrix_rcutXderiv1.dat
-            (subject to minor changes, e.g., permutation of ndarrays).
-            NOTE: data files are subject to change in the future.
+            A list of dict. Each dict contains the data for a geometric
+            configuration, including both the overlap and operator matrix
+            elements.
+            The overlap and operator data are read from orb_matrix.0.dat
+            and orb_matrix.1.dat respectively. Before appending to config,
+            the two datasets are subject to a consistency check, after which
+            a new one consisting of the common part of overlap and operator
+            data plus the stacked matrix data are appended to config.
+            NOTE: this behavior may be subject to change in the future.
+        rcut : float
+            Cutoff radius. So far only one rcut is allowed throughout the
+            entire dataset.
+        spill_frozen : list
+            The band-wise spillage contribution from frozen orbitals.
+        mo_Pfrozen_jy : list
+            <mo|P_frozen|jy> and <mo|P_frozen op|jy> for each configuration,
+            where P_frozen is the projection operator onto the frozen subspace.
+        mo_Qfrozen_dao : list
+            The derivatives of <mo|Q_frozen|ao> and <mo|Q_frozen op|ao> w.r.t.
+            the coefficients for each configuration, where Q_frozen is the
+            projection operator onto the complement of the frozen subspace.
+        dao_jy : list
+            The derivatives of <ao|jy> and <ao|op|jy> w.r.t. the coefficients
+            for each configuration.
 
     '''
 
@@ -174,15 +199,20 @@ class Spillage:
 
 
     def _reset_deriv(self):
-        self.dV = []
+        self.mo_Qfrozen_dao = []
         self.dao_jy = []
 
 
     def add_config(self, ovlp_dat, op_dat):
         '''
         '''
+        # The overlap and operator data must be consistent except
+        # for their matrix data (mo_mo, mo_jy and jy_jy).
         _assert_consistency(ovlp_dat, op_dat)
 
+        # The dict to append to config is a new one consisting of
+        # the common part of ovlp & op data plus their stacked
+        # matrix data.
         dat = deepcopy(ovlp_dat)
         dat['mo_mo'] = np.array([ovlp_dat['mo_mo'], op_dat['mo_mo']])
         dat['mo_jy'] = np.array([ovlp_dat['mo_jy'], op_dat['mo_jy']])
@@ -247,7 +277,7 @@ class Spillage:
 
     def _tab_deriv(self, coef):
         '''
-        This function tabulates the derivatives of
+        Tabulates for each configuration the derivatives of
 
                                 <ao|jy>
                                 <ao|op|jy>
@@ -265,7 +295,8 @@ class Spillage:
 
         Note
         ----
-        The only useful information of coef is its nesting pattern.
+        The only useful information of coef is its nesting pattern, which
+        determines what derivatives to compute.
 
         '''
         # jy -> (d/dcoef)ao transformation matrices
@@ -280,18 +311,21 @@ class Spillage:
                        for dat, jy2dao in zip(self.config, jy2dao_all)]
 
         # derivatives of <mo|ao> and <mo|op|ao>
+        self.mo_Qfrozen_dao = [np.array([dat['mo_jy'] @ jy2dao_i for jy2dao_i in jy2dao])
+                               for dat, jy2dao in zip(self.config, jy2dao_all)]
         # at this stage, the index for each config follows [deriv][0/1][k][mo][ao]
-        self.dV = [np.array([dat['mo_jy'] @ jy2dao_i for jy2dao_i in jy2dao])
-                   for dat, jy2dao in zip(self.config, jy2dao_all)]
+        # where 0->overlap; 1->operator
 
         if self.spill_frozen is not None:
             # if frozen orbitals are present, subtract from the previous results
-            # <mo|frozen_dual><frozen|ao> and <mo|frozen_dual><frozen|op|ao>
-            self.dV = [dV - np.array([M @ jy2dao_i for jy2dao_i in jy2dao])
-                       for dV, M, jy2dao in zip(self.dV, self.mo_Pfrozen_jy, jy2dao_all)]
+            # <mo|P_frozen|ao> and <mo|P_frozen op|ao>
+            self.mo_Qfrozen_dao = [mo_Qfroz_dao -
+                                   np.array([mo_Pfroz_jy @ jy2dao_i for jy2dao_i in jy2dao])
+                                   for mo_Qfroz_dao, mo_Pfroz_jy, jy2dao in
+                                   zip(self.mo_Qfrozen_dao, self.mo_Pfrozen_jy, jy2dao_all)]
 
         # transpose to [0/1][deriv][k][mo][ao]
-        self.dV = [dV.transpose(1,0,2,3,4) for dV in self.dV]
+        self.mo_Qfrozen_dao = [dV.transpose(1,0,2,3,4) for dV in self.mo_Qfrozen_dao]
 
 
     def _generalize_spillage(self, iconf, coef, ibands, with_grad=False):
@@ -327,49 +361,58 @@ class Spillage:
             dW += dW.transpose((0,1,2,4,3)).conj()
 
             # (d/dcoef)<mo|Q_frozen|ao> and (d/dcoef)<mo|Q_frozen op|ao>
-            dV = self.dV[iconf][:,:,:,ibands,:]
+            dV = self.mo_Qfrozen_dao[iconf][:,:,:,ibands,:]
 
-            spill_grad = (_rfrob(dW[1], VdaggerV)
-                          - 2.0 * _rfrob(V_dual, dV[1])
-                          + 2.0 * _rfrob(dV[0] - V_dual @ dW[0],
-                                        _mrdiv(V_dual @ W[1] - V[1], W[0]))
-                          ) @ dat['wk']
+            grad = (_rfrob(dW[1], VdaggerV)
+                    - 2.0 * _rfrob(V_dual, dV[1])
+                    + 2.0 * _rfrob(dV[0] - V_dual @ dW[0],
+                                   _mrdiv(V_dual @ W[1] - V[1], W[0]))
+                    ) @ dat['wk']
 
-            spill_grad /= len(ibands)
-            spill_grad = nest(spill_grad.tolist(), nestpat(coef))
+            grad /= len(ibands)
+            grad = nest(grad.tolist(), nestpat(coef))
 
-        return (spill, spill_grad) if with_grad else spill
+        return (spill, grad) if with_grad else spill
 
 
-
-    def opt(self, coef_init, coef_frozen, ibands):
+    def opt(self, coef_init, coef_frozen, ibands, options, nthreads=1):
         '''
         '''
+        from multiprocessing.pool import ThreadPool
+        pool = ThreadPool(nthreads)
+
         self._tab_frozen(coef_frozen)
         self._tab_deriv(coef_init)
 
         pat = nestpat(coef_init)
         nconf = len(self.config)
 
+        ibands = [ibands] * nconf if not isinstance(ibands, list) else ibands
+        assert len(ibands) == nconf
+
+        # function to be minimized
         def f(c):
-            spill, spill_grad = zip(*[
-                self._generalize_spillage(iconf, nest(c.tolist(), pat), ibands, True)
-                for iconf in range(nconf)])
-            return (sum(spill) / nconf,
-                    sum(np.array(flatten(g)) for g in spill_grad) / nconf)
+            s = lambda i: self._generalize_spillage(i, nest(c.tolist(), pat), ibands[i], True)
+            spills, grads = zip(*pool.map(s, range(nconf)))
 
-        options = {'maxiter': 1000, 'disp': True}
+            return (sum(spills) / nconf,
+                    sum(np.array(flatten(g)) for g in grads) / nconf)
 
-        c0 = flatten(coef_init)
+        c0 = np.array(flatten(coef_init))
+
+        # Restricts the coefficients to [-1, 1] for better numerical stability
+        # FIXME Is this necessary?
         bounds = [(-1.0, 1.0) for _ in c0]
+        #bounds = None
 
-        res = minimize(f, c0, jac=True, method='L-BFGS-B', bounds=bounds, options=options)
+        res = minimize(f, c0, jac=True, method='L-BFGS-B',
+                       bounds=bounds, options=options)
+
+        pool.close()
+
         coef_opt = nest(res.x.tolist(), pat)
-        print(coef_opt)
-
-        coef_opt = [[[np.array(coef_tlz) / np.linalg.norm(np.array(coef_tlz))
-                      for coef_tlz in coef_tl] for coef_tl in coef_t] for coef_t in coef_opt]
-        print(coef_opt)
+        return [[[_list_normalize(coef_tlz) for coef_tlz in coef_tl]
+                 for coef_tl in coef_t] for coef_t in coef_opt]
 
 
 ############################################################
@@ -377,37 +420,39 @@ class Spillage:
 ############################################################
 import unittest
 
-from indexmap import _index_map
-
-import time
-from copy import deepcopy
-import matplotlib.pyplot as plt
-
 class _TestSpillage(unittest.TestCase):
 
+    def setUp(self):
+        self.orbgen = Spillage()
+        self.datadir = './testfiles/orb_matrix/'
+        self.config = ['Si-dimer-2.0', 'Si-dimer-2.2',
+                       'Si-trimer-2.1', 'Si-trimer-2.3',
+                       ]
+
     def test_mrdiv(self):
-        nk = 3
-        nbands = 5
-        nao = 6
+        n_slice = 3
+        m = 5
+        n = 6
 
-        # make each slice of S orthogonal to make it easier to verify
-        S = np.array([np.linalg.qr(np.random.randn(nao, nao))[0] for _ in range(nk)])
+        # make each slice of S unitary to make it easier to verify
+        Y = np.random.randn(n_slice, n, n) + 1j * np.random.randn(n_slice, n, n)
+        Y = np.linalg.qr(Y)[0]
 
-        X = np.random.randn(nk, nbands, nao)
-        X_dual = _mrdiv(X, S)
+        X = np.random.randn(n_slice, m, n) + 1j * np.random.randn(n_slice, m, n)
+        Z = _mrdiv(X, Y)
 
-        self.assertEqual(X_dual.shape, X.shape)
-        for i in range(nk):
-            self.assertTrue( np.allclose(X_dual[i], X[i] @ S[i].T) )
+        self.assertEqual(Z.shape, X.shape)
+        for i in range(n_slice):
+            self.assertTrue( np.allclose(Z[i], X[i] @ Y[i].T.conj()) )
 
 
     def test_rfrob(self):
-        nk = 5
-        nrow = 3
-        ncol = 4
-        w = np.random.rand(nk)
-        X = np.random.randn(nk, nrow, ncol) + 1j * np.random.randn(nk, nrow, ncol)
-        Y = np.random.randn(nk, nrow, ncol) + 1j * np.random.randn(nk, nrow, ncol)
+        n_slice = 5
+        m = 3
+        n = 4
+        w = np.random.randn(n_slice)
+        X = np.random.randn(n_slice, m, n) + 1j * np.random.randn(n_slice, m, n)
+        Y = np.random.randn(n_slice, m, n) + 1j * np.random.randn(n_slice, m, n)
 
         wsum = 0.0
         for wk, Xk, Yk in zip(w, X, Y):
@@ -415,15 +460,17 @@ class _TestSpillage(unittest.TestCase):
 
         self.assertAlmostEqual(w @ _rfrob(X, Y), wsum.real)
 
-        wsum = np.zeros(nrow, dtype=complex)
-        for i in range(nrow):
-            for k in range(nk):
+        wsum = np.zeros(m, dtype=complex)
+        for i in range(m):
+            for k in range(n_slice):
                 wsum[i] += w[k] * (X[k,i] @ Y[k,i].T.conj())
 
         self.assertTrue( np.allclose(w @ _rfrob(X, Y, rowwise=True), wsum.real) )
 
 
     def test_jy2ao(self):
+        from indexmap import _index_map
+
         ntype = 3
         natom = [1, 2, 3]
         lmax = [2, 1, 0]
@@ -452,122 +499,209 @@ class _TestSpillage(unittest.TestCase):
             icol += nzeta
 
 
-    def est_add_config(self):
-        orbgen = Spillage()
+    def test_add_config(self):
+        for iconf, config in enumerate(self.config):
+            mat = read_orb_mat(self.datadir + config + '/orb_matrix.0.dat')
+            dmat = read_orb_mat(self.datadir + config + '/orb_matrix.1.dat')
+            self.orbgen.add_config(mat, dmat)
 
-        folder = '/home/zuxin/abacus-community/abacus_orbital_generation/tmp/Si-dimer-2.0/'
+            self.assertEqual(len(self.orbgen.config), iconf+1)
 
-        mat = read_orb_mat(folder + 'orb_matrix.0.dat')
-        dmat = read_orb_mat(folder + 'orb_matrix.1.dat')
-        rcut = mat['rcut']
+            njy = len(mat['lin2comp']) * mat['nbes']
+            dat = self.orbgen.config[iconf]
+            self.assertEqual(dat['mo_mo'].shape, (2, mat['nk'], mat['nbands']))
+            self.assertEqual(dat['mo_jy'].shape, (2, mat['nk'], mat['nbands'], njy))
+            self.assertEqual(dat['jy_jy'].shape, (2, mat['nk'], njy, njy))
 
-        orbgen.add_config(mat, dmat)
-
-        self.assertEqual(len(orbgen.config), 1)
-        self.assertDictEqual(orbgen.config[0][0], mat)
-        self.assertDictEqual(orbgen.config[0][1], dmat)
-
-        orbgen.reset()
-
-        mat = read_orb_mat(folder + 'orb_matrix.0.dat')
-        dmat = read_orb_mat(folder + 'orb_matrix.1.dat')
-        rcut = mat['rcut']
-
-        orbgen.add_config(mat, dmat)
-
-        self.assertEqual(len(orbgen.config), 1)
-        self.assertDictEqual(orbgen.config[0][0], mat)
-        self.assertDictEqual(orbgen.config[0][1], dmat)
+        self.assertTrue(self.orbgen.rcut in JL_REDUCE)
 
 
     def test_tab_frozen(self):
-        orbgen = Spillage()
+        for iconf, config in enumerate(self.config):
+            mat = read_orb_mat(self.datadir + config + '/orb_matrix.0.dat')
+            dmat = read_orb_mat(self.datadir + config + '/orb_matrix.1.dat')
+            self.orbgen.add_config(mat, dmat)
 
-        folder = '/home/zuxin/abacus-community/abacus_orbital_generation/tmp/Si-dimer-2.0/'
+        lmax = 2
+        coef_frozen = [[np.eye(2, mat['nbes']-1).tolist() for l in range(lmax+1)]]
+        self.orbgen._tab_frozen(coef_frozen)
 
-        mat = read_orb_mat(folder + 'orb_matrix.0.dat')
-        dmat = read_orb_mat(folder + 'orb_matrix.1.dat')
+        self.assertEqual(len(self.orbgen.mo_Pfrozen_jy), len(self.config))
+        self.assertEqual(len(self.orbgen.spill_frozen), len(self.config))
 
-        orbgen.add_config(mat, dmat)
-        orbgen._tab_frozen([[np.eye(2, mat['nbes']-1).tolist() for l in range(3)]])
+        for iconf, config in enumerate(self.config):
+            dat = self.orbgen.config[iconf]
+            njy = len(dat['lin2comp']) * dat['nbes']
+            self.assertEqual(self.orbgen.spill_frozen[iconf].shape,
+                             (dat['nbands'],))
+            self.assertEqual(self.orbgen.mo_Pfrozen_jy[iconf].shape,
+                             (2, dat['nk'], dat['nbands'], njy))
 
 
-    def test_spillage(self):
-        orbgen = Spillage()
+    def test_tab_deriv(self):
+        nbes_min = 1000
+        for iconf, config in enumerate(self.config):
+            ov = read_orb_mat(self.datadir + config + '/orb_matrix.0.dat')
+            op = read_orb_mat(self.datadir + config + '/orb_matrix.1.dat')
+            self.orbgen.add_config(ov, op)
+            nbes_min = min(nbes_min, ov['nbes'])
 
-        topdir = '/home/zuxin/abacus-community/abacus_orbital_generation/tmp/'
-        confdir = ['Si-dimer-2.0', 'Si-dimer-2.2', 'Si-trimer-2.1', 'Si-trimer-2.3']
-        #confdir = ['Si-dimer-2.0', 'Si-dimer-2.2']
+        coef = [[np.eye(2, nbes_min-1).tolist(),
+                 np.eye(2, nbes_min-1).tolist(),
+                 np.eye(1, nbes_min-1).tolist()]]
+        ncoef = len(flatten(coef))
+        naos = [sum(len(coef_tl) * (2*l+1) for l, coef_tl in enumerate(coef_t))
+                for coef_t in coef]
+        self.orbgen._tab_deriv(coef)
 
-        print('read to add config...')
+        self.assertEqual(len(self.orbgen.dao_jy), len(self.config))
+        self.assertEqual(len(self.orbgen.mo_Qfrozen_dao), len(self.config))
 
-        for conf in confdir:
-            folder = topdir + conf + '/'
-            mat = read_orb_mat(folder + 'orb_matrix.0.dat')
-            dmat = read_orb_mat(folder + 'orb_matrix.1.dat')
-            orbgen.add_config(mat, dmat)
-            print('config added: ', conf)
+        for iconf, config in enumerate(self.config):
+            dat = self.orbgen.config[iconf]
+            njy = len(dat['lin2comp']) * dat['nbes']
+            nao = sum(nao*natom for nao, natom in zip(naos, dat['natom']))
+            self.assertEqual(self.orbgen.dao_jy[iconf].shape,
+                             (2, ncoef, dat['nk'], nao, njy))
 
-        coef = [[np.eye(2, mat['nbes']-1).tolist(), \
-                np.eye(2, mat['nbes']-1).tolist(), \
-                np.eye(1, mat['nbes']-1).tolist()]]
+
+    def test_overlap_spillage(self):
+        # generalized spillage with op=I should recover the overlap spillage
 
         ibands = range(5)
+        nbes_min = 1000
+        for iconf, config in enumerate(self.config):
+            dat = read_orb_mat(self.datadir + config + '/orb_matrix.0.dat')
+            self.orbgen.add_config(dat, dat)
 
-        np.random.seed(0)
+            coef = [[np.random.randn(2, dat['nbes']-1).tolist(),
+                     np.random.randn(2, dat['nbes']-1).tolist(),
+                     np.random.randn(1, dat['nbes']-1).tolist()]]
 
-        #coef_frozen = [[np.eye(2, mat['nbes']-1).tolist(), \
-        #        np.eye(2, mat['nbes']-1).tolist(), \
-        #        np.eye(1, mat['nbes']-1).tolist()]]
+            nbes_min = min(nbes_min, dat['nbes'])
 
-        coef_frozen = [[np.random.randn(2, mat['nbes']-1).tolist(), \
-                np.random.randn(2, mat['nbes']-1).tolist(), \
-                np.random.randn(1, mat['nbes']-1).tolist()]]
+            spill_ref = _overlap_spillage(dat, coef, ibands) 
+            spill = self.orbgen._generalize_spillage(iconf, coef, ibands, False)
+            self.assertAlmostEqual(spill, spill_ref, places=10)
 
-        print('tab frozen...')
-        orbgen._tab_frozen(coef_frozen)
+        coef_frozen = [[np.random.randn(2, nbes_min-1).tolist(),
+                        np.random.randn(1, nbes_min-1).tolist(),
+                        np.random.randn(1, nbes_min-1).tolist()]]
+        self.orbgen._tab_frozen(coef_frozen)
 
-        print('tab deriv...')
-        orbgen._tab_deriv(coef)
+        for iconf, config in enumerate(self.config):
+            dat = read_orb_mat(self.datadir + config + '/orb_matrix.0.dat')
+            coef = [[np.random.randn(2, dat['nbes']-1).tolist(),
+                     np.random.randn(2, dat['nbes']-1).tolist(),
+                     np.random.randn(1, dat['nbes']-1).tolist()]]
 
-        dc = 1e-6
-        coef_p = deepcopy(coef)
-        coef_p[0][0][0][3] += dc
-        spill_p = orbgen._generalize_spillage(1, coef_p, ibands, False)
-
-        coef_m = deepcopy(coef)
-        coef_m[0][0][0][3] -= dc
-        spill_m = orbgen._generalize_spillage(1, coef_m, ibands, False)
-
-        dspill_fd = (spill_p - spill_m) / (2 * dc)
-
-        print('')
-        start = time.time()
-        dspill = orbgen._generalize_spillage(1, coef, ibands, True)[1]
-        print('time = ', time.time() - start)
-
-        print('dspill  ( analytic  ) = ', dspill[0][0][0][3])
-        print('dspill  (finite diff) = ', dspill_fd)
-
-        #coef0 = [[np.random.rand(2, mat['nbes']-1).tolist(),
-        #          np.random.rand(2, mat['nbes']-1).tolist(),
-        #          np.random.rand(1, mat['nbes']-1).tolist()]]
-        coef0 = [[np.eye(2, mat['nbes']-1).tolist(),
-                  np.eye(2, mat['nbes']-1).tolist(),
-                  np.eye(1, mat['nbes']-1).tolist()]]
-
-        orbgen.opt(coef0, coef_frozen, range(4))
+            spill_ref = _overlap_spillage(dat, coef, ibands, coef_frozen) 
+            spill = self.orbgen._generalize_spillage(iconf, coef, ibands, False)
+            self.assertAlmostEqual(spill, spill_ref, places=10)
 
 
-        #orbgen.reset()
-        #orbgen.add_config(mat, mat)
-        #orbgen._tab_frozen(coef_frozen)
-        #spill_ref = _overlap_spillage(mat, coef, ibands, coef_frozen)
-        #spill = orbgen._generalize_spillage(0, coef, ibands, False)
+    def test_finite_difference(self):
+        nbes_min = 1000
+        for iconf, config in enumerate(self.config):
+            ov = read_orb_mat(self.datadir + config + '/orb_matrix.0.dat')
+            op = read_orb_mat(self.datadir + config + '/orb_matrix.1.dat')
+            self.orbgen.add_config(ov, op)
+            nbes_min = min(nbes_min, ov['nbes'])
 
-        #print('spill ref = ', spill_ref)
-        #print('spill     = ', spill)
+        ibands = range(6)
+        coef = [[np.random.randn(1, nbes_min-1).tolist(),
+                 np.random.randn(2, nbes_min-1).tolist(),
+                 np.random.randn(1, nbes_min-1).tolist()]]
 
+        self.orbgen._tab_deriv(coef)
+
+        for iconf, dat in enumerate(self.orbgen.config):
+
+            dspill = self.orbgen._generalize_spillage(iconf, coef, ibands, True)[1]
+            dspill = np.array(flatten(dspill))
+
+            pat = nestpat(coef)
+            sz = len(flatten(coef))
+
+            dspill_fd = np.zeros(sz)
+            dc = 1e-6
+            for i in range(sz):
+                coef_p = flatten(deepcopy(coef))
+                coef_p[i] += dc
+                coef_p = nest(coef_p, pat)
+                spill_p = self.orbgen._generalize_spillage(iconf, coef_p, ibands, False)
+
+                coef_m = flatten(deepcopy(coef))
+                coef_m[i] -= dc
+                coef_m = nest(coef_m, pat)
+                spill_m = self.orbgen._generalize_spillage(iconf, coef_m, ibands, False)
+
+                dspill_fd[i] = (spill_p - spill_m) / (2 * dc)
+
+            self.assertTrue(np.allclose(dspill, dspill_fd, atol=1e-7))
+
+        coef_frozen = [[np.random.randn(2, nbes_min-1).tolist(),
+                        np.random.randn(1, nbes_min-1).tolist(),
+                        np.random.randn(1, nbes_min-1).tolist()]]
+
+        self.orbgen._tab_frozen(coef_frozen)
+        self.orbgen._tab_deriv(coef)
+
+        for iconf, dat in enumerate(self.orbgen.config):
+            dspill = self.orbgen._generalize_spillage(iconf, coef, ibands, True)[1]
+            dspill = np.array(flatten(dspill))
+
+            pat = nestpat(coef)
+            sz = len(flatten(coef))
+
+            dspill_fd = np.zeros(sz)
+            dc = 1e-6
+            for i in range(sz):
+                coef_p = flatten(deepcopy(coef))
+                coef_p[i] += dc
+                coef_p = nest(coef_p, pat)
+                spill_p = self.orbgen._generalize_spillage(iconf, coef_p, ibands, False)
+
+                coef_m = flatten(deepcopy(coef))
+                coef_m[i] -= dc
+                coef_m = nest(coef_m, pat)
+                spill_m = self.orbgen._generalize_spillage(iconf, coef_m, ibands, False)
+
+                dspill_fd[i] = (spill_p - spill_m) / (2 * dc)
+
+            self.assertTrue(np.allclose(dspill, dspill_fd, atol=1e-7))
+
+
+    def test_opt(self):
+        nbes_min = 1000
+        for iconf, config in enumerate(self.config):
+            ov = read_orb_mat(self.datadir + config + '/orb_matrix.0.dat')
+            op = read_orb_mat(self.datadir + config + '/orb_matrix.1.dat')
+            self.orbgen.add_config(ov, op)
+            nbes_min = min(nbes_min, ov['nbes'])
+
+        coef_frozen = [[np.random.randn(1, nbes_min-1).tolist(),
+                        np.random.randn(2, nbes_min-1).tolist(),
+                        np.random.randn(1, nbes_min-1).tolist()]]
+
+        coef0 = [[np.random.randn(1, nbes_min-1).tolist(),
+                  np.random.randn(2, nbes_min-1).tolist(),
+                  np.random.randn(1, nbes_min-1).tolist()]]
+
+        ibands = range(6)
+
+        self.orbgen._tab_frozen(coef_frozen)
+        self.orbgen._tab_deriv(coef0)
+
+        nthreads = 4
+        options = {'maxiter': 5, 'disp': False, 'maxcor': 20}
+
+        coef_opt = self.orbgen.opt(coef0, coef_frozen, ibands, options, nthreads)
+
+        ibands = [range(4), range(4), range(6), range(6)]
+        coef_opt = self.orbgen.opt(coef0, coef_frozen, ibands, options, nthreads)
+
+        pass
 
 
 if __name__ == '__main__':

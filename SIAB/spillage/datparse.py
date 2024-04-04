@@ -216,7 +216,7 @@ import unittest
 class _TestDatParse(unittest.TestCase):
 
     def test_read_orb_mat(self):
-        fpath = './testfiles/orb_matrix_rcut6deriv0.dat'
+        fpath = './testfiles/orb_matrix/orb_matrix_rcut6deriv0.dat'
         dat = read_orb_mat(fpath)
 
         self.assertEqual(dat['ntype'], 1)
@@ -244,7 +244,7 @@ class _TestDatParse(unittest.TestCase):
                 (dat['nk'], dat['nbands']))
 
 
-        fpath = './testfiles/orb_matrix_rcut7deriv1.dat'
+        fpath = './testfiles/orb_matrix/orb_matrix_rcut7deriv1.dat'
         dat = read_orb_mat(fpath)
 
         self.assertEqual(dat['ntype'], 1)
