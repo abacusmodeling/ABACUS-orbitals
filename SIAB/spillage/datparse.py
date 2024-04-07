@@ -38,7 +38,7 @@ def read_orb_mat(fpath):
         rcut : float
             Cutoff radius for spherical Bessel functions.
         lmax : list of int
-            Maximum angular momentum.
+            Maximum angular momentum of each type.
         nbands : int
             Number of bands.
         nbes : int
@@ -52,18 +52,22 @@ def read_orb_mat(fpath):
             k-point weights.
         mo_jy : np.ndarray
             Overlap between MOs and jYs.
-            Shape: (nk, nbands, nao, nbes)
+            Shape: (nk, nbands, nao*nbes)
         jy_jy : np.ndarray
             Overlap between jYs.
-            Shape: (nk, nao, nao, nbes, nbes)
+            Shape: (nk, nao*nbes, nao*nbes)
+            Note: the original jy_jy data assumed a shape of
+            (nk, nao, nao, nbes, nbes), which is permuted and
+            reshaped for convenience.
         mo_mo : np.ndarray
             Overlap between MOs.
             Shape: (nk, nbands)
-        comp2mu, mu2comp : dict
-            Bijective index map (itype, iatom, l, zeta, m) <-> mu.
-            comp2mu: (itype, iatom, l, zeta, m) -> mu
-            mu2comp: mu -> (itype, iatom, l, zeta, m)
-            zeta is always 0 in the present code.
+        comp2lin, lin2comp : dict
+            Bijective index map between the composite and the
+            lineaerized index.
+            comp2lin: (itype, iatom, l, zeta, m) -> mu
+            lin2comp: mu -> (itype, iatom, l, zeta, m)
+            NOTE: zeta is always 0 in the present code.
 
     Notes
     -----
@@ -112,10 +116,10 @@ def read_orb_mat(fpath):
     wk = kinfo[:, 3]
 
     ####################################################################
-    #       bijective index map (itype, iatom, l, zeta, m) <-> mu
+    #   bijective map between the composite and linearized index
     ####################################################################
-    comp2mu, mu2comp = _index_map(ntype, natom, lmax)
-    nao = len(comp2mu)
+    comp2lin, lin2comp = _index_map(ntype, natom, lmax)
+    nao = len(comp2lin)
 
     ####################################################################
     #                           MO-jY overlap
@@ -124,7 +128,7 @@ def read_orb_mat(fpath):
     mo_jy_end = data.index('</OVERLAP_Q>')
     mo_jy = np.array(data[mo_jy_start:mo_jy_end], dtype=float) \
             .view(dtype=complex) \
-            .reshape((nk, nbands, nao, nbes))
+            .reshape((nk, nbands, nao*nbes))
 
     ####################################################################
     #                           Phase Adjustment
@@ -170,6 +174,10 @@ def read_orb_mat(fpath):
     assert np.linalg.norm(np.imag(jy_jy.reshape(-1)), np.inf) < 1e-12
     jy_jy = np.real(jy_jy)
 
+    # NOTE permute jy_jy from (nk, nao, nao, nbes, nbes) to (nk, nao, nbes, nao, nbes)
+    # which is more convenient for later use.
+    jy_jy = jy_jy.transpose((0, 1, 3, 2, 4)).reshape((nk, nao*nbes, nao*nbes))
+
     ####################################################################
     #                           MO-MO overlap
     ####################################################################
@@ -186,7 +194,18 @@ def read_orb_mat(fpath):
             'ecutjlq': ecutjlq, 'rcut': rcut, 'lmax': lmax, 'nk': nk, \
             'nbands': nbands, 'nbes': nbes, 'kpt': kpt, 'wk': wk, \
             'jy_jy': jy_jy, 'mo_jy': mo_jy, 'mo_mo': mo_mo, \
-            'comp2mu': comp2mu, 'mu2comp': mu2comp}
+            'comp2lin': comp2lin, 'lin2comp': lin2comp}
+
+
+def _assert_consistency(dat1, dat2):
+    '''
+    Check if two dat files corresponds to the same system.
+
+    '''
+    assert dat1['lin2comp'] == dat2['lin2comp'] and \
+            dat1['rcut'] == dat2['rcut'] and \
+            np.all(dat1['wk'] == dat2['wk']) and \
+            np.all(dat1['kpt'] == dat2['kpt'])
 
 
 ############################################################
@@ -197,7 +216,7 @@ import unittest
 class _TestDatParse(unittest.TestCase):
 
     def test_read_orb_mat(self):
-        fpath = './testfiles/orb_matrix_rcut6deriv0.dat'
+        fpath = './testfiles/orb_matrix/orb_matrix_rcut6deriv0.dat'
         dat = read_orb_mat(fpath)
 
         self.assertEqual(dat['ntype'], 1)
@@ -216,14 +235,16 @@ class _TestDatParse(unittest.TestCase):
         nao = dat['natom'][0] * (dat['lmax'][0] + 1)**2
 
         self.assertEqual(dat['mo_jy'].shape, \
-                (dat['nk'], dat['nbands'], nao, dat['nbes']))
+                (dat['nk'], dat['nbands'], nao*dat['nbes']))
+        #self.assertEqual(dat['jy_jy'].shape, \
+        #        (dat['nk'], nao, nao, dat['nbes'], dat['nbes']))
         self.assertEqual(dat['jy_jy'].shape, \
-                (dat['nk'], nao, nao, dat['nbes'], dat['nbes']))
+                (dat['nk'], nao*dat['nbes'], nao*dat['nbes']))
         self.assertEqual(dat['mo_mo'].shape, \
                 (dat['nk'], dat['nbands']))
 
 
-        fpath = './testfiles/orb_matrix_rcut7deriv1.dat'
+        fpath = './testfiles/orb_matrix/orb_matrix_rcut7deriv1.dat'
         dat = read_orb_mat(fpath)
 
         self.assertEqual(dat['ntype'], 1)
@@ -242,9 +263,9 @@ class _TestDatParse(unittest.TestCase):
         nao = dat['natom'][0] * (dat['lmax'][0] + 1)**2
 
         self.assertEqual(dat['mo_jy'].shape, \
-                (dat['nk'], dat['nbands'], nao, dat['nbes']))
+                (dat['nk'], dat['nbands'], nao*dat['nbes']))
         self.assertEqual(dat['jy_jy'].shape, \
-                (dat['nk'], nao, nao, dat['nbes'], dat['nbes']))
+                (dat['nk'], nao*dat['nbes'], nao*dat['nbes']))
         self.assertEqual(dat['mo_mo'].shape, \
                 (dat['nk'], dat['nbands']))
 
