@@ -375,7 +375,7 @@ class Spillage:
         return (spill, grad) if with_grad else spill
 
 
-    def opt(self, coef_init, coef_frozen, iconf, ibands, options, nthreads=1):
+    def opt(self, coef_init, coef_frozen, iconfs, ibands, options, nthreads=1):
         '''
         Spillage minimization w.r.t. end-smoothed mixed spherical Bessel coefficients.
 
@@ -385,7 +385,7 @@ class Spillage:
                 Initial guess for the coefficients.
             coef_frozen : nested list
                 Coefficients for the frozen orbitals.
-            iconf : list of int or 'all'
+            iconfs : list of int or 'all'
                 List of configuration indices to be included in the optimization.
                 If 'all', all configurations are included.
             ibands : range/tuple or list of range/tuple
@@ -407,19 +407,18 @@ class Spillage:
 
         pat = nestpat(coef_init)
 
-        iconf = range(len(self.config)) if iconf == 'all' else iconf
-        nconf = len(iconf)
+        iconfs = range(len(self.config)) if iconfs == 'all' else iconfs
+        nconf = len(iconfs)
 
         ibands = [ibands] * nconf if not isinstance(ibands, list) else ibands
         assert len(ibands) == nconf
 
         # function to be minimized
         def f(c):
-            s = lambda i: self._generalize_spillage(i, nest(c.tolist(), pat), ibands[i], True)
-            spills, grads = zip(*pool.map(s, iconf))
-
-            return (sum(spills) / nconf,
-                    sum(np.array(flatten(g)) for g in grads) / nconf)
+            s = lambda i: self._generalize_spillage(iconfs[i], nest(c.tolist(), pat),
+                                                    ibands[i], with_grad=True)
+            spills, grads = zip(*pool.map(s, range(nconf)))
+            return (sum(spills) / nconf, sum(np.array(flatten(g)) for g in grads) / nconf)
 
         c0 = np.array(flatten(coef_init))
 
@@ -717,12 +716,15 @@ class _TestSpillage(unittest.TestCase):
         self.orbgen._tab_deriv(coef0)
 
         nthreads = 4
-        options = {'maxiter': 100, 'disp': True, 'maxcor': 20}
+        options = {'maxiter': 5, 'disp': False, 'maxcor': 20}
 
+        # use all configs and all bands
         coef_opt = self.orbgen.opt(coef0, coef_frozen, 'all', ibands, options, nthreads)
 
-        ibands = [range(4), range(4), range(6), range(6)]
-        coef_opt = self.orbgen.opt(coef0, coef_frozen, [0,1,2,3], ibands, options, nthreads)
+        # selected configs and bands
+        iconfs = [1, 2]
+        ibands = [range(4), range(6)]
+        coef_opt = self.orbgen.opt(coef0, coef_frozen, iconfs, ibands, options, nthreads)
 
         pass
 
