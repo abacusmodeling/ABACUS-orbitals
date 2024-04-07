@@ -375,8 +375,29 @@ class Spillage:
         return (spill, grad) if with_grad else spill
 
 
-    def opt(self, coef_init, coef_frozen, ibands, options, nthreads=1):
+    def opt(self, coef_init, coef_frozen, iconf, ibands, options, nthreads=1):
         '''
+        Spillage minimization w.r.t. end-smoothed mixed spherical Bessel coefficients.
+
+        Parameters
+        ----------
+            coef_init : nested list
+                Initial guess for the coefficients.
+            coef_frozen : nested list
+                Coefficients for the frozen orbitals.
+            iconf : list of int or 'all'
+                List of configuration indices to be included in the optimization.
+                If 'all', all configurations are included.
+            ibands : range/tuple or list of range/tuple
+                Band indices to be included in the spillage calculation. If a range
+                or tuple is given, the same indices are used for all configurations.
+                If a list of range/tuple is given, each range/tuple will be applied
+                to the configuration specified by iconf respectively.
+            options : dict
+                Options for the optimization.
+            nthreads : int
+                Number of threads for config-level parallellization.
+
         '''
         from multiprocessing.pool import ThreadPool
         pool = ThreadPool(nthreads)
@@ -385,7 +406,9 @@ class Spillage:
         self._tab_deriv(coef_init)
 
         pat = nestpat(coef_init)
-        nconf = len(self.config)
+
+        iconf = range(len(self.config)) if iconf == 'all' else iconf
+        nconf = len(iconf)
 
         ibands = [ibands] * nconf if not isinstance(ibands, list) else ibands
         assert len(ibands) == nconf
@@ -393,7 +416,7 @@ class Spillage:
         # function to be minimized
         def f(c):
             s = lambda i: self._generalize_spillage(i, nest(c.tolist(), pat), ibands[i], True)
-            spills, grads = zip(*pool.map(s, range(nconf)))
+            spills, grads = zip(*pool.map(s, iconf))
 
             return (sum(spills) / nconf,
                     sum(np.array(flatten(g)) for g in grads) / nconf)
@@ -694,12 +717,12 @@ class _TestSpillage(unittest.TestCase):
         self.orbgen._tab_deriv(coef0)
 
         nthreads = 4
-        options = {'maxiter': 5, 'disp': False, 'maxcor': 20}
+        options = {'maxiter': 100, 'disp': True, 'maxcor': 20}
 
-        coef_opt = self.orbgen.opt(coef0, coef_frozen, ibands, options, nthreads)
+        coef_opt = self.orbgen.opt(coef0, coef_frozen, 'all', ibands, options, nthreads)
 
         ibands = [range(4), range(4), range(6), range(6)]
-        coef_opt = self.orbgen.opt(coef0, coef_frozen, ibands, options, nthreads)
+        coef_opt = self.orbgen.opt(coef0, coef_frozen, [0,1,2,3], ibands, options, nthreads)
 
         pass
 

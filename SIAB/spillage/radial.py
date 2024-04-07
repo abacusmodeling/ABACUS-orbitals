@@ -25,7 +25,7 @@ def _inner_prod(chi1, chi2, r):
             Inner product of chi1 and chi2.
 
     '''
-    return simpson(r**2 * chi1 * chi2, r)
+    return simpson(r**2 * chi1 * chi2, x=r)
 
 
 def _rad_norm(chi, r):
@@ -423,11 +423,10 @@ class _TestRadial(unittest.TestCase):
                 df_spline = spline(r, 1)
                 d2f_spline = spline(r, 2)
 
-                self.assertLess(simpson((r * (df-df_spline))**2, r), 1e-12)
-                self.assertLess(simpson((r * (d2f-d2f_spline))**2, r), 1e-9)
+                self.assertLess(simpson((r * (df-df_spline))**2, x=r), 1e-12)
+                self.assertLess(simpson((r * (d2f-d2f_spline))**2, x=r), 1e-9)
 
-                kin = simpson(-2 * r * f * df, r) - simpson(r**2 * f * d2f, r) \
-                        + l*(l+1) * simpson(f**2, r)
+                kin = simpson(-2 * r * f * df - r**2 * f * d2f + l*(l+1) * f**2, x=r)
                 self.assertLess(abs(kin - kin_ref[q]), 1e-8)
 
     

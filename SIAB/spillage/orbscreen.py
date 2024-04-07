@@ -47,28 +47,22 @@ def kinetic(r, l, chi):
     return simpson(-2 * r * chi * dchi - r**2 * chi * d2chi + l*(l+1) * chi**2, r)
 
 
-def screen_foreach(r, chi, l, term):
-    if term == "T":
+def screener(r, chi, l, item):
+    if item == "T":
         return kinetic(r, l, chi)
     else:
-        raise ValueError("Unknown term: %s"%term)
+        raise ValueError("Unknown item: %s"%item)
 
 
-def screen(fnao, term="T"):
-    # no matter what term-screen, screen zeta-by-zeta.
+def screen(fnao, item="T"):
     nao = read_nao(fnao)
     r = nao['dr'] * np.arange(nao['nr'])
     chi = nao['chi']
-    lmax = len(chi)-1
-    nzeta = [len(chi[l]) for l in range(lmax+1)]
 
-    vals = [np.zeros(nzeta[l]) for l in range(lmax+1)]
-    for l in range(lmax+1):
-        for zeta in range(nzeta[l]):
-            vals[l][zeta] = screen_foreach(r, chi[l][zeta], l, term)
+    # apply 'screener' to individual numerical radial functions
+    return [np.array([screener(r, chi_lz, l, item) for chi_lz in chi_l]) \
+            for l, chi_l in enumerate(chi)]
 
-    return vals
-    
 
 ############################################################
 #                       Test
@@ -97,14 +91,9 @@ class _TestKinetic(unittest.TestCase):
             self.assertLess(abs(kinetic(r, 0, chi) - q**2), 1e-5)
 
 
-    #def test_nao_kinetic(self):
-    #    from orbio import read_nao
-    #    nao = read_nao('./Cr_gga_8au_100Ry_4s2p2d1f.orb')
-    #    r = nao['dr'] * np.arange(nao['nr'])
-
-    #    for l, chi_l in enumerate(nao['chi']):
-    #        for zeta, chi in enumerate(chi_l):
-    #            print('l = %i   zeta = %i    T = %8.3e'%(l, zeta, kinetic(r, l, chi)))
+    def test_screen(self):
+        T_In = screen('./testfiles/In_gga_10au_100Ry_3s3p3d2f.orb', item="T")
+        self.assertEqual([len(T_l) for T_l in T_In], [3, 3, 3, 2])
 
 
 if __name__ == '__main__':
