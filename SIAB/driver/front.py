@@ -66,7 +66,6 @@ def abacus(general: dict,
 # interface to Spillage optimization
 import SIAB.interface.old_version as siov
 import SIAB.spillage.pytorch_swat.api as SPS_api  # old version of backend
-import SIAB.include.citation as sicite
 # import SIAB.spillage.something.api as SpillageSomething_api  # new version of backend
 def spillage(folders: list,
              calculation_settings: list,
@@ -109,6 +108,7 @@ def spillage(folders: list,
     all about the orbitals, like
     ```python
     {
+        'nprocs': 1,
         'optimizer': 'pytorch.SWAT', 
         'max_steps': [200], 
         'spillage_coeff': [0.5, 0.5], 
@@ -143,17 +143,19 @@ def spillage(folders: list,
     
     # iteratively generate numerical atomic orbitals here
     if siab_version == "0.1.0":
-        nlevel=len(siab_settings["orbitals"])
-        for orb_gen, _, ilevel in siov.convert(calculation_setting=calculation_settings[0],
-                                               siab_settings=siab_settings):
+        # because for all reference structures referred by orbital, all calculation_settings 
+        # would be the same, therefore, only get data from the first one.
+        # but in orb.matrix... file, there IS ecutwfc and bessel_nao_rcut information.
+        nlevel=len(siab_settings["orbitals"]) # this dimension must be executed in serial
+        for old_input, cache_dir, ilevel in siov.convert(calculation_setting=calculation_settings[0],
+                                                         siab_settings=siab_settings):
             """the iteration here will be processed first by rcut and second by zeta notation"""
-            forb, quality = SPS_api.run(params=orb_gen, ilevel=ilevel, nlevel=nlevel)
-            # instantly print the quality of the orbital generated
-            print("Report: quality of the orbital %s is:"%forb, flush=True)
-            for l in range(len(quality)):
-                print("l = %d: %s"%(l, " ".join(["%10.8e"%q for q in quality[l] if q is not None])), flush=True)
-
+            orb_out = SPS_api.run(params=old_input, 
+                                  cache_dir=cache_dir, 
+                                  ilevel=ilevel, 
+                                  nlevel=nlevel)
+            SPS_api.postprocess(orb_out)
     else:
         # reserve for new implementation of orbital optimization
         raise NotImplementedError("SIAB version %s is not supported yet"%siab_version)
-    return sicite.citation()
+    

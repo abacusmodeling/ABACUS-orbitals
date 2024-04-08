@@ -321,7 +321,17 @@ def ov_reference_states(element: str,
     
     return result, ov_weights(result)
 
-def ov_c_init(orbitals: list):
+def ov_c_init(orbitals: list, folder: str = None):
+    """this function generates setting for initial guess. The outer loop to generate orbitals will
+    proceed level by level then rcut by rcut, which means only if all orbitals with the same rcut
+    have been generated, will program start the generation of the next rcut. However, it is more
+    appropriate to create folder and save all temporary files into that folder. What is the most
+    important temporary file is the ORBITAL_RESULTS.txt, which contains the optimized orbitals.
+    
+    """
+    # add "/" to the end of folder if it is not None
+    if folder is not None:
+        folder = folder + "/" if folder[-1] != "/" else folder
     result = [{} for _ in range(len(orbitals))]
     for il, level in enumerate(orbitals):
         if level["nzeta_from"] is None or il == 0:
@@ -329,13 +339,14 @@ def ov_c_init(orbitals: list):
                 "init_from_file": False,
             }
         else:
-            result[il] = {
-                "init_from_file": True,
-                "C_init_file": "Level%s.ORBITAL_RESULTS.txt"%(il - 1),
-                "opt_C_read": False
-            } # discard the "opt_C_read" further support
+            orbital_results = folder if folder is not None else ""
+            orbital_results += "Level%s.ORBITAL_RESULTS.txt"%(il - 1)
+            result[il] = {"init_from_file": True, "C_init_file": orbital_results, "opt_C_read": False} 
+            # discard the "opt_C_read" further support
     return result
 
+import uuid
+import time
 def convert(calculation_setting: dict,
             siab_settings: dict):
     """
@@ -390,7 +401,12 @@ def convert(calculation_setting: dict,
                                       reference_shapes=reference_shapes,
                                       bond_lengths=bond_lengths,
                                       orbitals=siab_settings["orbitals"])
-        c_init = ov_c_init(orbitals=siab_settings["orbitals"])
+        # to make compatible with parallelization in process level, should save the ORBITAL_RESULTS.txt
+        # in different folders for different rcut, a combination of element and rcut with timestamp
+        # can be used to identify the folder.
+        uuidfolder = str(uuid.uuid3(uuid.NAMESPACE_DNS, "-".join([element, str(rcut), str(time.time())])))
+        print("Cache: for storing temporary files for hierarchical optimization, create folder:", uuidfolder)
+        c_init = ov_c_init(orbitals=siab_settings["orbitals"], folder=uuidfolder)
         v = ov_V()
         info = [ov_parameters(element=element,
                               orbital_config=orbital["nzeta"],
@@ -399,6 +415,7 @@ def convert(calculation_setting: dict,
                               ecutwfc=calculation_setting["ecutwfc"],
                               opt_maxsteps=siab_settings["max_steps"])
                 for orbital in siab_settings["orbitals"]]
+        # level by level, yield the input for pytorch_swat
         for iorb in range(len(siab_settings["orbitals"])):
             """there is correlation between different sections, not happy with this"""
             if "opt_C_read" in c_init[iorb]:
@@ -411,10 +428,20 @@ def convert(calculation_setting: dict,
                 "weight": istates[1][iorb],
                 "C_init_info": c_init[iorb],
                 "V_info": v
-            }, rcut, iorb
+            }, uuidfolder, iorb
 
 def unpack(orb_gen: dict) -> dict:
-
+    """convert information collect in old version input to dict like
+    ```python
+    {
+        "element": "Co",
+        "ecutwfc": 100.0,
+        "rcut": 6,
+        "zeta_notation": "2s1p1d"
+    }
+    ```
+    , this dict can identify explicitly an orbital
+    """
     symbols = ["s", "p", "d", "f", "g", "h", "i", "j", "k", "l"]
     
     element = orb_gen["info"]["Nt_all"][0]
@@ -435,6 +462,9 @@ def unpack(orb_gen: dict) -> dict:
     }
 
 def folder(unpacked_orb: dict, additional_suffix: str = None) -> str:
+    """this will generate folder path like:
+    `Co_2s1p1d/6au_100Ry`
+    """
     element = unpacked_orb["element"]
     ecutwfc = str(unpacked_orb["ecutwfc"]) + "Ry"
     rcut = str(unpacked_orb["rcut"]) + "au"

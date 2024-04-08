@@ -1,0 +1,9 @@
+Lattice vector  : 
+1   0  0
+0   -1  0
+0   0  -1
+
+Direct positions :  
+
+Si 0 0 0
+Si 0 0 -0.20976
