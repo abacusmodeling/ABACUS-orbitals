@@ -6,7 +6,7 @@ def parse(fname: str):
     return sipc.parse(fname=fname)
 
 import SIAB.io.pseudopotential.tools.advanced as sipta
-def towards_siab(fname: str):
+def extract_ppinfo_forsiab(fname: str):
     """towards SIAB generating numerical atomic orbitals, return a dictionary
     contains information like:
     {

@@ -3,8 +3,7 @@ import os
 import SIAB.io.read_input as siri
 import SIAB.io.pseudopotential.api as sipa
 def initialize(version: str = "0.1.0",
-               fname: str = "./SIAB_INPUT", 
-               pseudopotential_check: bool = True):
+               fname: str = "./SIAB_INPUT"):
     """initialization of numerical atomic orbitals generation task, 
     1. read input file named as fname, will convert to new version inside package
     2. check the existence of pseudopotential file, if pseudopotential_check is True, go on
@@ -19,14 +18,13 @@ def initialize(version: str = "0.1.0",
     """
 
     fname = fname.strip().replace("\\", "/")
-    user_settings = siri.parse(fname=fname, version=version)
+    user_settings = siri.read_siab_inp(fname=fname, version=version)
     # pseudopotential check
     fpseudo = user_settings["pseudo_dir"]+"/"+user_settings["pseudo_name"]
-    if not os.path.exists(fpseudo) and pseudopotential_check: # check the existence of pseudopotential file
-        raise FileNotFoundError(
-            "Pseudopotential file %s not found"%fpseudo)
-    else:
-        pseudopotential = sipa.towards_siab(fname=fpseudo)
+    if not os.path.exists(fpseudo): # check the existence of pseudopotential file
+        raise FileNotFoundError("Pseudopotential file %s not found"%fpseudo)
+    
+    pseudopotential = sipa.extract_ppinfo_forsiab(fname=fpseudo)
     unpacked = siri.unpack_siab_input(user_settings, pseudopotential)
     return unpacked
 
@@ -64,10 +62,9 @@ def abacus(general: dict,
                        test=test)
 
 # interface to Spillage optimization
-import SIAB.interface.old_version as siov
-import SIAB.spillage.pytorch_swat.api as SPS_api  # old version of backend
-import SIAB.include.citation as sicite
-# import SIAB.spillage.something.api as SpillageSomething_api  # new version of backend
+import SIAB.spillage.util as ssu
+import SIAB.spillage.pytorch_swat.api as ssps_api  # old version of backend
+#import SIAB.spillage.api as ss_api  # new version of backend
 def spillage(folders: list,
              calculation_settings: list,
              siab_settings: dict,
@@ -80,37 +77,27 @@ def spillage(folders: list,
     folders: list of list of str, the folders for each reference shape and bond length,
     like
     ```python
-    [
-        ["Si-dimer-1.0", "Si-dimer-1.1"],
-        ["Si-trimer-1.0", "Si-trimer-1.1", "Si-trimer-1.2"]
-    ]
+    [["Si-dimer-1.0", "Si-dimer-1.1"], ["Si-trimer-1.0", "Si-trimer-1.1", "Si-trimer-1.2"]]
     ```
     calculation_settings: list of dict, the contents of INPUT for each reference shape,
     like
     ```python
     [
         {'pseudo_dir': '/root/abacus-develop/pseudopotentials/SG15_ONCV_v1.0_upf', 
-            'ecutwfc': 100, 
-            'bessel_nao_rcut': [6, 7], 
-            'smearing_sigma': 0.01, 
-            'nbands': 8, 
-            'lmaxmax': 2, 
-            'nspin': 1}, 
+         'ecutwfc': 100, 'bessel_nao_rcut': [6, 7], 'smearing_sigma': 0.01, 
+         'nbands': 8, 'lmaxmax': 2, 'nspin': 1}, 
         {'pseudo_dir': '/root/abacus-develop/pseudopotentials/SG15_ONCV_v1.0_upf', 
-            'ecutwfc': 100, 
-            'bessel_nao_rcut': [6, 7], 
-            'smearing_sigma': 0.01, 
-            'nbands': 10, 
-            'lmaxmax': 2, 
-            'nspin': 1}
+         'ecutwfc': 100, 'bessel_nao_rcut': [6, 7], 'smearing_sigma': 0.01, 
+         'nbands': 10, 'lmaxmax': 2, 'nspin': 1}
     ]
     ```
     siab_settings: dict, the settings for SIAB optimization tasks, including informations
     all about the orbitals, like
     ```python
     {
+        'nthreads_per_rcut': 1,
         'optimizer': 'pytorch.SWAT', 
-        'max_steps': [200], 
+        'max_steps': 200, 
         'spillage_coeff': [0.5, 0.5], 
         'orbitals': [
             {'nzeta': [1, 1], 'nzeta_from': None, 'nbands_ref': 4, 'folder': 0}, 
@@ -120,42 +107,32 @@ def spillage(folders: list,
     }
     ```
     """
-    # because it is orbital that is generated one-by-one, it is reasonable to iterate
-    # the orbitals...
-    # NOTE: the following loop move necessary information for orbital generation from 
-    # calculation_settings to siab_settings, so to make decouple between these
-    # two dicts -> but this can be done earlier. The reason why do it here is because
-    # the conversion from newly designed data structure, calculation_settings, and
-    # siab_settings, to the old version of SIAB, is taken place here.
-    for orbital in siab_settings["orbitals"]:
-        # MOVE: copy lmax information from calculation_settings to siab_settings
-        # for old version SIAB, but lmax can be read from orb_matrix*.dat for better design
-        # in that way, not needed to import lmaxmax information from calculation_settings
-        orbital["lmax"] = calculation_settings[orbital["folder"]]["lmaxmax"]
-        # the key "folder" has a more reasonable alternative: "abacus_setup"
-
-        # MOVE: let siab_settings know exactly what folders are used for orbital generation
-        # in folders, folders are stored collectively according to reference structure
-        # and the "abacus_setup" is then expanded to the corresponding folder
-        # therefore this setup is to expand the "folder" key to the corresponding folder
-        # list
-        orbital["folder"] = folders[orbital["folder"]]
-    
+    siab_settings = ssu.initialize(calculation_settings, siab_settings, folders)
+    """after initialization, siab_settings will have the following structure:
+    ```python
+    {
+        'nthreads_per_rcut': 1,
+        'optimizer': 'pytorch.SWAT', 
+        'max_steps': 200, 
+        'spillage_coeff': [0.5, 0.5], 
+        'orbitals': [
+            {'nzeta': [1, 1], 'nzeta_from': None, 'nbands_ref': 4, 
+             'folder': ['Si-dimer-1.0', 'Si-dimer-1.1'], 'lmax': 2}, 
+            {'nzeta': [2, 2, 1], 'nzeta_from': [1, 1], 'nbands_ref': 4, 
+             'folder': ['Si-dimer-1.0', 'Si-dimer-1.1'], 'lmax': 2}, 
+            {'nzeta': [3, 3, 2], 'nzeta_from': [2, 2, 1], 'nbands_ref': 6, 
+             'folder': ['Si-trimer-1.0', 'Si-trimer-1.1', 'Si-trimer-1.2'], 'lmax': 2}
+        ]
+    }
+    ```
+    """
     # iteratively generate numerical atomic orbitals here
     if siab_version == "0.1.0":
-        nlevel=len(siab_settings["orbitals"])
-        for orb_gen, _, ilevel in siov.convert(calculation_setting=calculation_settings[0],
-                                               siab_settings=siab_settings):
-            """the iteration here will be processed first by rcut and second by zeta notation"""
-            result = SPS_api.run(params=orb_gen, ilevel=ilevel, nlevel=nlevel)
-            if result is not None:
-                forb, quality = result
-                # instantly print the quality of the orbital generated
-                print("Report: quality of the orbital %s is:"%forb, flush=True)
-                for l in range(len(quality)):
-                    print("l = %d: %s"%(l, " ".join(["%10.8e"%q for q in quality[l] if q is not None])), flush=True)
-
+        ssps_api.iter(siab_settings=siab_settings, calculation_settings=calculation_settings)
     else:
         # reserve for new implementation of orbital optimization
         raise NotImplementedError("SIAB version %s is not supported yet"%siab_version)
-    return sicite.citation()
+        #ss_api.run(siab_settings=siab_settings)
+    
+    return
+

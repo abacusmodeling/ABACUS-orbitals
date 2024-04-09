@@ -114,9 +114,7 @@ def run(fname: str,
     """
     # read input, for each term, see above annotation for details
     reference_shapes, bond_lengths, calculation_settings,\
-    siab_settings, env_settings, general = sdf.initialize(fname=fname,
-                                                          version=siab_version, 
-                                                          pseudopotential_check=True)
+    siab_settings, env_settings, general = sdf.initialize(fname=fname, version=siab_version)
 
     # ABACUS corresponding refactor has done supporting multiple bessel_nao_rcut input
     # `folders` contains the folders for each reference shape, is a list of list of str.
@@ -141,25 +139,37 @@ def run(fname: str,
     # `siab_version` is a temporary parameter, for directly calling the optimizer in spillage/
     # pytorch_swat. For future versions, this parameter will be removed, and `optimizer`
     # in `siab_settings` will be used to call corresponding optimizer.
-    citation = sdf.spillage(folders=folders,
-                            calculation_settings=calculation_settings,
-                            siab_settings=siab_settings,
-                            siab_version=siab_version)
-    print(citation)
-    return "seems everything is fine"
+    sdf.spillage(folders=folders,
+                 calculation_settings=calculation_settings,
+                 siab_settings=siab_settings,
+                 siab_version=siab_version)
 
-def finalize(outs: str):
+import SIAB.include.citation as sicite
+def finalize():
     """finalize the whole workflow of orbital generation:
-    1. print out some information"""
-    print(outs)
+    """
+    print(sicite.citation())
 
+import time
 def main(command_line: bool = True):
     """entry point of the whole workflow of orbital generation"""
+    t_start = time.time()
+    
     fname, test, version = initialize(command_line=command_line)
-    outs = run(fname=fname, 
-               siab_version=version, 
-               test=test)
-    finalize(outs=outs)
+    t_initialize = time.time()
+    run(fname=fname, siab_version=version, test=test)
+    t_run = time.time()
+    finalize()
+    t_finalize = time.time()
+    t_end = time.time()
+    # print time statistics with format %.2f
+    print(f"""TIME STATISTICS
+---------------
+{"initialize":20s} {t_initialize - t_start:10.2f} s
+{"run":20s} {t_run - t_initialize:10.2f} s
+{"finalize":20s} {t_finalize - t_run:10.2f} s
+{"total":20s} {t_end - t_start:10.2f} s
+""")
 
 if __name__ == '__main__':
 

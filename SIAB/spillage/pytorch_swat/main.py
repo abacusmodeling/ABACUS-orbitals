@@ -23,7 +23,7 @@ def main(params: dict = None):
     print("""--------------------------------------------------
 Module Spillage - find the most similar space to the target spanned planewave wavefunction:
 SIAB.pytorch_swat starts, numerical atomic orbitals are optimized.
---------------------------------------------------""")
+--------------------------------------------------""", flush=True)
     ###################################
     #   RANDOM SEED INITIALIZATION    #
     ###################################

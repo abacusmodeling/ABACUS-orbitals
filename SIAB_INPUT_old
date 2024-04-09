@@ -6,28 +6,28 @@
 
 #-------------------------------------------------------------------------------- 
 #2. Electronic calculatation
- element     Mn  # element name 
- Ecut        100  # cutoff energy (in Ry)
- Rcut        8  # cutoff radius (in a.u.)
+ element     Si  # element name 
+ Ecut        60  # cutoff energy (in Ry)
+ Rcut        6 7 8 9 10  # cutoff radius (in a.u.)
  Pseudo_dir  /root/abacus-develop/pseudopotentials/sg15_oncv_upf_2020-02-06/1.0
- Pseudo_name Mn_ONCV_PBE-1.0.upf
+ Pseudo_name Si_ONCV_PBE-1.0.upf
  sigma       0.01 # energy range for gauss smearing (in Ry)
 
 #--------------------------------------------------------------------------------
 #3. Reference structure related parameters for PW calculation
 #For the built-in structure types (including 'dimer', 'trimer' and 'tetramer'):
 #STRU Name   #STRU Type  #nbands #MaxL   #nspin  #Bond Length list 
- STRU1       dimer       19      3       2      1.4 1.6 2.1 2.8 3.8
- STRU2       trimer      27      3       2      1.5 1.8 2.5
+ STRU1       dimer       8       2       1      1.62 1.82 2.22 2.72 3.22
+ STRU2       trimer      10      2       1      1.9 2.1 2.6
 
 #-------------------------------------------------------------------------------- 
 #4. SIAB calculatation
- max_steps    200
+ max_steps    1000
 #Orbital configure and reference target for each level
 #LevelIndex  #Ref STRU name  #Ref Bands  #InputOrb    #OrbitalConf 
- Level1      STRU1           auto        none        2s1p1d    
- Level2      STRU1           auto        fix         4s2p2d1f  
- Level3      STRU2           auto        fix         6s3p3d2f  
+ Level1      STRU1           4           none        1s1p   
+ Level2      STRU1           4           fix         2s2p1d  
+ Level3      STRU2           6           fix         3s3p2d  
 
 #--------------------------------------------------------------------------------
 #5. Save Orbitals
