@@ -55,7 +55,7 @@ def run(params: dict = None, cache_dir: str = "./", ilevel: int = 0, nlevel: int
                        refresh=refresh)
 
     # analysis the newly generated orbitals' kinetic energies of all components
-    screen_vals = sso.screen(fnao=files[4], item="T")    
+    screen_vals = sso.screen(fnao=files[4], item="T")
 
     return files[4], screen_vals
 
