@@ -3,8 +3,7 @@ import os
 import SIAB.io.read_input as siri
 import SIAB.io.pseudopotential.api as sipa
 def initialize(version: str = "0.1.0",
-               fname: str = "./SIAB_INPUT", 
-               pseudopotential_check: bool = True):
+               fname: str = "./SIAB_INPUT"):
     """initialization of numerical atomic orbitals generation task, 
     1. read input file named as fname, will convert to new version inside package
     2. check the existence of pseudopotential file, if pseudopotential_check is True, go on
@@ -19,13 +18,13 @@ def initialize(version: str = "0.1.0",
     """
 
     fname = fname.strip().replace("\\", "/")
-    user_settings = siri.parse(fname=fname, version=version)
+    user_settings = siri.read_siab_inp(fname=fname, version=version)
     # pseudopotential check
     fpseudo = user_settings["pseudo_dir"]+"/"+user_settings["pseudo_name"]
-    if not os.path.exists(fpseudo) and pseudopotential_check: # check the existence of pseudopotential file
+    if not os.path.exists(fpseudo): # check the existence of pseudopotential file
         raise FileNotFoundError("Pseudopotential file %s not found"%fpseudo)
-    else:
-        pseudopotential = sipa.towards_siab(fname=fpseudo)
+    
+    pseudopotential = sipa.extract_ppinfo_forsiab(fname=fpseudo)
     unpacked = siri.unpack_siab_input(user_settings, pseudopotential)
     return unpacked
 
@@ -65,7 +64,7 @@ def abacus(general: dict,
 # interface to Spillage optimization
 import SIAB.spillage.util as ssu
 import SIAB.spillage.pytorch_swat.api as ssps_api  # old version of backend
-import SIAB.spillage.api as ss_api  # new version of backend
+#import SIAB.spillage.api as ss_api  # new version of backend
 def spillage(folders: list,
              calculation_settings: list,
              siab_settings: dict,
@@ -133,6 +132,6 @@ def spillage(folders: list,
     else:
         # reserve for new implementation of orbital optimization
         raise NotImplementedError("SIAB version %s is not supported yet"%siab_version)
-        ss_api.run(siab_settings=siab_settings)
+        #ss_api.run(siab_settings=siab_settings)
     
     return

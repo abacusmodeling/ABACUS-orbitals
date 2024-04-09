@@ -16,3 +16,17 @@ def read_energy(folder: str,
                     energy = float(line.split()[-2])
                     return energy
     return -1
+
+import unittest
+class TestReadOutput(unittest.TestCase):
+
+    def test_read_energy(self):
+        energy = -1
+        energy = read_energy(folder = "./SIAB/io/test/support",
+                                calculation = "scf",
+                                suffix = "unittest")
+        self.assertNotEqual(energy, -1)
+        print("energy = %s eV"%energy)
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,7 +1,6 @@
 import re
-import os
 
-def plaintext_parse(fname: str = ""):
+def read_siab_plaintext(fname: str = ""):
     keyvalue_pattern = r"^(\w+)(\s+)([^#]*)(#.*)?"
     float_pattern = r"^\d+\.\d*$"
     int_pattern = r"^\d+$"
@@ -23,47 +22,30 @@ def plaintext_parse(fname: str = ""):
     return result
 
 import json
-def json_parse(fname: str = ""):
+def read_siab_json(fname: str = ""):
     """parse SIAB_INPUT file with version 0.2.0 in json format"""
     with open(fname, "r") as f:
         result = json.load(f)
-    # here should be a default value setting procedure...
-    # temporarily use direct way to set default values
-    if "parallelization" not in result.keys():
-        result["parallelization"] = False
     return result
 
-def parse(fname: str = "", version: str = "0.1.0"):
+def read_siab_inp(fname: str = "", version: str = "0.1.0"):
     """default value setting is absent"""
-    print("Parse input file:", fname, "orbital generation code version:", version)
+    print(f"""
+Parsing SIAB input file {fname} with version {version}
+""")
     if fname.endswith(".json"):
-        return json_parse(fname)
+        result = read_siab_json(fname)
     else:
-        result = plaintext_parse(fname)
-        if version == "0.1.0":
-            return compatibility_convert(wash(result))
-        else:
-            return plaintext_convert_tojson(result)
+        result = read_siab_plaintext(fname)
+        result = postprocess_siab_oldinp(result) if version == "0.1.0" else result
+        result = convert_oldinp_tojson(result) if version == "0.1.0" else result
+        result = convert_plaintext_tojson(result) if version != "0.1.0" else result
+    
+    return fill_inp_withdefault(result)
 
-def default(inp: dict):
-    # for version < 0.2.0
-    if "EXE_opt" not in inp.keys():
-        inp["EXE_opt"] = ""
-    if inp["EXE_opt"] == "":
-        inp["EXE_opt"] = "/opt_orb_pytorch_dpsi/main.py (default)" 
-        optimizer_path = "/opt_orb_pytorch_dpsi" 
-    else:
-        optimizer_path =os.path.dirname(inp["EXE_opt"])
-    if "EXE_env" not in inp.keys():
-        inp["EXE_env"] = ""
-    # for version >= 0.2.0
-    for key in PTG_DPSI_DEFAULT.keys():
-        if key not in inp.keys():
-            inp[key] = PTG_DPSI_DEFAULT[key]
-    return inp, optimizer_path
-
-def wash(inp: dict):
+def postprocess_siab_oldinp(inp: dict):
     """the parsed input initially might be like:
+    ```json
     {
         "EXE_mpi": ["mpirun", "-np", 1],
         "EXE_pw": ["abacus", "--version"],
@@ -82,58 +64,53 @@ def wash(inp: dict):
         "Save1": ["Level1", "Z"],
         "Save2": ["Level2", "DZP"],
         "Save3": ["Level3", "TZDP"]
-    },
+    }
+    ```
+    However, the value of EXE_mpi and EXE_pw are not expected to be list, but string.
     """
-    inp, optimizer_path = default(inp)
-
+    # the optimizer path is not really used, impose default values for it
+    inp["EXE_opt"] = inp.get("EXE_opt", "")
+    inp["EXE_opt"] = "/opt_orb_pytorch_dpsi/main.py (default)" if inp["EXE_opt"] == "" else inp["EXE_opt"]
+    # EXE_env
+    inp["EXE_env"] = inp.get("EXE_env", "")
+    # EXE_pw: concatenate the command
     exe_pw = " ".join([str(word) for word in inp["EXE_pw"]]).replace("\\", "/")
     inp["EXE_pw"] = exe_pw
-
+    # EXE_mpi: concatenate the command
     exe_mpi = " ".join([str(word) for word in inp["EXE_mpi"]]).replace("\\", "/")
     inp["EXE_mpi"] = exe_mpi
-
+    # drop the [] from list
     pseudo_dir = inp["Pseudo_dir"][0].strip().replace("\\", "/")
-    if pseudo_dir.endswith("/"):
-        pseudo_dir = pseudo_dir[:-1]
+    pseudo_dir = pseudo_dir[:-1] if pseudo_dir.endswith("/") else pseudo_dir
     inp["Pseudo_dir"] = pseudo_dir
-
+    # drop the [] from list
     fpseudo = inp["Pseudo_name"][0].strip().replace("\\", "").replace("/", "")
     inp["Pseudo_name"] = fpseudo
-
+    # drop the [] from list
     inp["max_steps"] = int(inp["max_steps"][0])
     
     return inp
 
-def keywords_translate(keyword: str):
+def translate_oldinp_keyword(keyword: str):
+    """translate the old version keywords to new version keywords"""
+    dictionary = {"Ecut": "ecutwfc", "Rcut": "bessel_nao_rcut", 
+                  "Pseudo_dir": "pseudo_dir", "sigma": "smearing_sigma"}
+    return dictionary.get(keyword, keyword)
 
-    if keyword == "Ecut":
-        return "ecutwfc"
-    elif keyword == "Rcut":
-        return "bessel_nao_rcut"
-    elif keyword == "Pseudo_dir":
-        return "pseudo_dir"
-    elif keyword == "sigma":
-        return "smearing_sigma"
-    else:
-        return keyword
-
-def compatibility_convert(inp: dict):
+def convert_oldinp_tojson(inp: dict):
     """convert the old version input contents to new version"""
     result = {
-        "environment": inp["EXE_env"],
-        "mpi_command": inp["EXE_mpi"],
-        "abacus_command": inp["EXE_pw"],
-        "pseudo_dir": inp["Pseudo_dir"],
-        "pseudo_name": inp["Pseudo_name"],
-        "ecutwfc": inp["Ecut"],
-        "bessel_nao_rcut": inp["Rcut"],
-        "smearing_sigma": inp["sigma"],
-        "optimizer": inp["optimizer"],
-        "max_steps": inp["max_steps"],
-        "spillage_coeff": inp["spillage_coeff"],
         "reference_systems": [],
         "orbitals": []
     }
+    keys = {"EXE_env": "environment", "EXE_mpi": "mpi_command", "EXE_pw": "abacus_command",
+            "Pseudo_dir": "pseudo_dir", "Pseudo_name": "pseudo_name", "Ecut": "ecutwfc",
+            "Rcut": "bessel_nao_rcut", "sigma": "smearing_sigma", "max_steps": "max_steps"}
+    for oldname, newname in keys.items():
+        if oldname in inp:
+            result[newname] = inp[oldname]
+        else:
+            print(f"Warning: {oldname} not found in the input file")
     for key in inp.keys():
         if key.startswith("STRU"):
             result["reference_systems"].append({
@@ -153,7 +130,7 @@ def compatibility_convert(inp: dict):
 
     return result
 
-def plaintext_convert_tojson(inp: dict):
+def convert_plaintext_tojson(inp: dict):
     """especially for version 0.2.0"""
     
     shapes = ["dimer", "trimer", "tetramer"]
@@ -199,6 +176,12 @@ def plaintext_convert_tojson(inp: dict):
             })
         else:
             result[key] = value
+
+def fill_inp_withdefault(inp: dict):
+    """fill the input with default values, if absent"""
+    for key in SIAB_DEFAULT_INPUT.keys():
+        inp[key] = inp.get(key, SIAB_DEFAULT_INPUT[key])
+    return inp
 
 def abacus_settings(user_settings: dict, minimal_basis: list, z_valence: float):
 
@@ -254,9 +237,10 @@ def siab_settings(user_settings: dict, minimal_basis: list):
     """
     # allocate
     result = {
-        "optimizer": user_settings["optimizer"],
-        "max_steps": user_settings["max_steps"],
-        "spillage_coeff": user_settings["spillage_coeff"],
+        "optimizer": user_settings.get("optimizer", "pytorch.SWAT"),
+        "max_steps": user_settings.get("max_steps", 1000),
+        "spillage_coeff": user_settings.get("spillage_coeff", [0.5, 0.5]),
+        "nthreads_rcut": user_settings.get("nthreads_rcut", -1),
         "orbitals": [{} for _ in range(len(user_settings["orbitals"]))]
     }
     shapes = [rs["shape"] for rs in user_settings["reference_systems"]]
@@ -320,13 +304,21 @@ def abacus_params():
             keys.append(key)
     return keys
 
-PTG_DPSI_DEFAULT = {
-    "environment": "",
-    "mpi_command": "mpirun -np 1",
+SIAB_DEFAULT_INPUT ={
+    "environment": "", 
+    "mpi_command": "mpirun -np 1", 
     "abacus_command": "abacus",
+    "pseudo_dir": "./", 
+    "pseudo_name": "Si_ONCV_PBE-1.0.upf",
+    "ecutwfc": 100, 
+    "bessel_nao_rcut": [6, 7, 8, 9, 10],
+    "smearing_sigma": 0.01,
     "optimizer": "pytorch.SWAT",
-    "max_steps": 9000,
-    "spillage_coeff": [0.5, 0.5]
+    "max_steps": 1000,
+    "spillage_coeff": [0.5, 0.5],
+    "nthreads_rcut": -1,
+    "reference_systems": [],
+    "orbitals": []
 }
 
 ABACUS_INPUT_TEMPLATE = """INPUT_PARAMETERS
@@ -700,51 +692,168 @@ qo_switch                      0 #0: no QO analysis; 1: QO analysis
 qo_basis                       hydrogen #type of QO basis function: hydrogen: hydrogen-like basis, pswfc: read basis from pseudopotential
 qo_thr                         1e-06 #accuracy for evaluating cutoff radius of QO basis function"""
 
+import unittest
+class TestReadInput(unittest.TestCase):
+
+    """use example input as test material
+    ./SIAB/example_Si/SIAB_INPUT
+    """
+    
+    def test_parse(self):
+        result = read_siab_inp("SIAB/example_Si/SIAB_INPUT")
+        self.assertDictEqual(result,
+                            {'environment': '', 
+                             'mpi_command': 'mpirun -np 1', 
+                             'abacus_command': 'abacus', 
+                             'pseudo_dir': '/root/abacus-develop/pseudopotentials/SG15_ONCV_v1.0_upf', 
+                             'pseudo_name': 'Si_ONCV_PBE-1.0.upf', 
+                             'ecutwfc': 100, 
+                             'bessel_nao_rcut': [6, 7], 
+                             'smearing_sigma': 0.01, 
+                             'optimizer': 'pytorch.SWAT', 
+                             'max_steps': 200, 
+                             'spillage_coeff': [0.5, 0.5], 
+                             'nthreads_rcut': -1,
+                             'reference_systems': [
+                                 {'shape': 'dimer', 'nbands': 8, 'nspin': 1, 'bond_lengths': [1.8, 2.0, 2.3, 2.8, 3.8]}, 
+                                 {'shape': 'trimer', 'nbands': 10, 'nspin': 1, 'bond_lengths': [1.9, 2.1, 2.6]}
+                            ], 
+                             'orbitals': [
+                                 {'zeta_notation': 'Z', 'shape': 'dimer', 'nbands_ref': 4, 'orb_ref': 'none'}, 
+                                 {'zeta_notation': 'DZP', 'shape': 'dimer', 'nbands_ref': 4, 'orb_ref': 'Z'}, 
+                                 {'zeta_notation': 'TZDP', 'shape': 'trimer', 'nbands_ref': 6, 'orb_ref': 'DZP'}]})
+
+    def test_keywords_translate(self):
+
+        self.assertEqual(translate_oldinp_keyword("Ecut"), "ecutwfc")
+        self.assertEqual(translate_oldinp_keyword("Rcut"), "bessel_nao_rcut")
+        self.assertEqual(translate_oldinp_keyword("Pseudo_dir"), "pseudo_dir")
+        self.assertEqual(translate_oldinp_keyword("sigma"), "smearing_sigma")      
+
+    def test_unpack_siab_settings(self):
+
+        pseudo = {
+            "element": "Si",
+            "valence_electron_configuration": [["1S"], ["1P"]],
+            "z_valence": 4.0
+        }
+        result = read_siab_inp("SIAB/example_Si/SIAB_INPUT")
+        result = unpack_siab_input(result, pseudo)
+        self.assertEqual(len(result), 6)
+        self.assertListEqual(result[0], ['dimer', 'trimer'])
+        self.assertListEqual(result[1], [[1.8, 2.0, 2.3, 2.8, 3.8], [1.9, 2.1, 2.6]])
+        self.assertListEqual(result[2], [
+            {'pseudo_dir': '/root/abacus-develop/pseudopotentials/SG15_ONCV_v1.0_upf', 
+             'ecutwfc': 100, 'bessel_nao_rcut': [6, 7], 'smearing_sigma': 0.01, 
+             'nbands': 8, 'lmaxmax': 2, 'nspin': 1}, 
+             {'pseudo_dir': '/root/abacus-develop/pseudopotentials/SG15_ONCV_v1.0_upf', 
+              'ecutwfc': 100, 'bessel_nao_rcut': [6, 7], 'smearing_sigma': 0.01, 
+              'nbands': 10, 'lmaxmax': 2, 'nspin': 1}
+              ])
+        self.assertDictEqual(result[3], {
+            'optimizer': 'pytorch.SWAT', 
+            'nthreads_rcut': -1,
+            'max_steps': 200, 
+            'spillage_coeff': [0.5, 0.5], 
+            'orbitals': [
+                {'nzeta': [1, 1], 
+                 'nzeta_from': None, 
+                 'nbands_ref': 4, 
+                 'folder': 0}, 
+                {'nzeta': [2, 2, 1], 
+                 'nzeta_from': [1, 1], 
+                 'nbands_ref': 4, 
+                 'folder': 0}, 
+                {'nzeta': [3, 3, 2], 
+                 'nzeta_from': [2, 2, 1], 
+                 'nbands_ref': 6, 
+                 'folder': 1}]
+        })
+        self.assertDictEqual(result[4], {'environment': '', 
+                                         'mpi_command': 'mpirun -np 1', 
+                                         'abacus_command': 'abacus'})
+        self.assertDictEqual(result[5], {'element': 'Si', 
+                                         'pseudo_dir': '/root/abacus-develop/pseudopotentials/SG15_ONCV_v1.0_upf', 
+                                         'pseudo_name': 'Si_ONCV_PBE-1.0.upf'})
+
+    def test_abacus_params(self):
+        params = abacus_params()
+        self.assertGreater(len(params), 0)
+
+    def test_compatibility_convert(self):
+        clean_oldversion_input = {
+            'EXE_mpi': 'mpirun -np 1', 
+            'EXE_pw': 'abacus --version', 
+            'element': 'Si', 
+            'Ecut': 100, 
+            'Rcut': [6, 7], 
+            'Pseudo_dir': '/root/abacus-develop/pseudopotentials/SG15_ONCV_v1.0_upf', 
+            'Pseudo_name': 'Si_ONCV_PBE-1.0.upf', 
+            'sigma': 0.01, 
+            'STRU1': ['dimer', 8, 2, 1, 1.8, 2.0, 2.3, 2.8, 3.8], 
+            'STRU2': ['trimer', 10, 2, 1, 1.9, 2.1, 2.6], 
+            'max_steps': 200, 
+            'Level1': ['STRU1', 4, 'none', '1s1p'], 
+            'Level2': ['STRU1', 4, 'fix', '2s2p1d'], 
+            'Level3': ['STRU2', 6, 'fix', '3s3p2d'], 
+            'Save1': ['Level1', 'SZ'], 
+            'Save2': ['Level2', 'DZP'], 
+            'Save3': ['Level3', 'TZDP'], 
+            'EXE_opt': '/opt_orb_pytorch_dpsi/main.py (default)', 
+            'EXE_env': '', 
+            'environment': '', 
+            'mpi_command': 'mpirun -np 1', 
+            'abacus_command': 'abacus', 
+            'optimizer': 'pytorch.SWAT', 
+            'spillage_coeff': [0.5, 0.5]
+        }
+        result = convert_oldinp_tojson(clean_oldversion_input)
+        clean_oldversion_input = {
+            'EXE_mpi': 'mpirun -np 1', 
+            'EXE_pw': 'abacus --version', 
+            'element': 'Si', 
+            'Ecut': 100, 
+            'Rcut': [6, 7], 
+            'Pseudo_dir': '/root/abacus-develop/pseudopotentials/SG15_ONCV_v1.0_upf', 
+            'Pseudo_name': 'Si_ONCV_PBE-1.0.upf', 
+            'sigma': 0.01, 
+            'STRU1': ['dimer', 8, 2, 1, "auto"], 
+            'STRU2': ['trimer', 10, 2, 1, 1.9, 2.1, 2.6], 
+            'max_steps': 200, 
+            'Level1': ['STRU1', 4, 'none', '1s1p'], 
+            'Level2': ['STRU1', 4, 'fix', '2s2p1d'], 
+            'Level3': ['STRU2', 6, 'fix', '3s3p2d'], 
+            'Save1': ['Level1', 'SZ'], 
+            'Save2': ['Level2', 'DZP'], 
+            'Save3': ['Level3', 'TZDP'], 
+            'EXE_opt': '/opt_orb_pytorch_dpsi/main.py (default)', 
+            'EXE_env': '', 
+            'environment': '', 
+            'mpi_command': 'mpirun -np 1', 
+            'abacus_command': 'abacus', 
+            'optimizer': 'pytorch.SWAT', 
+            'spillage_coeff': [0.5, 0.5]
+        }
+        result = convert_oldinp_tojson(clean_oldversion_input)
+
+    def test_abacus_settings(self):
+        user_settings = read_siab_inp("SIAB/example_Si/SIAB_INPUT")
+        result = abacus_settings(user_settings, 
+                                    minimal_basis=[["2S"], ["2P"]],
+                                    z_valence=4.0)
+        self.assertEqual(len(result), 2)
+        result = abacus_settings(user_settings, 
+                                    minimal_basis=[["2S"], [], ["3D"]],
+                                    z_valence=4.0)
+        self.assertEqual(len(result), 2)
+        for i in result:
+            self.assertEqual(i["lmaxmax"], 2)
+        result = abacus_settings(user_settings, 
+                                    minimal_basis=[["2S"], ["2P"], ["3D"]],
+                                    z_valence=4.0)
+        self.assertEqual(len(result), 2)
+        for i in result:
+            self.assertEqual(i["lmaxmax"], 3)
+
 if __name__ == "__main__":
-    shapes = ["dimer", "trimer", "tetramer"]
-    def is_reference_systems_line(key, value):
-        if key in shapes:
-            if len(value) == 3:
-                if isinstance(value[0], int): # nbands
-                    if value[1] == 1 or value[1] == 2: # nspin
-                        if isinstance(value[2], list):
-                            return True
-        return False
-    
-    def is_orbitals_line(key, value):
-        zeta_pattern = r"^(\s*)([SDTQ56789]?Z([SDTQ56789]?P)?)"
-        match = re.match(zeta_pattern, key)
-        if match:
-            if len(value) == 3:
-                if value[0] in shapes:
-                    if isinstance(value[1], int):
-                        if value[2] == "none" or re.match(zeta_pattern, value[2]):
-                            return True
-        return False
-    
-    value1 = [10,        1,       [ 1.9, 2.1, 2.6]]
-    value2 = ["dimer",    4,            "none"]
-
-    print(is_reference_systems_line("dimer", value1))
-    print(is_reference_systems_line("trimer", value1))
-    print(is_reference_systems_line("tetramer", value1))
-    print(is_reference_systems_line("dimer", value2))
-    print(is_reference_systems_line("trimer", value2))
-    print(is_reference_systems_line("tetramer", value2))
-    print(is_orbitals_line("S", value1))
-    print(is_orbitals_line("SZ", value1))
-    print(is_orbitals_line("SZP", value1))
-    print(is_orbitals_line("SZP", value2))
-    print(is_orbitals_line("SZ", value2))
-    print(is_orbitals_line("DZP", value2))
-    print(is_orbitals_line("DZP", value1))
-    print(is_orbitals_line("TZDP", value2))
-    print(is_orbitals_line("TZDP", value1))
-
-    exit()
-    result = parse("./SIAB_INPUT")
-    print(result)
-    result = wash(result)
-    print(result)
-    result = unpack_siab_input(result)
-    print(result)
+    unittest.main()

@@ -102,26 +102,27 @@ In this section, user should define the orbitals to save. The parameters are lis
 In version >= 0.2.0, many parameters are removed due to redundancy. The input script is shown below:
 ```json
 {
-    "environment": "module load intel/2019.5.281 openmpi/3.1.4 intel-mkl/2019.5.281 intel-mpi/2019.5.281",
-    "mpi_command": "mpirun -np 1",
+    "environment": "",
+    "mpi_command": "mpirun -np 8",
     "abacus_command": "abacus",
 
-    "pseudo_dir": "./download/pseudopotentials/sg15_oncv_upf_2020-02-06/1.2",
-    "pesudo_name": "Fe_ONCV_PBE-1.2.upf",
-    "ecutwfc": 100,
+    "pseudo_dir": "/root/abacus-develop/pseudopotentials/sg15_oncv_upf_2020-02-06/1.0",
+    "pseudo_name": "Si_ONCV_PBE-1.0.upf",
+    "ecutwfc": 60,
     "bessel_nao_rcut": [6, 7, 8, 9, 10],
-    "smearing_sigma": 0.015,
+    "smearing_sigma": 0.01,
 
     "optimizer": "pytorch.SWAT",
+    "max_steps": 1000,
     "spillage_coeff": [0.5, 0.5],
-    "max_steps": 9000,
+    "nthreads_rcut": 4,
 
     "reference_systems": [
         {
             "shape": "dimer",
             "nbands": 8,
             "nspin": 1,
-            "bond_lengths": "auto"
+            "bond_lengths": [1.62, 1.82, 2.22, 2.72, 3.22]
         },
         {
             "shape": "trimer",
@@ -130,9 +131,10 @@ In version >= 0.2.0, many parameters are removed due to redundancy. The input sc
             "bond_lengths": [1.9, 2.1, 2.6]
         }
     ],
+    
     "orbitals": [
         {
-            "zeta_notation": "SZ",
+            "zeta_notation": "Z",
             "shape": "dimer",
             "nbands_ref": 4,
             "orb_ref": "none"
@@ -141,7 +143,7 @@ In version >= 0.2.0, many parameters are removed due to redundancy. The input sc
             "zeta_notation": "DZP",
             "shape": "dimer",
             "nbands_ref": 4,
-            "orb_ref": "SZ"
+            "orb_ref": "Z"
         },
         {
             "zeta_notation": "TZDP",
@@ -205,6 +207,7 @@ In this section, user should define the parameters of SIAB. The parameters are l
 * `optimizer`: the optimizer to use, can be `pytorch.SWAT`, `SimulatedAnnealing`, and optimizers from `scipy.optimize`. THIS PARAMETER IS REQUIRED.
 * `spillage_coeff`: the coefficients of 0 and 1 order derivatives of wavefunction to include in Spillage, e.g. `0.5 0.5`. THIS PARAMETER IS REQUIRED.
 * `max_steps`: the maximum optimization on Spillage function to perform. THIS PARAMETER IS REQUIRED.
+* `nthreads_rcut`: the number of threads to use for optimizing orbital for each rcut, if not set, will run SIAB in serial. THIS PARAMETER IS OPTIONAL.
 
 ### REFERENCE SYSTEMS
 In this section, user should define the reference systems. Reference systems' wavefunctions are training set of numerical atomic orbitals, therefore the quailities of numerical atomic orbitals are determined by the specifications of reference systems and learning configurations. The parameters are listed below:

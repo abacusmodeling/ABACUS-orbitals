@@ -67,7 +67,8 @@ def iter(siab_settings, calculation_settings):
     
     # parallelization setting
     # serial if nthreads_rcut is not set or less than 0.
-    nthreads_rcut = siab_settings.get("nthreads_rcut", -1)
+    nthreads_rcut = siab_settings.get("nthreads_rcut", -1) # siab_setting must have this key because
+    # has been set in the read_input.py function siab_settings() function
     be_serial = True if nthreads_rcut <= 0 else False
     
     # according to user setting, calculate how many rcuts can be parallelized at the same time
@@ -76,6 +77,12 @@ def iter(siab_settings, calculation_settings):
     nrcuts = len(calculation_settings[0]["bessel_nao_rcut"])
     nrcuts_toparallel = nthreads_max // nthreads_rcut # the number of rcuts that can be parallelized
     # however, for bad settings, will result in nrcut_toparallel < 1, in this case, be_serial = True
+    if nrcuts_toparallel <= 1 and nthreads_rcut > 0:
+        print("""
+Parallelization - WARNING
+The parameter `nthreads_rcut` is set to be larger than all available threads
+of present machine, therefore the calculation will switch to run in serial.
+""", flush=True)
     be_serial = True if nrcuts_toparallel < 1 else be_serial
 
     # run!
@@ -98,7 +105,7 @@ def iter(siab_settings, calculation_settings):
         # be aware that nprocs_rcut < 1 is not allowed, if there are really only one
         # logical processor, then nprocs_rcut = 1
         
-        print(f"""Parallelization 
+        print(f"""Parallelization - RUNTIME
 Number of threads for each rcut: {nthreads_rcut}
 Number of rcuts that can be parallelized: {nrcuts_toparallel}
 Total number of threads available: {nthreads_max}
@@ -132,7 +139,7 @@ NOTE: for parallelized run, the stdout and stderr will be redirected to log.[ipr
                 sys.stderr = sys.__stderr__
             print(f"Finish level {ilevel} orbital generation (in total {nlevel}).", flush=True)
 
-        print("All processes finish.", flush=True)
+        print("All processes finish, see stdout and stderr in log.[iproc].txt and err.[iproc].txt respectively.", flush=True)
     return
 
 import os
