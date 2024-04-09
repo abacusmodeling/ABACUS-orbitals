@@ -152,11 +152,25 @@ def finalize():
     """
     print(sicite.citation())
 
+import time
 def main(command_line: bool = True):
     """entry point of the whole workflow of orbital generation"""
+    t_start = time.time()
+    
     fname, test, version = initialize(command_line=command_line)
+    t_initialize = time.time()
     run(fname=fname, siab_version=version, test=test)
+    t_run = time.time()
     finalize()
+    t_finalize = time.time()
+    t_end = time.time()
+    # print time statistics with format %.2f
+    print(f"""TIME STATISTICS
+{"initialize":20s} {t_initialize - t_start:10.2f} s
+{"run":20s} {t_run - t_initialize:10.2f} s
+{"finalize":20s} {t_finalize - t_run:10.2f} s
+{"total":20s} {t_end - t_start:10.2f} s
+""")
 
 if __name__ == '__main__':
 

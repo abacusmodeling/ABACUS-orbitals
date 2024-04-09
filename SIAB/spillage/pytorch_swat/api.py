@@ -2,6 +2,8 @@ import SIAB.interface.old_version as siov
 import SIAB.spillage.pytorch_swat.main as sspsm
 import SIAB.spillage.orbscreen as sso
 import multiprocessing
+import torch
+
 def run(params: dict = None, cache_dir: str = "./", ilevel: int = 0, nlevel: int = 3):
     """Run the spillage calculation
     
@@ -56,6 +58,82 @@ def run(params: dict = None, cache_dir: str = "./", ilevel: int = 0, nlevel: int
     screen_vals = sso.screen(fnao=files[4], item="T")    
 
     return files[4], screen_vals
+
+import SIAB.interface.old_version as siov
+import sys
+def iter(siab_settings, calculation_settings):
+    """iterate on siab_settings, can support parallelization according to user settings"""
+    nlevel=len(siab_settings["orbitals"]) # this dimension must be executed in serial
+    
+    # parallelization setting
+    # serial if nthreads_rcut is not set or less than 0.
+    nthreads_rcut = siab_settings.get("nthreads_rcut", -1)
+    be_serial = True if nthreads_rcut <= 0 else False
+    
+    # according to user setting, calculate how many rcuts can be parallelized at the same time
+    nthreads_max = torch.get_num_threads()
+    nthreads_rcut = nthreads_max if nthreads_rcut <= 0 else nthreads_rcut
+    nrcuts = len(calculation_settings[0]["bessel_nao_rcut"])
+    nrcuts_toparallel = nthreads_max // nthreads_rcut # the number of rcuts that can be parallelized
+    # however, for bad settings, will result in nrcut_toparallel < 1, in this case, be_serial = True
+    be_serial = True if nrcuts_toparallel < 1 else be_serial
+
+    # run!
+    if be_serial:
+        for old_input, cache_dir, ilevel in siov.convert(calculation_setting=calculation_settings[0],
+                                                         siab_settings=siab_settings):
+            orb_out = run(params=old_input, cache_dir=cache_dir, ilevel=ilevel, nlevel=nlevel)
+            postprocess(orb_out)
+    else:
+        orbgen_plans = []
+        for old_input, cache_dir, ilevel in siov.convert(calculation_setting=calculation_settings[0],
+                                                         siab_settings=siab_settings):
+            if ilevel == 0:
+                orbgen_plans.append([])
+            orbgen_plans[-1].append((old_input, cache_dir, ilevel))
+        # then in orbgen_plans, for one rcut i and level j, can be accessed by orbgen_plans[i][j]
+        # then we can parallelize the calculation by rcut, therefore first loop over levels, then
+        # loop over rcut. The loop over rcut can be parallelized.
+        # nprocs_rcut is the number of processes for each rcut
+        # be aware that nprocs_rcut < 1 is not allowed, if there are really only one
+        # logical processor, then nprocs_rcut = 1
+        
+        print(f"""Parallelization 
+Number of threads for each rcut: {nthreads_rcut}
+Number of rcuts that can be parallelized: {nrcuts_toparallel}
+Total number of threads available: {nthreads_max}
+----------------------------------
+NOTE: for parallelized run, the stdout and stderr will be redirected to log.[iproc].txt and err.[iproc].txt respectively.
+""", flush=True)
+        for ilevel in range(nlevel):
+            # because for each rcut, the latter level will depend on the former level
+            # therefore, parallelize rcut and barrier, then serialize the levels
+            procs = []
+            # each time get nrcuts_toparallel rcuts from nruts to run
+            for ircut_start in range(0, nrcuts, nrcuts_toparallel):
+                # refresh the procs list
+                procs = []
+                # for each rcut, run the calculation
+                for ircut in range(ircut_start, min(ircut_start+nrcuts_toparallel, nrcuts)):
+                    torch.set_num_threads(nthreads_rcut)
+                    inp, cdir, ilv = orbgen_plans[ircut][ilevel]
+                    proc = multiprocessing.Process(target=run, args=(inp, cdir, ilv, nlevel))
+                    # redirect stdout to log.[iproc].txt and stderr to err.[iproc].txt for each process
+                    sys.stdout = open("log.%d.txt"%ircut, "a+")
+                    sys.stderr = open("err.%d.txt"%ircut, "a+")
+                    procs.append(proc)
+                    proc.start()
+                # wait for all processes to finish, then recover stdout and stderr
+                for proc in procs:
+                    proc.join() # barrier
+                torch.set_num_threads(nthreads_max)
+                # after all processes finish, recover stdout and stderr
+                sys.stdout = sys.__stdout__
+                sys.stderr = sys.__stderr__
+            print(f"Finish level {ilevel} orbital generation (in total {nlevel}).", flush=True)
+
+        print("All processes finish.", flush=True)
+    return
 
 import os
 import re

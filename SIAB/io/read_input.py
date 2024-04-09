@@ -27,9 +27,14 @@ def json_parse(fname: str = ""):
     """parse SIAB_INPUT file with version 0.2.0 in json format"""
     with open(fname, "r") as f:
         result = json.load(f)
+    # here should be a default value setting procedure...
+    # temporarily use direct way to set default values
+    if "parallelization" not in result.keys():
+        result["parallelization"] = False
     return result
 
 def parse(fname: str = "", version: str = "0.1.0"):
+    """default value setting is absent"""
     print("Parse input file:", fname, "orbital generation code version:", version)
     if fname.endswith(".json"):
         return json_parse(fname)
