@@ -147,11 +147,13 @@ def spillage(folders: list,
         for orb_gen, _, ilevel in siov.convert(calculation_setting=calculation_settings[0],
                                                siab_settings=siab_settings):
             """the iteration here will be processed first by rcut and second by zeta notation"""
-            forb, quality = SPS_api.run(params=orb_gen, ilevel=ilevel, nlevel=nlevel)
-            # instantly print the quality of the orbital generated
-            print("Report: quality of the orbital %s is:"%forb, flush=True)
-            for l in range(len(quality)):
-                print("l = %d: %s"%(l, " ".join(["%10.8e"%q for q in quality[l] if q is not None])), flush=True)
+            result = SPS_api.run(params=orb_gen, ilevel=ilevel, nlevel=nlevel)
+            if result is not None:
+                forb, quality = result
+                # instantly print the quality of the orbital generated
+                print("Report: quality of the orbital %s is:"%forb, flush=True)
+                for l in range(len(quality)):
+                    print("l = %d: %s"%(l, " ".join(["%10.8e"%q for q in quality[l] if q is not None])), flush=True)
 
     else:
         # reserve for new implementation of orbital optimization

@@ -41,7 +41,7 @@ def run(params: dict = None, ilevel: int = 0, nlevel: int = 3):
     files = checkpoint(src="./", dst=folder, this_point=chkpt, refresh=refresh)
 
     # analysis the newly generated orbitals' kinetic energies of all components
-    screen_vals = sso.screen(fnao=files[4], term="T")    
+    screen_vals = sso.screen(fnao=files[4], item="T")
 
     return files[4], screen_vals
 
