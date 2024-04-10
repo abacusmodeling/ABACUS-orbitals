@@ -105,7 +105,7 @@ def element(info_element: dict):
 
     return contents
 
-def opt(info_opt: dict):
+def opt(info_opt: dict, spillage_coeff: list):
 
     contents =  "PRINT INFO_OPT INFORMATION\n"
     contents += "--------------------------\n"
@@ -114,6 +114,8 @@ def opt(info_opt: dict):
     contents += "Calculate smooth term: " + str(info_opt["cal_smooth"]) + "\n"
     contents += "Optimizer learning rate: " + str(info_opt["lr"]) + "\n"
     contents += "Max steps: " + str(info_opt["max_steps"]) + "\n"
+    contents += "Spillage coefficients of PSI and DPSI terms: \n"
+    contents += " ".join(["%.2f" % i for i in spillage_coeff]) + "\n\n"
 
     contents += "PRINT INFO_OPT INFORMATION END.\n\n"
 
@@ -141,12 +143,13 @@ def bundle_print(info_kst: dict,
                  info_stru: dict, 
                  info_element: dict, 
                  info_opt: dict, 
-                 info_max: dict):
+                 info_max: dict,
+                 spillage_coeff: list = [2, 1]):
 
     contents = kst(info_kst.__dict__)
     contents += stru(info_stru)
     contents += element(info_element)
-    contents += opt(info_opt)
+    contents += opt(info_opt, spillage_coeff)
     contents += the_max(info_max)
 
     return contents

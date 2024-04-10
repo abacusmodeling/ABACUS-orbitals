@@ -23,7 +23,8 @@ import uuid
 
 def main(params: dict = None):
     """not-highly abstracted main function, as workflow function of spillage optimiaztion task"""
-
+    coef_deriv0, coef_deriv1 = params.get("spillage_coeff", [2, 1])
+    
     print("""
 --------------------------------------------------
 Module Spillage - find the most similar space to the target spanned planewave wavefunction:
@@ -97,7 +98,8 @@ SIAB.pytorch_swat starts, numerical atomic orbitals are optimized.
     print("INFORMATION CHECK - Please check every detail of the information below:", flush=True)
     print("-"*80, flush=True)
     print(sspsistdout.bundle_print(info_kst=info_kst, info_stru=info_stru, info_element=info_element,
-                                   info_opt=info_opt, info_max=info_max), flush=True)
+                                   info_opt=info_opt, info_max=info_max, spillage_coeff=[coef_deriv0, coef_deriv1]),
+                                   flush=True)
     print("-"*80, flush=True)
     ###################################
     # PHYSICAL MEANING OF Q, S, V     #
@@ -211,23 +213,14 @@ Max steps: {info_opt.max_steps}
                     return ((VI[ist]-V)/sspsu.update0(VI[ist])).abs()        # abs or **2?
                 # central expression appears to be here, one can modifiy the mixing coefficients between the two terms
                 # psi and dpsi here.
-                coeff_psi = 2  # 2 is the default value
-                coeff_dpsi = 1
-                cstpsi = 1
-                fpsi_dpsi = 1
-                # because we dont have the second order derivatives of quantities, the further mixing with ddpsi is not
-                # possible.
-                # coeff_ddpsi = 0
                 # CALCULATE THE SPILLAGE
                 s0 = cal_Spillage(cal_delta(VI_origin, V_origin))
-                Spillage += coeff_psi*s0
+                Spillage += coef_deriv0*s0
 				# append the linear term to the spillage if the linear term is defined
                 if "linear" in file_list.keys():
                     for i in range(len(file_list["linear"])):
                         s1 = cal_Spillage(cal_delta(VI_linear[i], V_linear[i]))
-                        Spillage += coeff_dpsi*s1
-                        # Spillage += coeff_dpsi*s1*(cstpsi + s0/fpsi_dpsi)
-
+                        Spillage += coef_deriv1*s1
             # END: hack function here to change definition of Spillage
             # --------------------------------
             # kinetic energy term contribution
