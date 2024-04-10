@@ -62,29 +62,29 @@ def copy_C(C,info_element):
     
     
     
-def write_C(file_name,C,Spillage):
-    with open(file_name,"w") as file:
-        print("<Coefficient>", file=file)
+def write_C(fcoef, C, Spillage):
+    with open(fcoef, "w") as fhdle:
+        print("<Coefficient>", file = fhdle)
         #print("\tTotal number of radial orbitals.", file=file)
         nTotal = 0
-        for it,C_t in C.items():
-            for il,C_tl in enumerate(C_t):
+        for it, C_t in C.items():
+            for il, C_tl in enumerate(C_t):
                 for iu in range(C_tl.size()[1]):
                     nTotal += 1 
             #nTotal = sum(info["Nu"][it])
-        print("\t %s Total number of radial orbitals."%nTotal , file=file) 
+        print("\t %s Total number of radial orbitals."%nTotal , file = fhdle) 
         #print("\tTotal number of radial orbitals.", file=file)
-        for it,C_t in C.items():
-            for il,C_tl in enumerate(C_t):
+        for it, C_t in C.items():
+            for il, C_tl in enumerate(C_t):
                 for iu in range(C_tl.size()[1]):
-                    print("\tType\tL\tZeta-Orbital", file=file)
-                    print("\t  {0} \t{1}\t    {2}".format(it, il, iu+1), file=file)
+                    print("\tType\tL\tZeta-Orbital", file = fhdle)
+                    print("\t  {0} \t{1}\t    {2}".format(it, il, iu+1), file = fhdle)
                     for ie in range(C_tl.size()[0]):
-                        print("\t", '%18.14f'%C_tl[ie,iu].item(), file=file)
-        print("</Coefficient>", file=file)
-        print("<Mkb>", file=file)
-        print("Left spillage = %.10e"%Spillage.item(), file=file)
-        print("</Mkb>", file=file)
+                        print("\t", '%18.14f'%C_tl[ie,iu].item(), file = fhdle)
+        print("</Coefficient>", file = fhdle)
+        print("<Mkb>", file = fhdle)
+        print("Left spillage = %.10e"%Spillage.item(), file = fhdle)
+        print("</Mkb>", file = fhdle)
 
     
 #def init_C(info):

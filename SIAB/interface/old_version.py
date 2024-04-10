@@ -404,9 +404,9 @@ def convert(calculation_setting: dict,
         # to make compatible with parallelization in process level, should save the ORBITAL_RESULTS.txt
         # in different folders for different rcut, a combination of element and rcut with timestamp
         # can be used to identify the folder.
-        uuidfolder = str(uuid.uuid3(uuid.NAMESPACE_DNS, "-".join([element, str(rcut), str(time.time())])))
-        print("Cache: for storing temporary files for hierarchical optimization, create folder:", uuidfolder)
-        c_init = ov_c_init(orbitals=siab_settings["orbitals"], folder=uuidfolder)
+        foldername = str(uuid.uuid3(uuid.NAMESPACE_DNS, f"{int(time.time() * 1000)} - {uuid.uuid4().int}"))
+        # then generate input file for old version orbital optimizer
+        c_init = ov_c_init(orbitals=siab_settings["orbitals"], folder=foldername)
         v = ov_V()
         info = [ov_parameters(element=element,
                               orbital_config=orbital["nzeta"],
@@ -428,7 +428,7 @@ def convert(calculation_setting: dict,
                 "weight": istates[1][iorb],
                 "C_init_info": c_init[iorb],
                 "V_info": v
-            }, uuidfolder, iorb
+            }, foldername, iorb
 
 def unpack(orb_gen: dict) -> dict:
     """convert information collect in old version input to dict like

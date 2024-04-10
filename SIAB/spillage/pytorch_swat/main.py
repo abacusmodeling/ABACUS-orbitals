@@ -18,12 +18,18 @@ import torch_optimizer
 import SIAB.spillage.pytorch_swat.IO.stdout as sspsistdout
 import numpy as np
 import time
+# to avoid data racing
+import uuid
 
 def main(params: dict = None):
-    print("""--------------------------------------------------
+    """not-highly abstracted main function, as workflow function of spillage optimiaztion task"""
+
+    print("""
+--------------------------------------------------
 Module Spillage - find the most similar space to the target spanned planewave wavefunction:
 SIAB.pytorch_swat starts, numerical atomic orbitals are optimized.
---------------------------------------------------""", flush=True)
+--------------------------------------------------
+""", flush=True)
     ###################################
     #   RANDOM SEED INITIALIZATION    #
     ###################################
@@ -131,16 +137,24 @@ SIAB.pytorch_swat starts, numerical atomic orbitals are optimized.
     #orb_optimizer = torch.optim.Adam(sum(C.values(),[]), lr=info_opt.lr, eps=1e-20, weight_decay=info_opt.weight_decay)
     #orb_optimizer = radam.RAdam(sum(C.values(),[]), lr=info_opt.lr, eps=1e-20)
 
-    print("""
+    # define some files to store temporary data, with uuid3 namespace_dns as the unique identifier, uuid4 to generate
+    # random component
+    fspill = f"{uuid.uuid3(uuid.NAMESPACE_DNS, f'Spillage-{uuid.uuid4()}').hex}.dat"
+    fcoef = f"{uuid.uuid3(uuid.NAMESPACE_DNS, f'ORBITAL_RESULTS-{uuid.uuid4()}').hex}.txt"
+    fplotu = f"{uuid.uuid3(uuid.NAMESPACE_DNS, f'ORBITAL_PLOTU-{uuid.uuid4()}').hex}.dat"
+    fu = f"{uuid.uuid3(uuid.NAMESPACE_DNS, f'ORBITAL_U-{uuid.uuid4()}').hex}.dat"
+
+    print(f"""
+Optimization of the orbital starts.
 torch_optimizer.SWATS (Improving Generalization Performance by Switching from Adam to SGD) optimizer is used.
 Parameters are listed below
-Learning rate: %s
-Epsilon: %s
-Max steps: %s"""%(info_opt.lr, 1e-20, info_opt.max_steps), flush=True)
+Learning rate: {info_opt.lr}
+Epsilon: {1e-20}
+Max steps: {info_opt.max_steps}
+""", flush=True)
 
     orb_optimizer = torch_optimizer.SWATS(sum(C.values(),[]), lr=info_opt.lr, eps=1e-20)
-
-    with open("Spillage.dat","w") as S_file:
+    with open(fspill,"w") as S_file:
         
         print("Optimization on Spillage function starts, check \"Spillage.dat\" for detailed trajectory.", flush=True)
         # use f-string to format the output
@@ -259,20 +273,24 @@ Max steps: %s"""%(info_opt.lr, 1e-20, info_opt.max_steps), flush=True)
             #    C, flag_norm_C=True)
 
     orb = sspso.generate_orbital(info_element, C_old, E)
+    # this is a ad hoc way to smooth the orbital. A more clean way would be implemented
+    # in future version.
     if info_opt.cal_smooth:
         sspso.smooth_orbital(orb=orb,
                              Rcut={it:info_element[it].Rcut for it in info_element}, 
                              dr={it:info_element[it].dr for it in info_element},
                              smearing_sigma=0.1)
-    sspso.orth(orb=orb,
-               dr={it:info_element[it].dr for it in info_element})
-    sspsipo.print_orbital(orb=orb, 
-                          info_element=info_element)
-    sspsipo.plot_orbital(orb=orb,
+    # Schmidt orthogonalization on smoothed orbitals
+    sspso.orth(orb=orb, dr={it:info_element[it].dr for it in info_element})
+    # write file ORBITAL_{}U.dat -> uuid named
+    sspsipo.print_orbital(fu=fu, orb=orb, info_element=info_element)
+    # write file ORBITAL_PLOTU.dat -> uuid named
+    sspsipo.plot_orbital(fplotu=fplotu,
+                         orb=orb,
                          Rcut={it:info_element[it].Rcut for it in info_element},
                          dr={it:info_element[it].dr for it in info_element})
-
-    sspsifc.write_C("ORBITAL_RESULTS.txt", C_old, Spillage)
+    # write file ORBITAL_RESULTS.txt -> uuid named
+    sspsifc.write_C(fcoef, C_old, Spillage)
 
     print("""...
 ---------------------------------
@@ -285,7 +303,8 @@ ORBITAL_*U.dat: numerical atomic orbital before renaming
 ORBITAL_PLOTU.dat: for plot, the first column is the r, latter colomns are the orbitals
 
 TOTAL TIME (PyTorch):     %s"""%(time.time()-time_start), flush=True)
-
+    # finally return the file names to keep track on the files
+    return fspill, fcoef, fplotu, fu
 
 if __name__=="__main__":
     import sys
