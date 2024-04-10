@@ -404,7 +404,8 @@ def convert(calculation_setting: dict,
         # to make compatible with parallelization in process level, should save the ORBITAL_RESULTS.txt
         # in different folders for different rcut, a combination of element and rcut with timestamp
         # can be used to identify the folder.
-        foldername = str(uuid.uuid3(uuid.NAMESPACE_DNS, f"{int(time.time() * 1000)} - {uuid.uuid4().int}"))
+        ecutwfc = calculation_setting["ecutwfc"]
+        foldername = str(uuid.uuid3(uuid.NAMESPACE_DNS, f"{element}_gga_{ecutwfc}Ry_{rcut}au.orbgen"))
         # then generate input file for old version orbital optimizer
         c_init = ov_c_init(orbitals=siab_settings["orbitals"], folder=foldername)
         v = ov_V()
@@ -412,7 +413,7 @@ def convert(calculation_setting: dict,
                               orbital_config=orbital["nzeta"],
                               bessel_nao_rcut=rcut,
                               lmax=orbital["lmax"],
-                              ecutwfc=calculation_setting["ecutwfc"],
+                              ecutwfc=ecutwfc,
                               opt_maxsteps=siab_settings["max_steps"])
                 for orbital in siab_settings["orbitals"]]
         # level by level, yield the input for pytorch_swat
