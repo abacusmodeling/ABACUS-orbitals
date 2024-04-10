@@ -41,19 +41,23 @@ def kst(info_kst: dict):
     # key: Na
     contents += "Number of atoms for each atom type for each reference structure: \n"
     for i in range(len(info_kst["Na"])):
-        contents += f"Structure {i}: \n"
+        contents += f"Structure {i}: "
         for key, value in info_kst["Na"][i].items():
-            contents += f"{key}: " + f"{value}" + "\n"
+            contents += f"{key}: " + f"{value}" + " "
+        contents += "\n"
     # key: Nb
     contents += "Number of bands selected to learn for each reference structure: \n"
+    contents += "Struectures: "
     for i in range(len(info_kst["Nb"])):
-        contents += f"Structure {i}: " + str(info_kst["Nb"][i]) + "\n"
+        contents += f"{i}: " + str(info_kst["Nb"][i]) + " "
+    contents += "\n"
     
     contents += "Spherical Bessel function:\n"
     # key: Ne
     contents += "Number of Spherical Bessel functions (Sphbes) for each atom type: \n"
     for key, value in info_kst["Ne"].items():
-        contents += f"{key}: " + str(value) + "\n"
+        contents += f"{key}: " + str(value) + " "
+    contents += "\n"
     
     contents += "PRINT INFO_KST INFORMATION END.\n\n"
     return contents

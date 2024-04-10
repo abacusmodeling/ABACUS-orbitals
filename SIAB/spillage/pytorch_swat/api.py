@@ -33,14 +33,14 @@ def run(params: dict = None, cache_dir: str = "./", ilevel: int = 0, nlevel: int
     # generate the folder name from checkpoint which can identify current process of orbital generation
     folder = siov.folder(unpacked_orb=chkpt)
     # certainly if is duplicated task, directly skip
-    if is_duplicate(folder):
-        return
+    skip, forb = is_duplicate(folder)
+    if skip:
+        return forb, sso.screen(fnao=forb, item="T")
     # else there are two ways to run the spillage optimizer, 1 is read from external file, the other
     # is directly from the input parameters
-    if params is None:
-        sspsm.main()
-    else:
-        sspsm.main(params)
+    fspill, fcoef, fplotu, fu = sspsm.main() if params is None else sspsm.main(params)
+    fs = ["Spillage.dat", "ORBITAL_RESULTS.txt", "ORBITAL_PLOTU.dat", "ORBITAL.dat"]
+    fs = dict(zip(fs, [fspill, fcoef, fplotu, fu]))
     # after the step above, will generate several files like ORBITAL_RESULTS, ORBITAL_PLOTU, ORBITAL_U.dat
     # in cwd. Before the next run, move them to target folders.
 
@@ -48,16 +48,13 @@ def run(params: dict = None, cache_dir: str = "./", ilevel: int = 0, nlevel: int
     # refresh is for controlling whether leave the ORBITAL_RESULTS.txt in the original folder
     # if so, orbitals will be optimized based on the previous results, say hierarchical optimization
     # but for the last level, we should remove the ORBITAL_RESULTS.txt.
-    files = checkpoint(src="./", 
-                       dst=folder, 
-                       progress=chkpt, 
-                       cache_dir=cache_dir,
-                       refresh=refresh)
+    _, _, _, forb = checkpoint(src="./", dst=folder, progress=chkpt, cache_dir=cache_dir, out_files=fs,
+                               refresh=refresh)
 
     # analysis the newly generated orbitals' kinetic energies of all components
-    screen_vals = sso.screen(fnao=files[4], item="T")
+    screen_vals = sso.screen(fnao=forb, item="T")
 
-    return files[4], screen_vals
+    return forb, screen_vals
 
 import SIAB.interface.old_version as siov
 import sys
@@ -112,6 +109,7 @@ Total number of threads available: {nthreads_max}
 ----------------------------------
 NOTE: for parallelized run, the stdout and stderr will be redirected to log.[iproc].txt and err.[iproc].txt respectively.
 """, flush=True)
+        # start!
         for ilevel in range(nlevel):
             # because for each rcut, the latter level will depend on the former level
             # therefore, parallelize rcut and barrier, then serialize the levels
@@ -124,6 +122,7 @@ NOTE: for parallelized run, the stdout and stderr will be redirected to log.[ipr
                 for ircut in range(ircut_start, min(ircut_start+nrcuts_toparallel, nrcuts)):
                     torch.set_num_threads(nthreads_rcut)
                     inp, cdir, ilv = orbgen_plans[ircut][ilevel]
+                    # create a process and also get its return value
                     proc = multiprocessing.Process(target=run, args=(inp, cdir, ilv, nlevel))
                     # redirect stdout to log.[iproc].txt and stderr to err.[iproc].txt for each process
                     sys.stdout = open("log.%d.txt"%ircut, "a+")
@@ -147,8 +146,13 @@ import re
 def is_duplicate(folder: str):
     """check if the siab calculation is skipped"""
     if not os.path.isdir(folder):
-        return False
-    orbital_u = r"^(ORBITAL_)([0-9]+)(U\.dat)$"
+        return False, None
+    # becuase ORBITAL_{}U.dat stores the same information as *.orb
+    # therefore we only need to check the existence of Spillage.dat, ORBITAL_RESULTS.txt, ORBITAL_PLOTU.dat
+    # and *.orb
+    # deprecated
+    # orbital_u = r"^(ORBITAL_)([0-9]+)(U\.dat)$"
+    orbital = r"^([A-Z][a-z]?)(_gga_)(\d+\.?\d?)(Ry_)(\d+\.?\d?)(au_)((\d\w)+)(\.orb)$"
     files = os.listdir(folder)
     print("Checking files in %s..."%folder)
     if "Spillage.dat" in files:
@@ -157,25 +161,21 @@ def is_duplicate(folder: str):
             print("    ORBITAL_RESULTS.txt exists")
             if "ORBITAL_PLOTU.dat" in files:
                 print("    ORBITAL_PLOTU.dat exists")
-                if "SIAB_INPUT" in files:
-                    print("    SIAB_INPUT exists")
-                else:
-                    print("""    WARNING: SIAB_INPUT does not exist. 
-    You dont need to worry about this if you are using .json input script""")
-                for file in files:
-                    if re.match(orbital_u, file):
-                        print("    ORBITAL_*U.dat exists\n=> Restart check pass.")
-                        return True
-    return False
+                for f in files:
+                    if re.match(orbital, f):
+                        print("    %s exists => duplicate check pass, will skip."%f)
+                        return True, f"{folder}/{f}"
+    return False, None
 
 import SIAB.interface.env as sienv
-import SIAB.data.interface as sdi
+#import SIAB.data.interface as sdi
 def checkpoint(src: str,
                dst: str,
                progress: dict,
-               refresh: bool = False,
                cache_dir: str = "./",
-               env: str = "local",):
+               out_files: dict = None,
+               env: str = "local",
+               refresh: bool = False):
     """After optimization of numerical orbitals' coefficients,
        move generated orbitals to the folder named as:
        [element]_gga_[Ecut]Ry_[Rcut]au_[orbital_config]
@@ -195,55 +195,68 @@ def checkpoint(src: str,
     """
     # first check if the folder exists, if not, create it
     element, ecutwfc, rcut, orbital_config = progress["element"], progress["ecutwfc"], progress["rcut"], progress["zeta_notation"]
-
+    print("CHECKPOINT: handling on temporary files:", flush=True)
+    for k, v in out_files.items():
+        print("            %-20s: %s"%(k, v), flush=True)
+    
     if not os.path.isdir(dst):
         sienv.op("mkdir", dst, additional_args=["-p"], env=env)
+        print(f"CHECKPOINT: folder {dst} created.")
     if not os.path.isdir(cache_dir):
         sienv.op("mkdir", cache_dir, additional_args=["-p"], env=env)
+        print(f"CHECKPOINT: folder {cache_dir} created.")
 
-    files = []
-
-    """backup input file, unlike the original version, we fix it must be named as SIAB_INPUT"""
-    sienv.op("cp", "%s/SIAB_INPUT"%src, "%s/SIAB_INPUT"%dst, env=env)
-    files.append("%s/SIAB_INPUT"%dst)
+    # deprecated
+    # """backup input file, unlike the original version, we fix it must be named as SIAB_INPUT"""
+    # sienv.op("cp", "%s/SIAB_INPUT"%src, "%s/SIAB_INPUT"%dst, env=env)
+    # files.append("%s/SIAB_INPUT"%dst)
 
     """move spillage.dat"""
-    sienv.op("mv", "%s/Spillage.dat"%src, "%s/Spillage.dat"%dst, env=env)
-    files.append("%s/Spillage.dat"%dst)
+    fspill = out_files["Spillage.dat"]
+    sienv.op("mv", src = f"{src}/{fspill}", dst = f"{dst}/Spillage.dat", env=env)
+    fspill = f"{dst}/Spillage.dat"
 
-    """move ORBITAL_PLOTU.dat and ORBITAL_RESULTS.txt"""
-    sienv.op("mv", "%s/ORBITAL_PLOTU.dat"%src, "%s/ORBITAL_PLOTU.dat"%dst, env=env)
-    files.append("%s/ORBITAL_PLOTU.dat"%dst)
+    """move ORBITAL_PLOTU.dat"""
+    fplotu = out_files["ORBITAL_PLOTU.dat"]
+    sienv.op("mv", src = f"{src}/{fplotu}", dst = f"{dst}/ORBITAL_PLOTU.dat", env=env)
+    fplotu = f"{dst}/ORBITAL_PLOTU.dat"
+
+    """cache and/or move ORBITAL_RESULTS.txt"""
+    fcoef = out_files["ORBITAL_RESULTS.txt"]
     if not refresh:
-        sienv.op("cp", "%s/ORBITAL_RESULTS.txt"%src, "%s/ORBITAL_RESULTS.txt"%dst, env=env)
-        cache(src=src, cache_dir=cache_dir, env=env)
+        sienv.op("cp", src = f"{src}/{fcoef}", dst = f"{dst}/ORBITAL_RESULTS.txt", env=env)
+        cache(src=src, fcoef=fcoef, cache_dir=cache_dir, env=env)
     else:
-        sienv.op("mv", "%s/ORBITAL_RESULTS.txt"%src, "%s/ORBITAL_RESULTS.txt"%dst, env=env)
-        sienv.op("rm", "%s"%cache_dir, env=env, additional_args=["-rf"])
-    files.append("%s/ORBITAL_RESULTS.txt"%dst)
+        sienv.op("mv", src = f"{src}/{fcoef}", dst = f"{dst}/ORBITAL_RESULTS.txt", env=env)
+        sienv.op("rm", f"{cache_dir}", env=env, additional_args=["-rf"])
+    fcoef = f"{dst}/ORBITAL_RESULTS.txt"
 
-    """move ORBITAL_[element]U.dat to [element]_gga_[Ecut]Ry_[Rcut]au.orb"""
-    forb = "%s_gga_%sRy_%sau_%s.orb"%(element, str(ecutwfc), str(rcut), orbital_config)
-    index = sdi.PERIODIC_TABLE_TOINDEX[element]
-    sienv.op("cp", "%s/ORBITAL_%sU.dat"%(src, index), "%s/%s"%(dst, forb), env=env)
-    files.append("%s/%s"%(dst, forb))
+    """move ORBITAL.dat to *.orb"""
+    forb = f"{element}_gga_{ecutwfc}Ry_{rcut}au_{orbital_config}.orb"
+    fu = out_files["ORBITAL.dat"]
+    sienv.op("mv", src = f"{src}/{fu}", dst = f"{dst}/{forb}", env=env)
+    forb = f"{dst}/{forb}"
     print("Orbital file %s generated."%forb)
     
-    """and directly move it to the folder"""
-    sienv.op("mv", "%s/ORBITAL_%sU.dat"%(src, index), "%s/ORBITAL_%sU.dat"%(dst, index), env=env)
-    files.append("%s/ORBITAL_%sU.dat"%(dst, index))
+    # deprecated
+    # """and directly move it to the folder"""
+    # index = sdi.PERIODIC_TABLE_TOINDEX[element]
+    # sienv.op("mv", "%s/ORBITAL_%sU.dat"%(src, index), "%s/ORBITAL_%sU.dat"%(dst, index), env=env)
+    # files.append("%s/ORBITAL_%sU.dat"%(dst, index))
 
-    return files
+    # finally will contain Spillage.dat, ORBITAL_PLOTU.dat, ORBITAL_RESULTS.txt, and *.orb
+    return fspill, fcoef, fplotu, forb
 
-def cache(src: str = "./", cache_dir: str = "./", env: str = "local"):
-
+def cache(src: str = "./", fcoef: str = "ORBITAL_RESULTS.txt", cache_dir: str = "./", env: str = "local"):
+    """in cache_dir, if there is already a file named as Level[ilevel].ORBITAL_RESULTS.txt,
+    then move the ORBITAL_RESULTS.txt to Level[ilevel+1].ORBITAL_RESULTS.txt"""
     ilevel = 0
     while True:
         if os.path.isfile("%s/Level%s.ORBITAL_RESULTS.txt"%(cache_dir, ilevel)):
             ilevel += 1
         else:
             break
-    sienv.op("mv", "%s/ORBITAL_RESULTS.txt"%src, "%s/Level%s.ORBITAL_RESULTS.txt"%(cache_dir, ilevel), env=env)
+    sienv.op("mv", f"{src}/{fcoef}", "%s/Level%s.ORBITAL_RESULTS.txt"%(cache_dir, ilevel), env=env)
 
 def postprocess(orb_out = None):
     

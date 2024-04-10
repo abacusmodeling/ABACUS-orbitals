@@ -23,33 +23,33 @@ periodtable = {   'H': 1, 'He': 2, 'Li': 3, 'Be': 4, 'B': 5, 'C': 6, 'N': 7,
                     ## 'Fl': 114, 'Uup': 115, 'Lv': 116, 'Uus': 117, 'Uuo': 118
                } 
 
-def print_orbital(orb,info_element):
+def print_orbital(fu, orb, info_element):
     """ orb[it][il][iu][r] """
     for it,orb_t in orb.items():
         #with open("orb_{0}.dat".format(it),"w") as file:
-        with open("ORBITAL_{0}U.dat".format( periodtable[it] ),"w") as file:
-            print_orbital_head(file,info_element,it)
+        with open(fu, "w") as fhdle:
+            print_orbital_head(fhdle, info_element,it)
             for il,orb_tl in enumerate(orb_t):
                 for iu,orb_tlu in enumerate(orb_tl):
-                    print("""                Type                   L                   N""",file=file)
-                    print("""                   0                   {0}                   {1}""".format(il,iu),file=file)
-                    for ir,orb_tlur in enumerate(orb_tlu):
-                        print( '%.14e'%orb_tlur, end="  ",file=file)
-                        if ir%4==3:    print(file=file)
-                    print(file=file)
+                    print("%20s%20s%20s\n%20d%20d%20d"%("Type", "L", "N", 0, il, iu), file = fhdle)
+                    for ir, orb_tlur in enumerate(orb_tlu):
+                        print('%.14e'%orb_tlur, end = "  ", file = fhdle)
+                        if ir%4 == 3:
+                            print(file = fhdle)
+                    print(file = fhdle)
                     
                     
-def plot_orbital(orb,Rcut,dr):
+def plot_orbital(fplotu, orb, Rcut, dr):
     for it,orb_t in orb.items():
         #with open("orb_{0}_plot.dat".format(it),"w") as file:
-        with open("ORBITAL_PLOTU.dat", "w") as file:
+        with open(fplotu, "w") as fhdle:
             Nr = int(Rcut[it]/dr[it])+1
             for ir in range(Nr):
-                print( '%10.6f'%(ir*dr[it]),end="  ",file=file)
-                for il,orb_tl in enumerate(orb_t):
+                print('%10.6f'%(ir*dr[it]), end = "  ", file = fhdle)
+                for il, orb_tl in enumerate(orb_t):
                     for orb_tlu in orb_tl:
-                        print( '%18.14f'%orb_tlu[ir],end="  ",file=file)
-                print(file=file)
+                        print('%18.14f'%orb_tlu[ir], end = "  ", file = fhdle)
+                print(file = fhdle)
                 
                 
 def print_orbital_head(file,info_element,it):
