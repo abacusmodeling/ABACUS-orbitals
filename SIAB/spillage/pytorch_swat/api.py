@@ -74,7 +74,7 @@ def iter(siab_settings, calculation_settings):
     nrcuts = len(calculation_settings[0]["bessel_nao_rcut"])
     nrcuts_toparallel = nthreads_max // nthreads_rcut # the number of rcuts that can be parallelized
     # however, for bad settings, will result in nrcut_toparallel < 1, in this case, be_serial = True
-    if nrcuts_toparallel <= 1 and nthreads_rcut > 0:
+    if nrcuts_toparallel <= 1 and nthreads_rcut > 0 and not be_serial:
         print("""
 Parallelization - WARNING
 The parameter `nthreads_rcut` is set to be larger than all available threads
