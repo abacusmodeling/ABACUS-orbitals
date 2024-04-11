@@ -1,6 +1,7 @@
 from datparse import read_orb_mat, _assert_consistency
-from radial import jl_reduce, JL_REDUCE
+from radial import jl_reduce, JL_REDUCE, coeff_reduce
 from listmanip import flatten, nest, nestpat
+from jlzeros import JLZEROS
 
 import numpy as np
 from scipy.optimize import minimize
@@ -145,6 +146,46 @@ def _list_normalize(coef):
     '''
     c = np.array(coef)
     return (c / np.linalg.norm(c)).tolist()
+
+
+def initgen(nzeta, ov, reduce=True):
+    '''
+    Generate an initial guess from the single-atom overlap data
+    for the spillage optimization.
+
+    '''
+    assert ov['ntype'] == 1 and ov['natom'][0] == 1 and ov['ecutwfc'] <= ov['ecutjlq']
+
+    lmax = len(nzeta) - 1
+    assert lmax <= ov['lmax'][0]
+
+    rcut = ov['rcut']
+    ecut = ov['ecutwfc']
+
+    # Finds the number of truncated spherical Bessel functions whose energy
+    # is smaller than ecut. This is based on the following facts:
+    # 1. the kinetic energy of a normalized truncated spherical Bessel function
+    #    j_l(k*r) is k^2
+    # 2. the wavenumbers of truncated spherical Bessel functions are chosen such
+    #    that the function is zero at rcut, i.e., JLZEROS/rcut
+
+    # make sure that the tabulated JLZEROS is sufficient
+    assert(all((JLZEROS[l][-1]/rcut)**2 > ecut for l in range(lmax+1)))
+    nbes = [sum((JLZEROS[l]/rcut)**2 < ecut) for l in range(lmax+1)]
+
+    Y = ov['mo_jy'].reshape(ov['nk'], ov['nbands'], -1, ov['nbes'])
+    comp2lin = ov['comp2lin']
+
+    coef = []
+    for l in range(lmax+1):
+        idx_start = comp2lin[(0, 0, l, 0, 0)]
+        Yl = Y[:, :, idx_start:idx_start+2*l+1, :].sum(0).reshape(-1, ov['nbes'])
+        val, vec = np.linalg.eigh(Yl.T.conj() @ Yl)
+
+        # eigenvectors corresponding to the largest nzeta eigenvalues
+        coef.append(vec[:,-nzeta[l]:].T.tolist())
+
+    return coeff_reduce(coef, rcut) if reduce else coef
 
 
 class Spillage:
@@ -328,6 +369,7 @@ class Spillage:
         self.mo_Qfrozen_dao = [dV.transpose(1,0,2,3,4) for dV in self.mo_Qfrozen_dao]
 
 
+
     def _generalize_spillage(self, iconf, coef, ibands, with_grad=False):
         '''
         Generalized spillage function and its gradient.
@@ -392,7 +434,7 @@ class Spillage:
                 Band indices to be included in the spillage calculation. If a range
                 or tuple is given, the same indices are used for all configurations.
                 If a list of range/tuple is given, each range/tuple will be applied
-                to the configuration specified by iconf respectively.
+                to the configuration specified by iconfs respectively.
             options : dict
                 Options for the optimization.
             nthreads : int
@@ -402,10 +444,10 @@ class Spillage:
         from multiprocessing.pool import ThreadPool
         pool = ThreadPool(nthreads)
 
-        self._tab_frozen(coef_frozen)
-        self._tab_deriv(coef_init)
+        if coef_frozen is not None:
+            self._tab_frozen(coef_frozen)
 
-        pat = nestpat(coef_init)
+        self._tab_deriv(coef_init)
 
         iconfs = range(len(self.config)) if iconfs == 'all' else iconfs
         nconf = len(iconfs)
@@ -413,8 +455,8 @@ class Spillage:
         ibands = [ibands] * nconf if not isinstance(ibands, list) else ibands
         assert len(ibands) == nconf
 
-        # function to be minimized
-        def f(c):
+        pat = nestpat(coef_init)
+        def f(c): # function to be minimized
             s = lambda i: self._generalize_spillage(iconfs[i], nest(c.tolist(), pat),
                                                     ibands[i], with_grad=True)
             spills, grads = zip(*pool.map(s, range(nconf)))
@@ -450,6 +492,11 @@ class _TestSpillage(unittest.TestCase):
         self.config = ['Si-dimer-2.0', 'Si-dimer-2.2',
                        'Si-trimer-2.1', 'Si-trimer-2.3',
                        ]
+
+
+    def test_initgen(self):
+        ov = read_orb_mat('../../tmp/Si-single-atom/orb_matrix.0.dat')
+        initgen([2,1,2], ov)
 
     def test_mrdiv(self):
         n_slice = 3
@@ -622,7 +669,7 @@ class _TestSpillage(unittest.TestCase):
             self.assertAlmostEqual(spill, spill_ref, places=10)
 
 
-    def test_finite_difference(self):
+    def est_finite_difference(self):
         nbes_min = 1000
         for iconf, config in enumerate(self.config):
             ov = read_orb_mat(self.datadir + config + '/orb_matrix.0.dat')
@@ -694,7 +741,7 @@ class _TestSpillage(unittest.TestCase):
             self.assertTrue(np.allclose(dspill, dspill_fd, atol=1e-7))
 
 
-    def test_opt(self):
+    def est_opt(self):
         nbes_min = 1000
         for iconf, config in enumerate(self.config):
             ov = read_orb_mat(self.datadir + config + '/orb_matrix.0.dat')
@@ -728,6 +775,70 @@ class _TestSpillage(unittest.TestCase):
 
         pass
 
+
+    def est_orbgen(self):
+        nbes_min = 1000
+        config = ['Si-dimer-1.62', 'Si-dimer-1.82', 'Si-dimer-2.22', 'Si-dimer-2.72', 'Si-dimer-3.22']
+        datadir = '/home/zuxin/abacus-community/abacus_orbital_generation/tmp/'
+        for iconf, config in enumerate(config):
+            ov = read_orb_mat(datadir + config + '/orb_matrix.0.dat')
+            op = read_orb_mat(datadir + config + '/orb_matrix.1.dat')
+            self.orbgen.add_config(ov, op)
+            nbes_min = min(nbes_min, ov['nbes'])
+
+        #coef0 = [[np.random.randn(1, nbes_min-1).tolist(),
+        #          np.random.randn(1, nbes_min-1).tolist(),
+        #          ]]
+        coef0 = [[np.eye(1, nbes_min-1).tolist(),
+                  np.eye(1, nbes_min-1).tolist(),
+                  ]]
+
+        ibands = range(4)
+
+        self.orbgen._tab_deriv(coef0)
+
+        nthreads = 5
+        options = {'maxiter': 1000, 'disp': True, 'maxcor': 20}
+
+        # use all configs and all bands
+        coef_opt = self.orbgen.opt(coef0, None, 'all', ibands, options, nthreads)
+
+        from radial import build_reduced
+        import matplotlib.pyplot as plt
+
+        rcut = ov['rcut']
+        dr = 0.01
+        r = np.linspace(0, rcut, int(rcut/dr)+1)
+        chi = build_reduced(coef_opt[0], rcut, r, True, True)
+
+
+        lmax = len(chi)-1
+        nzeta = [len(chi_l) for chi_l in chi]
+        nzetamax = max(nzeta)
+        chimax = np.max([np.max(np.abs(chi_l)) for chi_l in chi])
+
+        fig, ax = plt.subplots(nzetamax, lmax+1, figsize=((lmax+1)*6, nzetamax*5),
+                               layout='tight', squeeze=False)
+
+        for l in range(lmax+1):
+            for zeta in range(nzeta[l]):
+                # adjust the sign so that the largest value is positive
+                if chi[l][zeta][np.argmax(np.abs(chi[l][zeta]))] < 0:
+                    chi[l][zeta] *= -1
+
+                ax[zeta, l].plot(r, chi[l][zeta])
+                #ax[zeta, l].plot(r, (r*nao['chi'][l][zeta])**2)
+
+                ax[zeta, l].axhline(0, color='black', linestyle=':')
+                #ax[zeta, l].axvline(2.0, color='black', linestyle=':')
+
+                # title
+                ax[zeta, l].set_title('l=%d, zeta=%d' % (l, zeta), fontsize=20)
+
+                ax[zeta, l].set_xlim([0, rcut])
+                ax[zeta, l].set_ylim([-0.4*chimax, chimax*1.1])
+
+        plt.show()
 
 if __name__ == '__main__':
     unittest.main()

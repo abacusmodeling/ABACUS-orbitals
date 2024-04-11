@@ -4,7 +4,7 @@ from scipy.special import spherical_jn
 from jlzeros import JLZEROS
 
 from scipy.interpolate import CubicSpline
-from scipy.linalg import rq
+from scipy.linalg import rq, lstsq
 
 def _inner_prod(chi1, chi2, r):
     '''
@@ -232,9 +232,24 @@ def coeff_recover(coeff, rcut):
     coeff_basis = [ np.array(coeff_l).T for coeff_l in coeff ]
 
     # note that (array([]) @ array([])).tolist() gives 0, but we want []
-    return [ (jl_reduce(l, coeff_l.shape[0] + 1, rcut) @ coeff_l).T.tolist() \
-            if coeff_l.size > 0 else [] \
+    return [(jl_reduce(l, coeff_l.shape[0] + 1, rcut) @ coeff_l).T.tolist()
+            if coeff_l.size > 0 else []
             for l, coeff_l in enumerate(coeff_basis)]
+
+
+def coeff_reduce(coeff, rcut):
+    '''
+    Given coefficients w.r.t the truncated spherical Bessel functions, find
+    the coefficients w.r.t. the orthonormal end-smoothed mixed spherical
+    Bessel basis that best approximate the given coefficients.
+
+    '''
+    # temporarily use a column-wise coefficient layout within each l
+    coeff = [ np.array(coeff_l).T for coeff_l in coeff ]
+
+    return [lstsq(jl_reduce(l, coeff_l.shape[0], rcut), coeff_l)[0].T.tolist()
+            if coeff_l.size > 0 else []
+            for l, coeff_l in enumerate(coeff)]
 
 
 def build_raw(coeff, rcut, r, sigma=0.0, orth=False, normalize=False):
@@ -463,8 +478,37 @@ class _TestRadial(unittest.TestCase):
         for l in range(lmax+1):
             raw = np.array(coeff_raw[l]).T
             reduced = np.array(coeff[l]).T
-            self.assertLess(np.linalg.norm(jl_reduce(l, nq, rcut) @ reduced - raw, np.inf), \
-                    1e-12)
+            self.assertLess(np.linalg.norm(jl_reduce(l, nq, rcut) @ reduced - raw, np.inf),
+                            1e-12)
+
+        nzeta = [0, 1, 0, 1]
+        coeff = [[np.random.randn(nq-1) for zeta in range(nzeta[l])] for l in range(lmax+1)]
+        coeff_raw = coeff_recover(coeff, rcut)
+        self.assertTrue(coeff_raw[0] == [] and coeff_raw[2] == [])
+
+
+    def test_coeff_reduce(self):
+        nzeta = [1, 2, 3, 4]
+        lmax = len(nzeta) - 1
+        rcut = 9.0
+        nq = 10
+
+        coeff_reduced = [[np.random.randn(nq-1) for zeta in range(nzeta[l])]
+                         for l in range(lmax+1)]
+
+        # verifies that a reduced coefficient would remain the same
+        # after recover & reduce
+        coeff = coeff_reduce(coeff_recover(coeff_reduced, rcut), rcut)
+        for l in range(lmax+1):
+            old = np.array(coeff_reduced[l])
+            new = np.array(coeff[l])
+            self.assertLess(np.linalg.norm(old - new, np.inf), 1e-12)
+
+        nzeta = [1, 0, 0, 1]
+        coeff_raw = [[np.random.randn(nq) for zeta in range(nzeta[l])]
+                     for l in range(lmax+1)]
+        coeff_reduced = coeff_reduce(coeff_raw, rcut)
+        self.assertTrue(coeff_reduced[1] == [] and coeff_reduced[2] == [])
 
 
     def test_build_raw(self):
@@ -493,7 +537,8 @@ class _TestRadial(unittest.TestCase):
         lmax = len(nzeta) - 1
         rcut = 9.0
         nq = 10
-        coeff_reduced = [[np.random.randn(nq-1) for zeta in range(nzeta[l])] for l in range(lmax+1)]
+        coeff_reduced = [[np.random.randn(nq-1) for zeta in range(nzeta[l])]
+                         for l in range(lmax+1)]
         coeff_raw = coeff_recover(coeff_reduced, rcut)
 
         dr = 0.01
@@ -508,7 +553,9 @@ class _TestRadial(unittest.TestCase):
                     idx = np.argmax(np.abs(chi_raw[l][zeta]))
                     if chi_raw[l][zeta][idx] * chi_reduced[l][zeta][idx] < 0:
                         chi_reduced[l][zeta] *= -1
-                    self.assertLess(np.linalg.norm(chi_raw[l][zeta] - chi_reduced[l][zeta], np.inf), 1e-12)
+                    self.assertLess(np.linalg.norm(chi_raw[l][zeta] - chi_reduced[l][zeta],
+                                                   np.inf),
+                                    1e-12)
 
 
     # change the function name to test_xxx to activate
