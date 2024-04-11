@@ -11,7 +11,8 @@
 
     "optimizer": "pytorch.SWAT",
     "max_steps": 1000,
-    "spillage_coeff": [0.5, 0.5],
+    "spill_coefs": [2.0, 1.0],
+    "spill_guess": "atomic",
     "nthreads_rcut": 4,
 
     "reference_systems": [

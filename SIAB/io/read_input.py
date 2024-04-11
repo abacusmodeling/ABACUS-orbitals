@@ -41,7 +41,7 @@ Parsing SIAB input file {fname} with version {version}
         result = convert_oldinp_tojson(result) if version == "0.1.0" else result
         result = convert_plaintext_tojson(result) if version != "0.1.0" else result
     
-    return fill_inp_withdefault(result)
+    return result
 
 def postprocess_siab_oldinp(inp: dict):
     """the parsed input initially might be like:
@@ -177,37 +177,45 @@ def convert_plaintext_tojson(inp: dict):
         else:
             result[key] = value
 
-def fill_inp_withdefault(inp: dict):
-    """fill the input with default values, if absent"""
-    for key in SIAB_DEFAULT_INPUT.keys():
-        inp[key] = inp.get(key, SIAB_DEFAULT_INPUT[key])
-    return inp
+def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float):
 
-def abacus_settings(user_settings: dict, minimal_basis: list, z_valence: float):
-
-    # copy all possible shared parameters
+    # copy all possible shared parameters (shared by all reference systems)
     all_params = abacus_params()
     template = {key: value for key, value in user_settings.items() if key in all_params}
-    result = [template.copy() for _ in range(len(user_settings["reference_systems"]))]
+    # then create copies for each reference system
+    need_monomer = True if user_settings.get("spill_guess", "random") == "atomic" else False
+    refsys = user_settings.get("reference_systems", [])
+    refsys.append({"shape": "monomer"}) if need_monomer and "monomer" not in refsys else None
+    nsystem = len(refsys)
+
+    b1 = (nsystem > 0 and not need_monomer)
+    b2 = (nsystem > 1 and need_monomer)
+    assert (b1 or b2), "number of reference systems should be at least 2 if spill_guess is atomic, otherwise at least 1"
+
+    result = [template.copy() for _ in range(nsystem)]
     # then parameters cannot share
-    shape_index_mapping = [v["shape"] for v in user_settings["reference_systems"]]
-    with_polarization = [False]*len(user_settings["reference_systems"])
+    shape_index_mapping = [v["shape"] for v in refsys]
+    with_polarization = [False]*nsystem
     for iorb in range(len(user_settings["orbitals"])):
         index_shape = shape_index_mapping.index(user_settings["orbitals"][iorb]["shape"])
         if user_settings["orbitals"][iorb]["zeta_notation"].endswith("P"):
             with_polarization[index_shape] = True
-    natom = {"dimer": 2, "trimer": 3, "tetramer": 4}
-    for irs in range(len(user_settings["reference_systems"])):
+    natom = {"monomer": 1, "dimer": 2, "trimer": 3, "tetramer": 4}
+    for irs in range(nsystem):
         # auto set nbands if for reference system the nbands is set to "auto"
-        nbands = user_settings["reference_systems"][irs]["nbands"]
-        shape = user_settings["reference_systems"][irs]["shape"]
-        nbands = nbands if nbands != "auto" else natom[shape]*z_valence
+        nbands = refsys[irs].get("nbands", "auto")
+        shape = refsys[irs]["shape"]
+        nbands = nbands if nbands != "auto" else natom[shape]*z_val
         # auto set lmaxmax
         lmaxmax = len(minimal_basis) if (with_polarization[irs] and [] not in minimal_basis) else len(minimal_basis) - 1
         # set nspin
-        nspin = user_settings["reference_systems"][irs]["nspin"]
+        nspin = refsys[irs].get("nspin", 1)
         # update
         result[irs].update({"nbands": nbands, "lmaxmax": lmaxmax, "nspin": nspin})
+        # for all other parameters in user_settings["reference_systems"][irs], if in abacus_params, overwrite
+        for key, value in refsys[irs].items():
+            if key in all_params:
+                result[irs][key] = value
     return result
 
 import SIAB.io.pseudopotential.tools.basic as siptb
@@ -218,7 +226,7 @@ def siab_settings(user_settings: dict, minimal_basis: list):
     {
         "optimizer": "pytorch.SWAT",
         "max_steps": 9000,
-        "spillage_coeff": [0.5, 0.5],
+        "spill_coefs": [2.0, 1.0],
         "orbitals": [
             {
                 "nzeta": [1, 1],
@@ -239,21 +247,21 @@ def siab_settings(user_settings: dict, minimal_basis: list):
     result = {
         "optimizer": user_settings.get("optimizer", "pytorch.SWAT"),
         "max_steps": user_settings.get("max_steps", 1000),
-        "spillage_coeff": user_settings.get("spillage_coeff", [0.5, 0.5]),
+        "spill_coefs": user_settings.get("spill_coefs", [2.0, 1.0]),
         "nthreads_rcut": user_settings.get("nthreads_rcut", -1),
         "orbitals": [{} for _ in range(len(user_settings["orbitals"]))]
     }
     shapes = [rs["shape"] for rs in user_settings["reference_systems"]]
     for iorb, orbital in enumerate(user_settings["orbitals"]):
 
-        result["orbitals"][iorb]["nzeta"] = siptb.zeta_notation_toorbitalconfig(
+        result["orbitals"][iorb]["nzeta"] = siptb.orbconf_fromxzyp(
             zeta_notation=orbital["zeta_notation"], 
             minimal_basis=minimal_basis, 
             as_list=True)
         if orbital["orb_ref"] == "none":
             result["orbitals"][iorb]["nzeta_from"] = None
         else:
-            result["orbitals"][iorb]["nzeta_from"] = siptb.zeta_notation_toorbitalconfig(
+            result["orbitals"][iorb]["nzeta_from"] = siptb.orbconf_fromxzyp(
                 zeta_notation=orbital["orb_ref"], 
                 minimal_basis=minimal_basis, 
                 as_list=True)
@@ -270,6 +278,31 @@ def environment_settings(user_settings: dict):
         "abacus_command": user_settings["abacus_command"]
     }
 
+def structure_settings(user_settings: dict):
+    """handle with structures needed to calculate their pw wavefunctions as reference
+    for fitting numerical atomic orbitals. Special case is inclusion of monomer, if
+    keyword spill_guess is set to atomic."""
+    refsys = user_settings.get("reference_systems", [])
+    need_monomer = True if user_settings.get("spill_guess", "random") == "atomic" else False
+    need_monomer = False if "monomer" in refsys else need_monomer
+    shapes = [rs["shape"] for rs in refsys] # list of str
+    shapes.append("monomer") if need_monomer else None
+    bond_lengths = [rs.get("bond_lengths", "auto") for rs in refsys] # list of list of float
+    bond_lengths.append("auto") if need_monomer else None
+
+    return dict(zip(shapes, bond_lengths))
+
+def from_pseudopotential(pseudopotential: dict):
+    """convert the pseudopotential to SIAB input"""
+    symbol = pseudopotential["element"]
+    minimal_basis = pseudopotential["val_conf"]
+    z_val = pseudopotential["z_val"]
+    return {
+        "element": symbol,
+        "minimal_basis": minimal_basis,
+        "z_val": z_val
+    }
+
 def description(symbol: str, user_settings: dict):
 
     return {
@@ -278,20 +311,19 @@ def description(symbol: str, user_settings: dict):
         "pseudo_name": user_settings["pseudo_name"]
     }
 
-def unpack_siab_input(user_settings: dict,
-                      pseudopotential: dict):
-    
-    symbol = pseudopotential["element"]
-    minimal_basis = pseudopotential["valence_electron_configuration"]
-    z_valence = pseudopotential["z_valence"]
-
-    shapes = [rs["shape"] for rs in user_settings["reference_systems"]]
-    bond_lengths = [rs["bond_lengths"] for rs in user_settings["reference_systems"]]
-    abacus = abacus_settings(user_settings, minimal_basis, z_valence)
+def unpack_siab_input(user_settings: dict, pseudopotential: dict):
+    """unpack the SIAB input to structure (shape as key and bond lengths are list as value),
+    input setting of abacus, orbital generation settings, environmental settings and general description
+    """
+    # get value from the dict returned by function from_pseudopotential
+    properties = ["element", "minimal_basis", "z_val"]
+    symbol, minimal_basis, z_val = map(from_pseudopotential(pseudopotential).get, properties)
+    structures = structure_settings(user_settings)
+    abacus = abacus_settings(user_settings, minimal_basis, z_val)
     siab = siab_settings(user_settings, minimal_basis)
     env = environment_settings(user_settings)
     general = description(symbol, user_settings)
-    return shapes, bond_lengths, abacus, siab, env, general
+    return structures, abacus, siab, env, general
 
 def abacus_params():
     pattern = r"^([\w]+)(\s+)([^#]+)(\s*)(#.*)?"
@@ -303,23 +335,6 @@ def abacus_params():
             #value = match.group(3).strip()
             keys.append(key)
     return keys
-
-SIAB_DEFAULT_INPUT ={
-    "environment": "", 
-    "mpi_command": "mpirun -np 1", 
-    "abacus_command": "abacus",
-    "pseudo_dir": "./", 
-    "pseudo_name": "Si_ONCV_PBE-1.0.upf",
-    "ecutwfc": 100, 
-    "bessel_nao_rcut": [6, 7, 8, 9, 10],
-    "smearing_sigma": 0.01,
-    "optimizer": "pytorch.SWAT",
-    "max_steps": 1000,
-    "spillage_coeff": [0.5, 0.5],
-    "nthreads_rcut": -1,
-    "reference_systems": [],
-    "orbitals": []
-}
 
 ABACUS_INPUT_TEMPLATE = """INPUT_PARAMETERS
 #Parameters (1.General)
@@ -712,7 +727,7 @@ class TestReadInput(unittest.TestCase):
                              'smearing_sigma': 0.01, 
                              'optimizer': 'pytorch.SWAT', 
                              'max_steps': 200, 
-                             'spillage_coeff': [0.5, 0.5], 
+                             'spill_coefs': [2.0, 1.0], 
                              'nthreads_rcut': -1,
                              'reference_systems': [
                                  {'shape': 'dimer', 'nbands': 8, 'nspin': 1, 'bond_lengths': [1.8, 2.0, 2.3, 2.8, 3.8]}, 
@@ -734,8 +749,8 @@ class TestReadInput(unittest.TestCase):
 
         pseudo = {
             "element": "Si",
-            "valence_electron_configuration": [["1S"], ["1P"]],
-            "z_valence": 4.0
+            "val_conf": [["1S"], ["1P"]],
+            "z_val": 4.0
         }
         result = read_siab_inp("SIAB/example_Si/SIAB_INPUT")
         result = unpack_siab_input(result, pseudo)
@@ -754,7 +769,7 @@ class TestReadInput(unittest.TestCase):
             'optimizer': 'pytorch.SWAT', 
             'nthreads_rcut': -1,
             'max_steps': 200, 
-            'spillage_coeff': [0.5, 0.5], 
+            'spill_coefs': [2.0, 1.0], 
             'orbitals': [
                 {'nzeta': [1, 1], 
                  'nzeta_from': None, 
@@ -805,7 +820,7 @@ class TestReadInput(unittest.TestCase):
             'mpi_command': 'mpirun -np 1', 
             'abacus_command': 'abacus', 
             'optimizer': 'pytorch.SWAT', 
-            'spillage_coeff': [0.5, 0.5]
+            'spill_coefs': [2.0, 1.0]
         }
         result = convert_oldinp_tojson(clean_oldversion_input)
         clean_oldversion_input = {
@@ -832,7 +847,7 @@ class TestReadInput(unittest.TestCase):
             'mpi_command': 'mpirun -np 1', 
             'abacus_command': 'abacus', 
             'optimizer': 'pytorch.SWAT', 
-            'spillage_coeff': [0.5, 0.5]
+            'spill_coefs': [2.0, 1.0]
         }
         result = convert_oldinp_tojson(clean_oldversion_input)
 
@@ -840,17 +855,17 @@ class TestReadInput(unittest.TestCase):
         user_settings = read_siab_inp("SIAB/example_Si/SIAB_INPUT")
         result = abacus_settings(user_settings, 
                                     minimal_basis=[["2S"], ["2P"]],
-                                    z_valence=4.0)
+                                    z_val=4.0)
         self.assertEqual(len(result), 2)
         result = abacus_settings(user_settings, 
                                     minimal_basis=[["2S"], [], ["3D"]],
-                                    z_valence=4.0)
+                                    z_val=4.0)
         self.assertEqual(len(result), 2)
         for i in result:
             self.assertEqual(i["lmaxmax"], 2)
         result = abacus_settings(user_settings, 
                                     minimal_basis=[["2S"], ["2P"], ["3D"]],
-                                    z_valence=4.0)
+                                    z_val=4.0)
         self.assertEqual(len(result), 2)
         for i in result:
             self.assertEqual(i["lmaxmax"], 3)

@@ -53,7 +53,7 @@ def determine_type(parsed: dict):
     
     raise ValueError("Pseudopotential type not recognized")
 
-def valence_electron_configuration(parsed: dict):
+def val_conf(parsed: dict):
     """extract valence electron configuration from pseudopotential file
     return element symbol followed by a list of lists, 
     [
@@ -76,7 +76,7 @@ def valence_electron_configuration(parsed: dict):
     else:
         raise ValueError("Pseudopotential type not recognized")
 
-def z_valence(parsed: dict):
+def z_val(parsed: dict):
     return float(parsed["PP_HEADER"]["attrib"]["z_valence"])
 
 def element(parsed: dict):

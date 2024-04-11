@@ -114,7 +114,7 @@ In version >= 0.2.0, many parameters are removed due to redundancy. The input sc
 
     "optimizer": "pytorch.SWAT",
     "max_steps": 1000,
-    "spillage_coeff": [0.5, 0.5],
+    "spill_coefs": [0.5, 0.5],
     "nthreads_rcut": 4,
 
     "reference_systems": [
@@ -172,7 +172,7 @@ mixing_ndim         8            # optional, default 8
 mixing_beta         0.7          # optional, default 0.7
 # SIAB PARAMETERS
 optimizer           pytorch.SWAT # optimizers, can be pytorch.SWAT, SimulatedAnnealing, ...
-spillage_coeff      0.5 0.5      # order of derivatives of wavefunction to include in Spillage, can be 0 or 1.
+spill_coefs      0.5 0.5      # order of derivatives of wavefunction to include in Spillage, can be 0 or 1.
 max_steps           9000
 # REFERENCE SYSTEMS
 # shape    nbands    nspin    bond_lengths   
@@ -205,7 +205,8 @@ In this section, user should define the parameters used in the electronic struct
 ### SIAB PARAMETERS
 In this section, user should define the parameters of SIAB. The parameters are listed below:
 * `optimizer`: the optimizer to use, can be `pytorch.SWAT`, `SimulatedAnnealing`, and optimizers from `scipy.optimize`. THIS PARAMETER IS REQUIRED.
-* `spillage_coeff`: the coefficients of 0 and 1 order derivatives of wavefunction to include in Spillage, e.g. `0.5 0.5`. THIS PARAMETER IS REQUIRED.
+* `spill_coefs`: the coefficients of 0 and 1 order derivatives of wavefunction to include in Spillage, e.g. `0.5 0.5`. THIS PARAMETER IS REQUIRED.
+* `spill_guess`: the initial guess of Spillage, can be `random`, `identity` or `atomic`. For `atomic`, an additional ABACUS calculation will run to calculate reference wavefunction of isolated atom. THIS PARAMETER IS OPTIONAL and default to be `random`.
 * `max_steps`: the maximum optimization on Spillage function to perform. THIS PARAMETER IS REQUIRED.
 * `nthreads_rcut`: the number of threads to use for optimizing orbital for each rcut, if not set, will run SIAB in serial. THIS PARAMETER IS OPTIONAL.
 
