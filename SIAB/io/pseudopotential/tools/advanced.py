@@ -53,7 +53,7 @@ def determine_type(parsed: dict):
     
     raise ValueError("Pseudopotential type not recognized")
 
-def valence_electron_configuration(parsed: dict):
+def val_conf(parsed: dict):
     """extract valence electron configuration from pseudopotential file
     return element symbol followed by a list of lists, 
     [
@@ -76,8 +76,8 @@ def valence_electron_configuration(parsed: dict):
     else:
         raise ValueError("Pseudopotential type not recognized")
 
-def z_valence(parsed: dict):
-    return float(parsed["PP_HEADER"]["attrib"]["z_valence"])
+def z_val(parsed: dict):
+    return float(parsed["PP_HEADER"]["attrib"]["z_val"])
 
 def element(parsed: dict):
 
@@ -87,7 +87,7 @@ def ONCV_parser(parsed: dict) -> list:
 
     result = {}
 
-    zval = parsed["PP_HEADER"]["attrib"]["z_valence"]
+    zval = parsed["PP_HEADER"]["attrib"]["z_val"]
     
     content = parsed["PP_INPUTFILE"]["data"]
     lines = [line.strip() for line in content.split("\n")]

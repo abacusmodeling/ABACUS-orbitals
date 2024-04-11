@@ -183,7 +183,7 @@ def fill_inp_withdefault(inp: dict):
         inp[key] = inp.get(key, SIAB_DEFAULT_INPUT[key])
     return inp
 
-def abacus_settings(user_settings: dict, minimal_basis: list, z_valence: float):
+def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float):
 
     # copy all possible shared parameters
     all_params = abacus_params()
@@ -201,7 +201,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_valence: float):
         # auto set nbands if for reference system the nbands is set to "auto"
         nbands = user_settings["reference_systems"][irs]["nbands"]
         shape = user_settings["reference_systems"][irs]["shape"]
-        nbands = nbands if nbands != "auto" else natom[shape]*z_valence
+        nbands = nbands if nbands != "auto" else natom[shape]*z_val
         # auto set lmaxmax
         lmaxmax = len(minimal_basis) if (with_polarization[irs] and [] not in minimal_basis) else len(minimal_basis) - 1
         # set nspin
@@ -278,20 +278,25 @@ def description(symbol: str, user_settings: dict):
         "pseudo_name": user_settings["pseudo_name"]
     }
 
-def unpack_siab_input(user_settings: dict,
-                      pseudopotential: dict):
-    
+def unpack_siab_input(user_settings: dict, pseudopotential: dict):
+    """unpack the SIAB input to structure (shape as key and bond lengths are list as value),
+    input setting of abacus, orbital generation settings, environmental settings and general description
+    """
     symbol = pseudopotential["element"]
-    minimal_basis = pseudopotential["valence_electron_configuration"]
-    z_valence = pseudopotential["z_valence"]
+    minimal_basis = pseudopotential["val_conf"]
+    z_val = pseudopotential["z_val"]
 
-    shapes = [rs["shape"] for rs in user_settings["reference_systems"]]
-    bond_lengths = [rs["bond_lengths"] for rs in user_settings["reference_systems"]]
-    abacus = abacus_settings(user_settings, minimal_basis, z_valence)
+    shapes = [rs["shape"] for rs in user_settings["reference_systems"]] # list of str
+    bond_lengths = [rs["bond_lengths"] for rs in user_settings["reference_systems"]] # list of list of float
+    structures = dict(zip(shapes, bond_lengths))
+    # append additional "monomer" if spill_guess == "atomic"
+    structures.update({"monomer": [0.0]}) if user_settings.get("spill_guess", "atomic") == "atomic" else None
+
+    abacus = abacus_settings(user_settings, minimal_basis, z_val)
     siab = siab_settings(user_settings, minimal_basis)
     env = environment_settings(user_settings)
     general = description(symbol, user_settings)
-    return shapes, bond_lengths, abacus, siab, env, general
+    return structures, abacus, siab, env, general
 
 def abacus_params():
     pattern = r"^([\w]+)(\s+)([^#]+)(\s*)(#.*)?"
@@ -315,7 +320,7 @@ SIAB_DEFAULT_INPUT ={
     "smearing_sigma": 0.01,
     "optimizer": "pytorch.SWAT",
     "max_steps": 1000,
-    "spill_coefs": [0.5, 0.5],
+    "spill_coefs": [2.0, 1.0],
     "nthreads_rcut": -1,
     "reference_systems": [],
     "orbitals": []
@@ -734,8 +739,8 @@ class TestReadInput(unittest.TestCase):
 
         pseudo = {
             "element": "Si",
-            "valence_electron_configuration": [["1S"], ["1P"]],
-            "z_valence": 4.0
+            "val_conf": [["1S"], ["1P"]],
+            "z_val": 4.0
         }
         result = read_siab_inp("SIAB/example_Si/SIAB_INPUT")
         result = unpack_siab_input(result, pseudo)
@@ -840,17 +845,17 @@ class TestReadInput(unittest.TestCase):
         user_settings = read_siab_inp("SIAB/example_Si/SIAB_INPUT")
         result = abacus_settings(user_settings, 
                                     minimal_basis=[["2S"], ["2P"]],
-                                    z_valence=4.0)
+                                    z_val=4.0)
         self.assertEqual(len(result), 2)
         result = abacus_settings(user_settings, 
                                     minimal_basis=[["2S"], [], ["3D"]],
-                                    z_valence=4.0)
+                                    z_val=4.0)
         self.assertEqual(len(result), 2)
         for i in result:
             self.assertEqual(i["lmaxmax"], 2)
         result = abacus_settings(user_settings, 
                                     minimal_basis=[["2S"], ["2P"], ["3D"]],
-                                    z_valence=4.0)
+                                    z_val=4.0)
         self.assertEqual(len(result), 2)
         for i in result:
             self.assertEqual(i["lmaxmax"], 3)

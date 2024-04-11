@@ -31,8 +31,7 @@ def initialize(version: str = "0.1.0",
 # interface to abacus
 import SIAB.interface.abacus as sia
 def abacus(general: dict,
-           reference_shapes: list,
-           bond_lengths: list,
+           structures: dict,
            calculation_settings: list,
            env_settings: dict,
            test: bool = True):
@@ -55,8 +54,7 @@ def abacus(general: dict,
     if the bond_lengths is given as [[1.0, 1.1], [1.0, 1.1, 1.2]]
     """
     return sia.run_all(general=general,
-                       reference_shapes=reference_shapes,
-                       bond_lengths=bond_lengths,
+                       structures=structures,
                        calculation_settings=calculation_settings,
                        env_settings=env_settings,
                        test=test)

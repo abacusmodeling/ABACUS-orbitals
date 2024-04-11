@@ -113,7 +113,7 @@ def run(fname: str,
     `general`: for other global parameters, will be refactored out in future versions.
     """
     # read input, for each term, see above annotation for details
-    reference_shapes, bond_lengths, calculation_settings,\
+    structures, calculation_settings,\
     siab_settings, env_settings, general = sdf.initialize(fname=fname, version=siab_version)
 
     # ABACUS corresponding refactor has done supporting multiple bessel_nao_rcut input
@@ -128,8 +128,7 @@ def run(fname: str,
     # ```
     # naming convention can be maintained in function ___
     folders = sdf.abacus(general=general,
-                         reference_shapes=reference_shapes,
-                         bond_lengths=bond_lengths,
+                         structures=structures,
                          calculation_settings=calculation_settings,
                          env_settings=env_settings,
                          test=test)

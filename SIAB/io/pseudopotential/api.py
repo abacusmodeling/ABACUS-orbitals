@@ -11,17 +11,17 @@ def extract_ppinfo_forsiab(fname: str):
     contains information like:
     {
         "element": "Fe",
-        "valence_electron_configuration": [
+        "val_conf": [
             ["1s", "2s", "2p"],
             ["3s", "3p"],
             ["3d"]
         ],
     }"""
     parsed = parse(fname=fname)
-    element, valence_electron_configuration = sipta.valence_electron_configuration(parsed=parsed)
-    z_valence = sipta.z_valence(parsed=parsed)
+    element, val_conf = sipta.val_conf(parsed=parsed)
+    z_val = sipta.z_val(parsed=parsed)
     return {
         "element": element,
-        "valence_electron_configuration": valence_electron_configuration,
-        "z_valence": z_valence
+        "val_conf": val_conf,
+        "z_val": z_val
     }
