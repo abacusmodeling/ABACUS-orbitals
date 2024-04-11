@@ -77,7 +77,7 @@ def val_conf(parsed: dict):
         raise ValueError("Pseudopotential type not recognized")
 
 def z_val(parsed: dict):
-    return float(parsed["PP_HEADER"]["attrib"]["z_val"])
+    return float(parsed["PP_HEADER"]["attrib"]["z_valence"])
 
 def element(parsed: dict):
 
@@ -87,7 +87,7 @@ def ONCV_parser(parsed: dict) -> list:
 
     result = {}
 
-    zval = parsed["PP_HEADER"]["attrib"]["z_val"]
+    zval = parsed["PP_HEADER"]["attrib"]["z_valence"]
     
     content = parsed["PP_INPUTFILE"]["data"]
     lines = [line.strip() for line in content.split("\n")]
