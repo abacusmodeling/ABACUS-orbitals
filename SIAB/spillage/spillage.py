@@ -163,16 +163,22 @@ def initgen(nzeta, ov, reduce=True):
     ecut = ov['ecutwfc']
 
     # Finds the number of truncated spherical Bessel functions whose energy
-    # is smaller than ecut. This is based on the following facts:
-    # 1. the kinetic energy of a normalized truncated spherical Bessel function
-    #    j_l(k*r) is k^2
-    # 2. the wavenumbers of truncated spherical Bessel functions are chosen such
+    # is smaller than ecut. This is based on the following:
+    #
+    # 1. The kinetic energy of a normalized truncated spherical Bessel function
+    #    j_l(k*r) * Y_{lm}(r) is k^2
+    #
+    # 2. The wavenumbers of truncated spherical Bessel functions are chosen such
     #    that the function is zero at rcut, i.e., JLZEROS/rcut
 
-    # make sure that the tabulated JLZEROS is sufficient
+    # make sure the tabulated JLZEROS is sufficient
     assert(all((JLZEROS[l][-1]/rcut)**2 > ecut for l in range(lmax+1)))
+
+    # the number of truncated spherical Bessel functions whose energy is smaller
+    # than ecut for each l
     nbes = [sum((JLZEROS[l]/rcut)**2 < ecut) for l in range(lmax+1)]
 
+    # <mo|jy> reshaped to [nk, nbands, nao, nbes]
     Y = ov['mo_jy'].reshape(ov['nk'], ov['nbands'], -1, ov['nbes'])
     comp2lin = ov['comp2lin']
 
@@ -496,7 +502,12 @@ class _TestSpillage(unittest.TestCase):
 
     def test_initgen(self):
         ov = read_orb_mat('../../tmp/Si-single-atom/orb_matrix.0.dat')
-        initgen([2,1,2], ov)
+
+        nzeta = [3,2,1]
+        coef = initgen(nzeta, ov, reduce=False)
+        assert(len(coef) == len(nzeta))
+        assert([len(coef[l]) for l in range(len(nzeta))] == nzeta)
+
 
     def test_mrdiv(self):
         n_slice = 3
