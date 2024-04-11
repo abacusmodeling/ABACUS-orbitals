@@ -218,7 +218,7 @@ def siab_settings(user_settings: dict, minimal_basis: list):
     {
         "optimizer": "pytorch.SWAT",
         "max_steps": 9000,
-        "spillage_coeff": [0.5, 0.5],
+        "spill_coefs": [0.5, 0.5],
         "orbitals": [
             {
                 "nzeta": [1, 1],
@@ -239,7 +239,7 @@ def siab_settings(user_settings: dict, minimal_basis: list):
     result = {
         "optimizer": user_settings.get("optimizer", "pytorch.SWAT"),
         "max_steps": user_settings.get("max_steps", 1000),
-        "spillage_coeff": user_settings.get("spillage_coeff", [0.5, 0.5]),
+        "spill_coefs": user_settings.get("spill_coefs", [0.5, 0.5]),
         "nthreads_rcut": user_settings.get("nthreads_rcut", -1),
         "orbitals": [{} for _ in range(len(user_settings["orbitals"]))]
     }
@@ -315,7 +315,7 @@ SIAB_DEFAULT_INPUT ={
     "smearing_sigma": 0.01,
     "optimizer": "pytorch.SWAT",
     "max_steps": 1000,
-    "spillage_coeff": [0.5, 0.5],
+    "spill_coefs": [0.5, 0.5],
     "nthreads_rcut": -1,
     "reference_systems": [],
     "orbitals": []
@@ -712,7 +712,7 @@ class TestReadInput(unittest.TestCase):
                              'smearing_sigma': 0.01, 
                              'optimizer': 'pytorch.SWAT', 
                              'max_steps': 200, 
-                             'spillage_coeff': [0.5, 0.5], 
+                             'spill_coefs': [0.5, 0.5], 
                              'nthreads_rcut': -1,
                              'reference_systems': [
                                  {'shape': 'dimer', 'nbands': 8, 'nspin': 1, 'bond_lengths': [1.8, 2.0, 2.3, 2.8, 3.8]}, 
@@ -754,7 +754,7 @@ class TestReadInput(unittest.TestCase):
             'optimizer': 'pytorch.SWAT', 
             'nthreads_rcut': -1,
             'max_steps': 200, 
-            'spillage_coeff': [0.5, 0.5], 
+            'spill_coefs': [0.5, 0.5], 
             'orbitals': [
                 {'nzeta': [1, 1], 
                  'nzeta_from': None, 
@@ -805,7 +805,7 @@ class TestReadInput(unittest.TestCase):
             'mpi_command': 'mpirun -np 1', 
             'abacus_command': 'abacus', 
             'optimizer': 'pytorch.SWAT', 
-            'spillage_coeff': [0.5, 0.5]
+            'spill_coefs': [0.5, 0.5]
         }
         result = convert_oldinp_tojson(clean_oldversion_input)
         clean_oldversion_input = {
@@ -832,7 +832,7 @@ class TestReadInput(unittest.TestCase):
             'mpi_command': 'mpirun -np 1', 
             'abacus_command': 'abacus', 
             'optimizer': 'pytorch.SWAT', 
-            'spillage_coeff': [0.5, 0.5]
+            'spill_coefs': [0.5, 0.5]
         }
         result = convert_oldinp_tojson(clean_oldversion_input)
 

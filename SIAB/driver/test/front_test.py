@@ -29,7 +29,7 @@ class TestFront(unittest.TestCase):
         self.assertDictEqual(result[3], {
             'optimizer': 'pytorch.SWAT', 
             'max_steps': [200], 
-            'spillage_coeff': [0.5, 0.5], 
+            'spill_coefs': [0.5, 0.5], 
             'orbitals': [
                 {'nzeta': [1, 1], 'nzeta_from': None, 'nbands_ref': 4, 'folder': 0}, 
                 {'nzeta': [2, 2, 1], 'nzeta_from': [1, 1], 'nbands_ref': 4, 'folder': 0}, 
