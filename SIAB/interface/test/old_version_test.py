@@ -165,7 +165,7 @@ class TestToBc(unittest.TestCase):
         siab_settings = {
             'optimizer': 'pytorch.SWAT', 
             'max_steps': 200, 
-            'spill_coefs': [0.5, 0.5], 
+            'spill_coefs': [2.0, 1.0], 
             'orbitals': [
                 {'nzeta': [1, 1], 'nzeta_from': None, 
                  'nbands_ref': 4, 

@@ -94,7 +94,7 @@ def run(fname: str,
     `siab_settings`: dict, storing the settings needed for orbital optimization, like
     ```python
     {
-        "optimizer": "pytorch.SWAT", "max_steps": 9000, "spill_coefs": [0.5, 0.5],
+        "optimizer": "pytorch.SWAT", "max_steps": 9000, "spill_coefs": [2.0, 1.0],
         "orbitals": [
             {"shape": "dimer", "zeta_notation": "SZ", "nbands_ref": 10, "orb_ref": None},
             {"shape": "dimer", "zeta_notation": "DZP", "nbands_ref": 10, "orb_ref": "SZ"}

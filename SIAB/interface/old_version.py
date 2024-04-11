@@ -14,7 +14,7 @@ The optimizer needs the "INPUT.json" file for performing optimization task. """
     "smearing_sigma": 0.015,
 
     "optimizer": "pytorch.SWAT",
-    "spill_coefs": [0.5, 0.5],
+    "spill_coefs": [2.0, 1.0],
     "max_steps": 9000,
 
     "reference_systems": [
