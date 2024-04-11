@@ -102,7 +102,8 @@ of present machine, therefore the calculation will switch to run in serial.
         # be aware that nprocs_rcut < 1 is not allowed, if there are really only one
         # logical processor, then nprocs_rcut = 1
         
-        print(f"""Parallelization - RUNTIME
+        print(f"""
+Parallelization - RUNTIME
 Number of threads for each rcut: {nthreads_rcut}
 Number of rcuts that can be parallelized: {nrcuts_toparallel}
 Total number of threads available: {nthreads_max}

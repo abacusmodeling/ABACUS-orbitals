@@ -9,7 +9,7 @@ bessel_nao_rcut     6 7 8 9 10
 smearing_sigma      0.01         # optional, default 0.015
 # SIAB PARAMETERS
 optimizer           pytorch.SWAT # optimizers, can be pytorch.SWAT, SimulatedAnnealing, ...
-spillage_coeff      0.5 0.5      # order of derivatives of wavefunction to include in Spillage, can be 0 or 1.
+spill_coefs         2.0 1.0      # order of derivatives of wavefunction to include in Spillage, can be 0 or 1.
 max_steps           1000
 # REFERENCE SYSTEMS
 # shape    nbands    nspin    bond_lengths   

@@ -17,6 +17,22 @@ def version_compare(version_1: str, version_2: str) -> bool:
 ##############################################
 #         input files preparation            #
 ##############################################
+def monomer(element, mass, fpseudo, lattice_constant, nspin):
+    """generate monomer structure"""
+    starting_magnetization = 0.0 if nspin == 1 else 2.0
+    result = "ATOMIC_SPECIES\n%s %.6f %s\n"%(element, mass, fpseudo)
+    result += "LATTICE_CONSTANT\n%.6f  // add lattice constant(a.u.)\n"%lattice_constant
+    result += "LATTICE_VECTORS\n"
+    result += "%10.8f %10.8f %10.8f\n"%(1.0, 0.0, 0.0)
+    result += "%10.8f %10.8f %10.8f\n"%(0.0, 1.0, 0.0)
+    result += "%10.8f %10.8f %10.8f\n"%(0.0, 0.0, 1.0)
+    result += "ATOMIC_POSITIONS\nCartesian_angstrom  //Cartesian or Direct coordinate.\n"
+    result += "%s      //Element Label\n"%element
+    result += "%.2f     //starting magnetism\n"%starting_magnetization
+    result += "1       //number of atoms\n"
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0, 0.0, 0.0)
+    return result
+
 def dimer(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     """generate dimer structure"""
     starting_magnetization = 0.0 if nspin == 1 else 2.0
@@ -77,20 +93,12 @@ def tetramer(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     result += "%10.8f %10.8f %10.8f 0 0 0\n"%(dis3, dis4, dis2)
     return result
 
-def STRU(shape: str = "", element: str = "", mass: float = 1.0, fpseudo: str = "", 
-         lattice_constant: float = 1.0, bond_length: float = 3.0, nspin: int = 1):
+def STRU(shape: str, element: str, mass: float, fpseudo: str, 
+         lattice_constant: float, bond_length: float, nspin: int):
     """generate structure"""
-    if shape == "":
-        raise ValueError("shape is not specified")
-    if element == "":
-        raise ValueError("element is not specified")
-    if fpseudo == "":
-        raise ValueError("fpseudo is not specified")
-    if lattice_constant == 0.0:
-        raise ValueError("lattice_constant is not specified")
-    if bond_length == 0.0:
-        raise ValueError("bond_length is not specified")
-    if shape == "dimer":
+    if shape == "monomer":
+        return monomer(element, mass, fpseudo, lattice_constant, nspin), 1
+    elif shape == "dimer":
         return dimer(element, mass, fpseudo, lattice_constant, bond_length, nspin), 2
     elif shape == "trimer":
         return trimer(element, mass, fpseudo, lattice_constant, bond_length, nspin), 3
@@ -168,9 +176,14 @@ def configure(input_setting: dict,
     for necessary_key in necessary_keys:
         if necessary_key not in stru_setting.keys():
             raise ValueError("key %s is not specified"%necessary_key)
-    folder = "-".join([str(stru_setting[key]) for key in necessary_keys if key != "fpseudo"])
+    # mostly value will not be None, except the case the monomer is included to be referred
+    # in initial guess of coefficients of sphbes
+    keys_in_foldername = ["element", "shape"]
+    keys_in_foldername.append("bond_length") if stru_setting["shape"] != "monomer" else None
+    # because bond_length is not necessary for monomer
+    folder = "-".join([str(stru_setting[key]) for key in keys_in_foldername])
     _input = INPUT(input_setting, suffix=folder)
-    _stru, natom = STRU(**stru_setting)
+    _stru, _ = STRU(**stru_setting)
     _kpt = KPOINTS()
 
     """to make code expresses clear"""
@@ -207,31 +220,31 @@ def archive(footer: str = "", env: str = "local"):
 ##############################################
 # entry point for running ABACUS calculation
 def run_all(general: dict,
-            reference_shapes: list,
-            bond_lengths: list,
+            structures: dict,
             calculation_settings: list,
             env_settings: tuple,
             test: bool = False):
     """iterately calculate planewave wavefunctions for reference shapes and bond lengths"""
     folders = []
-    for i in range(len(reference_shapes)):
+    for isp, shape in enumerate(structures.keys()):
         folders_istructure = []
         """abacus_driver can be created iteratively in this layer, and feed in following functions"""
-        if "auto" in bond_lengths[i]:
+        if structures[shape] == "auto" and shape != "monomer":
             """search bond lengths"""
             folders_istructure = blscan(general=general,
-                                        calculation_setting=calculation_settings[i],
+                                        calculation_setting=calculation_settings[isp],
                                         env_settings=env_settings,
-                                        reference_shape=reference_shapes[i],
+                                        reference_shape=shape,
                                         nstep_bidirection=5,
                                         stepsize=[0.2, 0.5],
                                         ener_thr=1.5,
                                         test=test)
         else:
+            bond_lengths = structures[shape] if shape != "monomer" else [0.0]
             folders_istructure = normal(general=general,
-                                        reference_shape=reference_shapes[i],
-                                        bond_lengths=bond_lengths[i],
-                                        calculation_setting=calculation_settings[i],
+                                        reference_shape=shape,
+                                        bond_lengths=bond_lengths,
+                                        calculation_setting=calculation_settings[isp],
                                         env_settings=env_settings,
                                         test=test)
         folders.append(folders_istructure)
@@ -496,17 +509,13 @@ def normal(general: dict,
 
     folders = []
     for bond_length in bond_lengths:
-        stru_setting = {
-            "shape": reference_shape,
-            "bond_length": bond_length,
-            "element": general["element"],
-            "fpseudo": general["pseudo_name"],
-            "lattice_constant": 20.0
-        }
+        stru_setting = {"element": general["element"], "shape": reference_shape, "bond_length": bond_length,
+            "fpseudo": general["pseudo_name"], "lattice_constant": 20.0, "nspin": calculation_setting["nspin"],
+            "mass": 1.0}
         folder = configure(input_setting=calculation_setting,
                            stru_setting=stru_setting)
-        folders.append(folder)
-
+        folders.append(folder) if "monomer" not in folder else None
+        # check if the calculation is duplicate, if so, skip
         if is_duplicate(folder, calculation_setting):
             print("ABACUS calculation on reference structure %s with bond length %s is skipped."%(reference_shape, bond_length), flush=True)
             sienv.op("rm", "INPUT-%s KPT-%s STRU-%s INPUTw"%(folder, folder, folder), env="local")

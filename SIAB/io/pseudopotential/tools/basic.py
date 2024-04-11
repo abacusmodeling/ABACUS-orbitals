@@ -16,7 +16,7 @@ def decompose_data(data):
     else:
         raise ValueError("data is not numeric")
 
-def zeta_notation_toorbitalconfig(zeta_notation: str, 
+def orbconf_fromxzyp(zeta_notation: str, 
                                   minimal_basis: list = None,
                                   as_list: bool = False):
     """convert zeta notation to orbital configuration

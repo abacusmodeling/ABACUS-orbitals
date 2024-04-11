@@ -23,7 +23,7 @@ import uuid
 
 def main(params: dict = None):
     """not-highly abstracted main function, as workflow function of spillage optimiaztion task"""
-    coef_deriv0, coef_deriv1 = params.get("spillage_coeff", [2, 1])
+    coef_deriv0, coef_deriv1 = params.get("spill_coefs", [2, 1])
     
     print("""
 --------------------------------------------------
@@ -98,7 +98,7 @@ SIAB.pytorch_swat starts, numerical atomic orbitals are optimized.
     print("INFORMATION CHECK - Please check every detail of the information below:", flush=True)
     print("-"*80, flush=True)
     print(sspsistdout.bundle_print(info_kst=info_kst, info_stru=info_stru, info_element=info_element,
-                                   info_opt=info_opt, info_max=info_max, spillage_coeff=[coef_deriv0, coef_deriv1]),
+                                   info_opt=info_opt, info_max=info_max, spill_coefs=[coef_deriv0, coef_deriv1]),
                                    flush=True)
     print("-"*80, flush=True)
     ###################################

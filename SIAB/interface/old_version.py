@@ -14,7 +14,7 @@ The optimizer needs the "INPUT.json" file for performing optimization task. """
     "smearing_sigma": 0.015,
 
     "optimizer": "pytorch.SWAT",
-    "spillage_coeff": [0.5, 0.5],
+    "spill_coefs": [2.0, 1.0],
     "max_steps": 9000,
 
     "reference_systems": [
@@ -429,7 +429,7 @@ def convert(calculation_setting: dict,
                 "weight": istates[1][iorb],
                 "C_init_info": c_init[iorb],
                 "V_info": v,
-                "spillage_coeff": siab_settings["spillage_coeff"]
+                "spill_coefs": siab_settings["spill_coefs"]
             }, foldername, iorb
 
 def unpack(orb_gen: dict) -> dict:
