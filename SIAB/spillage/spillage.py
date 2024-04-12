@@ -185,11 +185,12 @@ def initgen(nzeta, ov, reduce=True):
     coef = []
     for l in range(lmax+1):
         idx_start = comp2lin[(0, 0, l, 0, 0)]
-        Yl = Y[:, :, idx_start:idx_start+2*l+1, :].sum(0).reshape(-1, ov['nbes'])
-        val, vec = np.linalg.eigh(Yl.T.conj() @ Yl)
+        Yl = Y[:, :, idx_start:idx_start+2*l+1, :].reshape(ov['nk'], -1, ov['nbes'])
+        YdaggerY = (ov['wk'].reshape(-1,1,1) * (Yl.transpose((0, 2, 1)).conj() @ Yl)).sum(0).real
+        val, vec = np.linalg.eigh(YdaggerY)
 
         # eigenvectors corresponding to the largest nzeta eigenvalues
-        coef.append(vec[:,-nzeta[l]:].T.tolist())
+        coef.append(vec[:,-nzeta[l]:][:,::-1].T.tolist())
 
     return coeff_reduce(coef, rcut) if reduce else coef
 
@@ -503,11 +504,47 @@ class _TestSpillage(unittest.TestCase):
     def test_initgen(self):
         ov = read_orb_mat('../../tmp/Si-single-atom/orb_matrix.0.dat')
 
-        nzeta = [3,2,1]
+        nzeta = [2,2,1]
         coef = initgen(nzeta, ov, reduce=False)
         assert(len(coef) == len(nzeta))
         assert([len(coef[l]) for l in range(len(nzeta))] == nzeta)
 
+        from radial import build_reduced
+        import matplotlib.pyplot as plt
+
+        rcut = ov['rcut']
+        dr = 0.01
+        r = np.linspace(0, rcut, int(rcut/dr)+1)
+        chi = build_reduced(coef, rcut, r, True, True)
+
+
+        lmax = len(chi)-1
+        nzeta = [len(chi_l) for chi_l in chi]
+        nzetamax = max(nzeta)
+        chimax = np.max([np.max(np.abs(chi_l)) for chi_l in chi])
+
+        fig, ax = plt.subplots(nzetamax, lmax+1, figsize=((lmax+1)*6, nzetamax*5),
+                               layout='tight', squeeze=False)
+
+        for l in range(lmax+1):
+            for zeta in range(nzeta[l]):
+                # adjust the sign so that the largest value is positive
+                if chi[l][zeta][np.argmax(np.abs(chi[l][zeta]))] < 0:
+                    chi[l][zeta] *= -1
+
+                ax[zeta, l].plot(r, chi[l][zeta])
+                #ax[zeta, l].plot(r, (r*nao['chi'][l][zeta])**2)
+
+                ax[zeta, l].axhline(0, color='black', linestyle=':')
+                #ax[zeta, l].axvline(2.0, color='black', linestyle=':')
+
+                # title
+                ax[zeta, l].set_title('l=%d, zeta=%d' % (l, zeta), fontsize=20)
+
+                ax[zeta, l].set_xlim([0, rcut])
+                ax[zeta, l].set_ylim([-0.4*chimax, chimax*1.1])
+
+        plt.show()
 
     def test_mrdiv(self):
         n_slice = 3
