@@ -114,7 +114,7 @@ In version >= 0.2.0, many parameters are removed due to redundancy. The input sc
 
     "optimizer": "pytorch.SWAT",
     "max_steps": 1000,
-    "spill_coefs": [0.5, 0.5],
+    "spill_coefs": [2.0, 1.0],
     "nthreads_rcut": 4,
 
     "reference_systems": [
