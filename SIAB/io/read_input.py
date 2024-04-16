@@ -201,6 +201,9 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float):
         if user_settings["orbitals"][iorb]["zeta_notation"].endswith("P"):
             with_polarization[index_shape] = True
     natom = {"monomer": 1, "dimer": 2, "trimer": 3, "tetramer": 4}
+    # monomer is special, it is used as initial guess for spillage optimization, therefore it should have all possible
+    # lmax values, therefore the maximal one over all reference systems
+    lmax_monomer = 0
     for irs in range(nsystem):
         # auto set nbands if for reference system the nbands is set to "auto"
         nbands = refsys[irs].get("nbands", "auto")
@@ -208,6 +211,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float):
         nbands = nbands if nbands != "auto" else natom[shape]*z_val
         # auto set lmaxmax
         lmaxmax = len(minimal_basis) if (with_polarization[irs] and [] not in minimal_basis) else len(minimal_basis) - 1
+        lmax_monomer = max(lmax_monomer, lmaxmax)
         # set nspin
         nspin = refsys[irs].get("nspin", 1)
         # update
@@ -216,6 +220,8 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float):
         for key, value in refsys[irs].items():
             if key in all_params:
                 result[irs][key] = value
+    # set monomer
+    result[shape_index_mapping.index("monomer")].update({"lmaxmax": lmax_monomer}) if need_monomer else None
     return result
 
 import SIAB.io.pseudopotential.tools.basic as siptb
