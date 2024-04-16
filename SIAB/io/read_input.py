@@ -208,7 +208,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float):
         # auto set nbands if for reference system the nbands is set to "auto"
         nbands = refsys[irs].get("nbands", "auto")
         shape = refsys[irs]["shape"]
-        nbands = nbands if nbands != "auto" else natom[shape]*z_val
+        nbands = nbands if nbands != "auto" else int(natom[shape]*z_val)
         # auto set lmaxmax
         lmaxmax = len(minimal_basis) if (with_polarization[irs] and [] not in minimal_basis) else len(minimal_basis) - 1
         lmax_monomer = max(lmax_monomer, lmaxmax)
@@ -218,7 +218,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float):
         result[irs].update({"nbands": nbands, "lmaxmax": lmaxmax, "nspin": nspin})
         # for all other parameters in user_settings["reference_systems"][irs], if in abacus_params, overwrite
         for key, value in refsys[irs].items():
-            if key in all_params:
+            if key in all_params and key not in ["shape", "nbands", "nspin"]:
                 result[irs][key] = value
     # set monomer
     result[shape_index_mapping.index("monomer")].update({"lmaxmax": lmax_monomer}) if need_monomer else None
