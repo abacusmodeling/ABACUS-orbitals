@@ -6,6 +6,7 @@
     "pseudo_dir": "/root/abacus-develop/pseudopotentials/sg15_oncv_upf_2020-02-06/1.0",
     "pseudo_name": "Si_ONCV_PBE-1.0.upf",
     "ecutwfc": 60,
+    "bessel_nao_smooth": 0,
     "bessel_nao_rcut": [6, 7, 8, 9, 10],
     "smearing_sigma": 0.01,
 
