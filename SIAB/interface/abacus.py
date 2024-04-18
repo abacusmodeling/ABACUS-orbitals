@@ -389,11 +389,11 @@ def blscan_fitmorse(bond_lengths: list,
     # always be sure there are at least two points on the both
     # left and right side of the minimum energy point
     idx_min = energies.index(min(energies))
-    assert idx_min > 1
-    assert idx_min < len(energies) - 2
-    assert len(energies) > 5
+    assert idx_min > 1, "There are fewer than 2 points on the left side of the minimum energy point."
+    assert idx_min < len(energies) - 2, "There are fewer than 2 points on the right side of the minimum energy point."
+    assert len(energies) > 5, "There are fewer than 5 points in total."
     # set threshold to be 10, this will force the point with the energy no higher than 10 eV
-    cndt_thr = 10
+    cndt_thr = 10 # eV
     ediff = max(energies) - min(energies)
     conditioned = ediff < cndt_thr # if true, the fitting problem is relatively balanced
     while not conditioned:
@@ -409,9 +409,9 @@ def blscan_fitmorse(bond_lengths: list,
         conditioned = ediff < cndt_thr or len(energies) == 5
 
     popt, pcov = curve_fit(f=morse_potential, 
-                            xdata=bond_lengths, 
-                            ydata=energies,
-                            p0=[2.0, 1.0, 2.7, -100])
+                           xdata=bond_lengths, 
+                           ydata=energies,
+                           p0=[energies[-1] - min(energies), 1.0, 2.7, min(energies)])
     if pcov is None:
         raise ValueError("fitting failed.")
     elif np.any(np.diag(pcov) < 0):
@@ -445,12 +445,13 @@ def blscan_returnbls(bl0: float,
     i_emin = delta_energies.index(emin)
     delta_e_r = delta_energies[i_emin+1] - delta_energies[i_emin]
     delta_e_l = delta_energies[i_emin-1] - delta_energies[i_emin]
-    
-    assert i_emin > 2
-    assert i_emin < len(delta_energies) - 2
-    assert delta_e_r > 0
-    assert delta_e_l > 0
-    assert all(delta_energies) > 0
+
+    # always be sure there are at least two points on the both
+    assert i_emin > 1, "There are fewer than 2 points on the left side of the minimum energy point."
+    assert i_emin < len(delta_energies) - 2, "There are fewer than 2 points on the right side of the minimum energy point."
+    assert delta_e_r > 0, "The energy difference between the minimum energy point and the right side is not positive."
+    assert delta_e_l > 0, "The energy difference between the minimum energy point and the left side is not positive."
+    assert all(delta_energies) > 0, "The energy difference is not positive."
 
     i_emax_r, i_emax_l = 0, -1 # initialize the right index to be the left-most, and vice versa
     for i in range(i_emin, len(delta_energies)):
