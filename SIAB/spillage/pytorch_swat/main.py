@@ -268,11 +268,11 @@ Max steps: {info_opt.max_steps}
             # add the convergence condition here, while for old version the optimization
             # will proceed until the max step is reached. However observed that the optimization
             # will converge in a few steps.
-            if _dspill <= spill_thr:
-                print(f"...\nSpillage meets convergence threshold {spill_thr} ({_dspill}) at step {istep}.", flush=True)
-                break
-            if istep == maxSteps-1:
-                print(f"...\nWARNING: Spillage optimization reaches the maximum steps {maxSteps} without convergence ({spill_thr}).", flush=True)
+            # if abs(_dspill) <= spill_thr:
+            #     print(f"...\nSpillage meets convergence threshold {spill_thr} ({abs(_dspill)}) at step {istep}.", flush=True)
+            #     break
+            # if istep == maxSteps-1:
+            #     print(f"...\nWARNING: Spillage optimization reaches the maximum steps {maxSteps} without convergence ({spill_thr}).", flush=True)
 
     orb = sspso.generate_orbital(info_element, C_old, E)
     # this is a ad hoc way to smooth the orbital. A more clean way would be implemented
