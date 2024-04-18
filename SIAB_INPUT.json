@@ -14,6 +14,7 @@
     "max_steps": 1000,
     "spill_coefs": [2.0, 1.0],
     "spill_guess": "atomic",
+    "spill_thr": 1e-8,
     "nthreads_rcut": 4,
 
     "reference_systems": [

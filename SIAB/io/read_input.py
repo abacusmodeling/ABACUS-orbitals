@@ -254,6 +254,7 @@ def siab_settings(user_settings: dict, minimal_basis: list):
         "optimizer": user_settings.get("optimizer", "pytorch.SWAT"),
         "max_steps": user_settings.get("max_steps", 1000),
         "spill_coefs": user_settings.get("spill_coefs", [2.0, 1.0]),
+        "spill_thr": user_settings.get("spill_thr", 1e-8),
         "nthreads_rcut": user_settings.get("nthreads_rcut", -1),
         "orbitals": [{} for _ in range(len(user_settings["orbitals"]))]
     }
