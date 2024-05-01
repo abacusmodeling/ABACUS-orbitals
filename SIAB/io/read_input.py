@@ -28,6 +28,7 @@ def read_siab_json(fname: str = ""):
         result = json.load(f)
     return result
 
+import os
 def read_siab_inp(fname: str = "", version: str = "0.1.0"):
     """default value setting is absent"""
     print(f"""
@@ -40,7 +41,8 @@ Parsing SIAB input file {fname} with version {version}
         result = postprocess_siab_oldinp(result) if version == "0.1.0" else result
         result = convert_oldinp_tojson(result) if version == "0.1.0" else result
         result = convert_plaintext_tojson(result) if version != "0.1.0" else result
-    
+    # convert `pseudo_dir` to absolute path
+    result["pseudo_dir"] = os.path.abspath(result["pseudo_dir"])
     return result
 
 def postprocess_siab_oldinp(inp: dict):
@@ -208,7 +210,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float):
         # auto set nbands if for reference system the nbands is set to "auto"
         nbands = refsys[irs].get("nbands", "auto")
         shape = refsys[irs]["shape"]
-        nbands = nbands if nbands != "auto" else natom[shape]*z_val
+        nbands = nbands if nbands != "auto" else int(natom[shape]*z_val)
         # auto set lmaxmax
         lmaxmax = len(minimal_basis) if (with_polarization[irs] and [] not in minimal_basis) else len(minimal_basis) - 1
         lmax_monomer = max(lmax_monomer, lmaxmax)
@@ -218,7 +220,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float):
         result[irs].update({"nbands": nbands, "lmaxmax": lmaxmax, "nspin": nspin})
         # for all other parameters in user_settings["reference_systems"][irs], if in abacus_params, overwrite
         for key, value in refsys[irs].items():
-            if key in all_params:
+            if key in all_params and key not in ["shape", "nbands", "nspin"]:
                 result[irs][key] = value
     # set monomer
     result[shape_index_mapping.index("monomer")].update({"lmaxmax": lmax_monomer}) if need_monomer else None
@@ -254,6 +256,7 @@ def siab_settings(user_settings: dict, minimal_basis: list):
         "optimizer": user_settings.get("optimizer", "pytorch.SWAT"),
         "max_steps": user_settings.get("max_steps", 1000),
         "spill_coefs": user_settings.get("spill_coefs", [2.0, 1.0]),
+        "spill_thr": user_settings.get("spill_thr", 1e-8),
         "nthreads_rcut": user_settings.get("nthreads_rcut", -1),
         "orbitals": [{} for _ in range(len(user_settings["orbitals"]))]
     }
@@ -721,6 +724,7 @@ class TestReadInput(unittest.TestCase):
     """
     
     def test_parse(self):
+        self.maxDiff = None
         result = read_siab_inp("SIAB/example_Si/SIAB_INPUT")
         self.assertDictEqual(result,
                             {'environment': '', 
@@ -731,10 +735,7 @@ class TestReadInput(unittest.TestCase):
                              'ecutwfc': 100, 
                              'bessel_nao_rcut': [6, 7], 
                              'smearing_sigma': 0.01, 
-                             'optimizer': 'pytorch.SWAT', 
                              'max_steps': 200, 
-                             'spill_coefs': [2.0, 1.0], 
-                             'nthreads_rcut': -1,
                              'reference_systems': [
                                  {'shape': 'dimer', 'nbands': 8, 'nspin': 1, 'bond_lengths': [1.8, 2.0, 2.3, 2.8, 3.8]}, 
                                  {'shape': 'trimer', 'nbands': 10, 'nspin': 1, 'bond_lengths': [1.9, 2.1, 2.6]}
@@ -752,7 +753,7 @@ class TestReadInput(unittest.TestCase):
         self.assertEqual(translate_oldinp_keyword("sigma"), "smearing_sigma")      
 
     def test_unpack_siab_settings(self):
-
+        self.maxDiff = None
         pseudo = {
             "element": "Si",
             "val_conf": [["1S"], ["1P"]],
@@ -760,10 +761,9 @@ class TestReadInput(unittest.TestCase):
         }
         result = read_siab_inp("SIAB/example_Si/SIAB_INPUT")
         result = unpack_siab_input(result, pseudo)
-        self.assertEqual(len(result), 6)
-        self.assertListEqual(result[0], ['dimer', 'trimer'])
-        self.assertListEqual(result[1], [[1.8, 2.0, 2.3, 2.8, 3.8], [1.9, 2.1, 2.6]])
-        self.assertListEqual(result[2], [
+        self.assertEqual(len(result), 5)
+        self.assertDictEqual(result[0], dict(zip(['dimer', 'trimer'], [[1.8, 2.0, 2.3, 2.8, 3.8], [1.9, 2.1, 2.6]])))
+        self.assertListEqual(result[1], [
             {'pseudo_dir': '/root/abacus-develop/pseudopotentials/SG15_ONCV_v1.0_upf', 
              'ecutwfc': 100, 'bessel_nao_rcut': [6, 7], 'smearing_sigma': 0.01, 
              'nbands': 8, 'lmaxmax': 2, 'nspin': 1}, 
@@ -771,11 +771,12 @@ class TestReadInput(unittest.TestCase):
               'ecutwfc': 100, 'bessel_nao_rcut': [6, 7], 'smearing_sigma': 0.01, 
               'nbands': 10, 'lmaxmax': 2, 'nspin': 1}
               ])
-        self.assertDictEqual(result[3], {
+        self.assertDictEqual(result[2], {
             'optimizer': 'pytorch.SWAT', 
             'nthreads_rcut': -1,
             'max_steps': 200, 
             'spill_coefs': [2.0, 1.0], 
+            'spill_thr': 1e-08,
             'orbitals': [
                 {'nzeta': [1, 1], 
                  'nzeta_from': None, 
@@ -790,10 +791,10 @@ class TestReadInput(unittest.TestCase):
                  'nbands_ref': 6, 
                  'folder': 1}]
         })
-        self.assertDictEqual(result[4], {'environment': '', 
+        self.assertDictEqual(result[3], {'environment': '', 
                                          'mpi_command': 'mpirun -np 1', 
                                          'abacus_command': 'abacus'})
-        self.assertDictEqual(result[5], {'element': 'Si', 
+        self.assertDictEqual(result[4], {'element': 'Si', 
                                          'pseudo_dir': '/root/abacus-develop/pseudopotentials/SG15_ONCV_v1.0_upf', 
                                          'pseudo_name': 'Si_ONCV_PBE-1.0.upf'})
 
@@ -860,8 +861,8 @@ class TestReadInput(unittest.TestCase):
     def test_abacus_settings(self):
         user_settings = read_siab_inp("SIAB/example_Si/SIAB_INPUT")
         result = abacus_settings(user_settings, 
-                                    minimal_basis=[["2S"], ["2P"]],
-                                    z_val=4.0)
+                                 minimal_basis=[["2S"], ["2P"]],
+                                 z_val=4.0)
         self.assertEqual(len(result), 2)
         result = abacus_settings(user_settings, 
                                     minimal_basis=[["2S"], [], ["3D"]],

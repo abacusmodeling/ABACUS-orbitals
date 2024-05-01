@@ -24,7 +24,7 @@ import uuid
 def main(params: dict = None):
     """not-highly abstracted main function, as workflow function of spillage optimiaztion task"""
     coef_deriv0, coef_deriv1 = params.get("spill_coefs", [2, 1])
-    
+    spill_thr = params.get("spill_thr", 1e-8)
     print("""
 --------------------------------------------------
 Module Spillage - find the most similar space to the target spanned planewave wavefunction:
@@ -156,7 +156,7 @@ Max steps: {info_opt.max_steps}
 """, flush=True)
 
     orb_optimizer = torch_optimizer.SWATS(sum(C.values(),[]), lr=info_opt.lr, eps=1e-20)
-    with open(fspill,"w") as S_file:
+    with open(fspill, "w") as S_file:
         
         print("Optimization on Spillage function starts, check \"Spillage.dat\" for detailed trajectory.", flush=True)
         # use f-string to format the output
@@ -264,6 +264,15 @@ Max steps: {info_opt.max_steps}
             #    orbital.generate_orbital(info_element, C, E),
             #    {it:info_element[it].dr for it in info_element},
             #    C, flag_norm_C=True)
+            
+            # add the convergence condition here, while for old version the optimization
+            # will proceed until the max step is reached. However observed that the optimization
+            # will converge in a few steps.
+            # if abs(_dspill) <= spill_thr:
+            #     print(f"...\nSpillage meets convergence threshold {spill_thr} ({abs(_dspill)}) at step {istep}.", flush=True)
+            #     break
+            # if istep == maxSteps-1:
+            #     print(f"...\nWARNING: Spillage optimization reaches the maximum steps {maxSteps} without convergence ({spill_thr}).", flush=True)
 
     orb = sspso.generate_orbital(info_element, C_old, E)
     # this is a ad hoc way to smooth the orbital. A more clean way would be implemented
@@ -285,7 +294,7 @@ Max steps: {info_opt.max_steps}
     # write file ORBITAL_RESULTS.txt -> uuid named
     sspsifc.write_C(fcoef, C_old, Spillage)
 
-    print("""...
+    print("""
 ---------------------------------
 Optimization of the orbital ends.
 

@@ -429,7 +429,8 @@ def convert(calculation_setting: dict,
                 "weight": istates[1][iorb],
                 "C_init_info": c_init[iorb],
                 "V_info": v,
-                "spill_coefs": siab_settings["spill_coefs"]
+                "spill_coefs": siab_settings["spill_coefs"],
+                "spill_thr": siab_settings["spill_thr"]
             }, foldername, iorb
 
 def unpack(orb_gen: dict) -> dict:
