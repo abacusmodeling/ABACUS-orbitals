@@ -128,37 +128,8 @@ def read_orb_mat(fpath):
     mo_jy_end = data.index('</OVERLAP_Q>')
     mo_jy = np.array(data[mo_jy_start:mo_jy_end], dtype=float) \
             .view(dtype=complex) \
-            .reshape((nk, nbands, nao*nbes))
-
-    ####################################################################
-    #                           Phase Adjustment
-    ####################################################################
-    # NOTE In theory this step should not exist at all!
-    # but currently mo_jy computed by ABACUS does carry some non-zero phase
-    # of unknown origin.
-
-    #for ik in range(nk):
-    #    for ib in range(nbands):
-    #        idx = np.argmax(np.abs(mo_jy[ik, ib]))
-    #        mo_jy[ik, ib] *= np.exp(-1j * np.angle(mo_jy[ik, ib].reshape(-1)[idx]))
-            #print('ib = {}   max mo_jy imag = {} ' \
-            #        .format(ib, np.linalg.norm(np.imag(mo_jy[ik, ib]), np.inf)))
-
-
-    #for mu in range(nao):
-    #    tmp = mo_jy[:, mu, :].reshape(-1)
-    #    idx = np.argmax(np.abs(tmp))
-    #    mo_jy[:, mu, :] *= np.exp(-1j * np.angle(tmp[idx]))
-    #    print('mu = {}   max mo_jy imag = {} ' \
-    #            .format(mu, np.linalg.norm(np.imag(mo_jy[:, mu, :]), np.inf)))
-    
-    #for ib in range(nbands):
-    #    for mu in range(nao):
-    #        idx = np.argmax(np.abs(mo_jy[ib, mu]))
-    #        mo_jy[ib, mu] *= np.exp(-1j * np.angle(mo_jy[ib, mu, idx]))
-    #        print('ib = {}   mu = {}   max mo_jy imag = {}   norm = {}' \
-    #            .format(ib, mu, np.linalg.norm(np.imag(mo_jy[ib, mu]), np.inf), \
-    #            np.linalg.norm(mo_jy[ib,mu]) ))
+            .reshape((nk, nbands, nao*nbes)) \
+            .conj() # the output of abacus is <jy|mo>; conjugate it to <mo|jy>
 
 
     ####################################################################
@@ -190,10 +161,10 @@ def read_orb_mat(fpath):
     mo_mo = mo_mo.reshape((nk, nbands))
 
 
-    return {'ntype': ntype, 'natom': natom, 'ecutwfc': ecutwfc, \
-            'ecutjlq': ecutjlq, 'rcut': rcut, 'lmax': lmax, 'nk': nk, \
-            'nbands': nbands, 'nbes': nbes, 'kpt': kpt, 'wk': wk, \
-            'jy_jy': jy_jy, 'mo_jy': mo_jy, 'mo_mo': mo_mo, \
+    return {'ntype': ntype, 'natom': natom, 'ecutwfc': ecutwfc,
+            'ecutjlq': ecutjlq, 'rcut': rcut, 'lmax': lmax, 'nk': nk,
+            'nbands': nbands, 'nbes': nbes, 'kpt': kpt, 'wk': wk,
+            'jy_jy': jy_jy, 'mo_jy': mo_jy, 'mo_mo': mo_mo,
             'comp2lin': comp2lin, 'lin2comp': lin2comp}
 
 
@@ -216,35 +187,7 @@ import unittest
 class _TestDatParse(unittest.TestCase):
 
     def test_read_orb_mat(self):
-        fpath = './testfiles/orb_matrix/orb_matrix_rcut6deriv0.dat'
-        dat = read_orb_mat(fpath)
-
-        self.assertEqual(dat['ntype'], 1)
-        self.assertEqual(dat['natom'], [3])
-        self.assertEqual(dat['ecutwfc'], 10.0)
-        self.assertEqual(dat['ecutjlq'], 10.0)
-        self.assertEqual(dat['rcut'], 6.0)
-        self.assertEqual(dat['lmax'], [2])
-        self.assertEqual(dat['nbands'], 10)
-        self.assertEqual(dat['nbes'], \
-                int(np.sqrt(dat['ecutjlq']) * dat['rcut'] / np.pi))
-        self.assertEqual(dat['nk'], 1)
-        self.assertTrue(np.all( dat['kpt'] == np.array([[0., 0., 0.]]) ))
-        self.assertTrue(np.all( dat['wk'] == np.array([1.0]) ))
-
-        nao = dat['natom'][0] * (dat['lmax'][0] + 1)**2
-
-        self.assertEqual(dat['mo_jy'].shape, \
-                (dat['nk'], dat['nbands'], nao*dat['nbes']))
-        #self.assertEqual(dat['jy_jy'].shape, \
-        #        (dat['nk'], nao, nao, dat['nbes'], dat['nbes']))
-        self.assertEqual(dat['jy_jy'].shape, \
-                (dat['nk'], nao*dat['nbes'], nao*dat['nbes']))
-        self.assertEqual(dat['mo_mo'].shape, \
-                (dat['nk'], dat['nbands']))
-
-
-        fpath = './testfiles/orb_matrix/orb_matrix_rcut7deriv1.dat'
+        fpath = './testfiles/orb_matrix/Si-dimer-1.8/orb_matrix.0.dat'
         dat = read_orb_mat(fpath)
 
         self.assertEqual(dat['ntype'], 1)
@@ -254,20 +197,38 @@ class _TestDatParse(unittest.TestCase):
         self.assertEqual(dat['rcut'], 7.0)
         self.assertEqual(dat['lmax'], [2])
         self.assertEqual(dat['nbands'], 8)
-        self.assertEqual(dat['nbes'], \
-                int(np.sqrt(dat['ecutjlq']) * dat['rcut'] / np.pi))
+        self.assertEqual(dat['nbes'], int(np.sqrt(dat['ecutjlq']) * dat['rcut'] / np.pi))
+        self.assertEqual(dat['nk'], 1)
+        self.assertTrue(np.all( dat['kpt'] == np.array([[0., 0., 0.]]) ))
+        self.assertTrue(np.all( dat['wk'] == np.array([1.0]) ))
+
+        nao = dat['natom'][0] * (dat['lmax'][0] + 1)**2
+
+        self.assertEqual(dat['mo_jy'].shape, (dat['nk'], dat['nbands'], nao*dat['nbes']))
+        self.assertEqual(dat['jy_jy'].shape, (dat['nk'], nao*dat['nbes'], nao*dat['nbes']))
+        self.assertEqual(dat['mo_mo'].shape, (dat['nk'], dat['nbands']))
+
+
+        fpath = './testfiles/orb_matrix/Si-trimer-1.7/orb_matrix.1.dat'
+        dat = read_orb_mat(fpath)
+
+        self.assertEqual(dat['ntype'], 1)
+        self.assertEqual(dat['natom'], [3])
+        self.assertEqual(dat['ecutwfc'], 10.0)
+        self.assertEqual(dat['ecutjlq'], 10.0)
+        self.assertEqual(dat['rcut'], 7.0)
+        self.assertEqual(dat['lmax'], [2])
+        self.assertEqual(dat['nbands'], 10)
+        self.assertEqual(dat['nbes'], int(np.sqrt(dat['ecutjlq']) * dat['rcut'] / np.pi))
         self.assertEqual(dat['nk'], 2)
         self.assertTrue(np.all( dat['kpt'] == np.array([[0., 0., 0.], [0., 0., 0.]]) ))
         self.assertTrue(np.all( dat['wk'] == np.array([0.5, 0.5]) ))
 
         nao = dat['natom'][0] * (dat['lmax'][0] + 1)**2
 
-        self.assertEqual(dat['mo_jy'].shape, \
-                (dat['nk'], dat['nbands'], nao*dat['nbes']))
-        self.assertEqual(dat['jy_jy'].shape, \
-                (dat['nk'], nao*dat['nbes'], nao*dat['nbes']))
-        self.assertEqual(dat['mo_mo'].shape, \
-                (dat['nk'], dat['nbands']))
+        self.assertEqual(dat['mo_jy'].shape, (dat['nk'], dat['nbands'], nao*dat['nbes']))
+        self.assertEqual(dat['jy_jy'].shape, (dat['nk'], nao*dat['nbes'], nao*dat['nbes']))
+        self.assertEqual(dat['mo_mo'].shape, (dat['nk'], dat['nbands']))
 
 
 if __name__ == '__main__':
