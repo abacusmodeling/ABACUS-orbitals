@@ -1,5 +1,5 @@
 from datparse import read_orb_mat, _assert_consistency
-from radial import jl_reduce, coeff_reduce, jl_trunc_norm
+from radial import jl_reduce, jl_raw_norm
 from listmanip import flatten, nest, nestpat
 from jlzeros import JLZEROS
 
@@ -158,11 +158,11 @@ def initgen(nzeta, ov, reduced=True):
 
     # the number of truncated spherical Bessel functions whose energy is smaller
     # than ecut for each l
-    nbes = [sum((JLZEROS[l]/rcut)**2 < ecut) for l in range(lmax+1)]
+    nbes_ecut = [sum((JLZEROS[l]/rcut)**2 < ecut) for l in range(lmax+1)]
     if reduced:
-        nbes = [n-1 for n in nbes]
+        nbes_ecut = [n - 1 for n in nbes_ecut]
 
-    assert all(n > 0 for n in nbes)
+    assert all(n > 0 for n in nbes_ecut)
 
     # <mo|jy> reshaped to [nk, nbands, nao, nbes]
     Y = ov['mo_jy'].reshape(ov['nk'], ov['nbands'], -1, ov['nbes'])
@@ -172,13 +172,15 @@ def initgen(nzeta, ov, reduced=True):
     for l in range(lmax+1):
         idx_start = comp2lin[(0, 0, l, 0, 0)]
         Yl = Y[:, :, idx_start:idx_start+2*l+1, :].reshape(ov['nk'], -1, ov['nbes'])
-        YdaggerY = (ov['wk'].reshape(-1,1,1) * (Yl.transpose((0, 2, 1)).conj() @ Yl)).sum(0).real
-        val, vec = np.linalg.eigh(YdaggerY)
+        Yl = Yl[:,:,nbes_ecut[l]]
+        YdaggerY = (ov['wk'].reshape(-1,1,1) * (Yl.transpose((0, 2, 1)).conj() @ Yl)) \
+                   .sum(0).real
+        vec = np.linalg.eigh(YdaggerY)[1]
 
         # eigenvectors corresponding to the largest nzeta eigenvalues
         coef.append(vec[:,-nzeta[l]:][:,::-1].T.tolist())
 
-    return coef
+    return [np.linalg.qr(np.array(coef_l).T)[0].T.tolist() for coef_l in coef]
 
 
 class Spillage:
@@ -267,7 +269,7 @@ class Spillage:
         else:
             # truncated spherical Bessel to normalized truncated spherical Bessel
             uvec = lambda v, k, n: [v if i == k else 0 for i in range(n)]
-            coef = [[[uvec(1. / jl_trunc_norm(l, q, rcut), q, nbes)
+            coef = [[[uvec(1. / jl_raw_norm(l, q, rcut), q, nbes)
                       for q in range(nbes)]
                      for l in range(lmax[itype]+1)]
                     for itype in range(ntype)]
@@ -503,9 +505,10 @@ class _TestSpillage(unittest.TestCase):
     def setUp(self):
         self.orbgen_reduced = Spillage(True)
         self.orbgen_raw = Spillage(False)
+
         self.datadir = './testfiles/orb_matrix/'
-        self.config = ['Si-dimer-2.0', 'Si-dimer-2.2',
-                       'Si-trimer-2.1', 'Si-trimer-2.3',
+        self.config = ['Si-dimer-1.8', 'Si-dimer-2.8', 'Si-dimer-3.8',
+                       'Si-trimer-1.7', 'Si-trimer-2.7',
                        ]
 
 
@@ -553,6 +556,7 @@ class _TestSpillage(unittest.TestCase):
                 ax[zeta, l].set_ylim([-0.4*chimax, chimax*1.1])
 
         plt.show()
+
 
     def test_mrdiv(self):
         n_slice = 3
@@ -623,17 +627,30 @@ class _TestSpillage(unittest.TestCase):
     def test_add_config(self):
         for iconf, config in enumerate(self.config):
             for orbgen in [self.orbgen_raw, self.orbgen_reduced]:
-                mat = read_orb_mat(self.datadir + config + '/orb_matrix.0.dat')
-                dmat = read_orb_mat(self.datadir + config + '/orb_matrix.1.dat')
+                ov = read_orb_mat(self.datadir + config + '/orb_matrix.0.dat')
+                op = read_orb_mat(self.datadir + config + '/orb_matrix.1.dat')
 
-                orbgen.add_config(mat, dmat)
+                orbgen.add_config(ov, op)
                 dat = orbgen.config[iconf]
                 njy = len(dat['lin2comp']) * dat['nbes']
 
                 self.assertEqual(len(orbgen.config), iconf+1)
-                self.assertEqual(dat['mo_mo'].shape, (2, mat['nk'], mat['nbands']))
-                self.assertEqual(dat['mo_jy'].shape, (2, mat['nk'], mat['nbands'], njy))
-                self.assertEqual(dat['jy_jy'].shape, (2, mat['nk'], njy, njy))
+                self.assertEqual(dat['mo_mo'].shape, (2, ov['nk'], ov['nbands']))
+                self.assertEqual(dat['mo_jy'].shape, (2, ov['nk'], ov['nbands'], njy))
+                self.assertEqual(dat['jy_jy'].shape, (2, ov['nk'], njy, njy))
+
+                nbes = dat['nbes']
+                S = np.diag(dat['jy_jy'][0, 0])
+                T = np.diag(dat['jy_jy'][1, 0])
+
+                self.assertLess(np.linalg.norm(S - np.ones(S.shape)), 1e-6)
+
+                if orbgen == self.orbgen_raw:
+                    T_ref_0 = (JLZEROS[0][:nbes]/dat['rcut'])**2
+                    self.assertLess(np.linalg.norm(T[:nbes] - T_ref_0), 1e-2)
+
+                    T_ref_1 = (JLZEROS[1][:nbes]/dat['rcut'])**2
+                    self.assertLess(np.linalg.norm(T[nbes:2*nbes] - T_ref_1), 1e-2)
 
             self.assertEqual(self.orbgen_raw.config[iconf]['nbes'],
                              self.orbgen_reduced.config[iconf]['nbes'] + 1)
@@ -641,10 +658,10 @@ class _TestSpillage(unittest.TestCase):
 
     def test_tab_frozen(self):
         for iconf, config in enumerate(self.config):
-            mat = read_orb_mat(self.datadir + config + '/orb_matrix.0.dat')
-            dmat = read_orb_mat(self.datadir + config + '/orb_matrix.1.dat')
-            self.orbgen_raw.add_config(mat, dmat)
-            self.orbgen_reduced.add_config(mat, dmat)
+            ov = read_orb_mat(self.datadir + config + '/orb_matrix.0.dat')
+            op = read_orb_mat(self.datadir + config + '/orb_matrix.1.dat')
+            self.orbgen_raw.add_config(ov, op)
+            self.orbgen_reduced.add_config(ov, op)
 
         nzeta = [2, 1, 0]
         lmax = len(nzeta) - 1
@@ -702,6 +719,8 @@ class _TestSpillage(unittest.TestCase):
 
         '''
         ibands = range(5)
+        #FIXME for this and the next test, the frozen & raw part might be put together
+        # to reduced duplicate code
         for orbgen in [self.orbgen_raw, self.orbgen_reduced]:
             for iconf, config in enumerate(self.config):
                 ov = read_orb_mat(self.datadir + config + '/orb_matrix.0.dat')
