@@ -245,10 +245,36 @@ def coeff_reduced2raw(coeff, rcut):
             for l, coeff_l in enumerate(coeff_basis)]
 
 
+def coeff_raw2normalized(coeff, rcut):
+    '''
+    Converts the coefficients in the raw truncated spherical Bessel basis
+    to those w.r.t the normalized truncated spherical Bessel functions.
+
+    Parameters
+    ----------
+        coeff: list of list of list of float
+            A nested list of basis coefficients organized as coeff[l][zeta][p]
+            where l, zeta and p label the angular momentum, zeta number and basis
+            index respectively.
+        rcut : int or float
+            Cutoff radius.
+
+    Returns
+    -------
+        coeff_normalized: list of list of list of float
+            A list of coefficients in the normalized truncated spherical Bessel basis.
+
+    '''
+    return [[[coeff_lzq * jl_raw_norm(l, q, rcut)
+              for q, coeff_lzq in enumerate(coeff_lz)]
+             for coeff_lz in coeff_l]
+            for l, coeff_l in enumerate(coeff)]
+
+
 def coeff_normalized2raw(coeff, rcut):
     '''
-    Converts the coefficients in the smoothly reduced spherical Bessel basis
-    to those w.r.t the (raw) truncated spherical Bessel functions.
+    Converts the coefficients in the normalized truncated spherical Bessel basis
+    to those w.r.t the raw truncated spherical Bessel functions.
 
     Parameters
     ----------
