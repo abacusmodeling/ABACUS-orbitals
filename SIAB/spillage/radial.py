@@ -8,7 +8,7 @@ from scipy.linalg import rq
 
 def _inner_prod(chi1, chi2, r):
     '''
-    Inner product of two radial functions.
+    Inner product of two numerical radial functions.
 
     Parameters
     ----------
@@ -78,13 +78,17 @@ def _smooth(r, rcut, sigma):
     return g
 
 
-def jl_trunc(l, q, r, rcut=None, deriv=0):
+def jl_raw(l, q, r, rcut=None, deriv=0):
     '''
     Truncated spherical Bessel functions and derivatives.
 
     The q-th rcut-truncated l-th order spherical Bessel function is defined as
 
-            spherical_jn(l, JLZEROS[l][q] * r / rcut)
+                -
+                |   spherical_jn(l, JLZEROS[l][q] * r / rcut)   r <= rcut
+        f(r) =  |
+                |   0                                           r > rcut
+                -
 
     where JLZEROS[l][q] is the q-th positive zero of the l-th order spherical
     Besesl function.
@@ -105,6 +109,11 @@ def jl_trunc(l, q, r, rcut=None, deriv=0):
     Returns
     -------
         array of float
+
+    Notes
+    -----
+    Functions of the same l & rcut but different q are orthogonal in terms of
+    _inner_prod, but they are not normalized.
 
     '''
     if rcut is None:
@@ -130,25 +139,28 @@ def jl_trunc(l, q, r, rcut=None, deriv=0):
     return _recur(l, deriv)
 
 
-def jl_trunc_norm(l, q, rcut):
+def jl_raw_norm(l, q, rcut):
     '''
     Norm of a truncated spherical Bessel function.
 
-    This function returns the norm of the q-th rcut-truncated l-th order spherical
-    Bessel function:
+    Note
+    ----
+    The integral
 
-    N = sqrt( \int_0^{rcut} [ r * spherical_jn(l, JLZEROS[l][q] * r / rcut) ]**2 dr )
+        \int_0^{rcut} [ r * spherical_jn(l, JLZEROS[l][q] * r / rcut) ]**2 dr
 
-    by using the analytical expression of the integral.
+    has a simple analytical form. See, e.g.,
+
+    Arfken, Weber and Harris, Mathematical Methods for Physicists, 7th ed., p. 704.
 
     '''
     return ( rcut**1.5 * np.abs(spherical_jn(l+1, JLZEROS[l][q])) ) / np.sqrt(2)
 
 
-def jl_reduce(l, n, rcut):
+def jl_reduce(l, n, rcut, from_raw=True):
     '''
     This function returns a transformation matrix from truncated spherical Bessel
-    functions to orthonormal end-smoothed mixed spherical Bessel basis.
+    functions (raw or normalized) to smoothly reduced spherical Bessel functions.
 
     Consider a set of n truncated spherical Bessel functions {f} with cutoff radius
     rcut, this function returns an n-by-(n-1) matrix T such that the transformed basis
@@ -166,6 +178,8 @@ def jl_reduce(l, n, rcut):
             size of the transformed basis is n-1.
         rcut : int or float
             Cutoff radius.
+        from_raw : bool
+            If False, the truncated functions are assumed to be normalized.
 
     Notes
     -----
@@ -178,10 +192,10 @@ def jl_reduce(l, n, rcut):
     if n == 1:
         return np.zeros((1,0))
 
-    norm_fac = np.array([1.0 / jl_trunc_norm(l, q, rcut) for q in range(n)])
+    inv_raw_norm = np.array([1.0 / jl_raw_norm(l, q, rcut) for q in range(n)])
 
     # first derivative of the normalized truncated spherical Bessel function at rcut
-    D = np.array([[jl_trunc(l, q, rcut, deriv=1) * norm_fac[q] for q in range(n)]])
+    D = np.array([[jl_raw(l, q, rcut, deriv=1) * inv_raw_norm[q] for q in range(n)]])
 
     # null space of D
     C = np.linalg.svd(D, full_matrices=True)[2].T[:,1:]
@@ -192,22 +206,17 @@ def jl_reduce(l, n, rcut):
     # spherical Bessel functions (which is an N-by-(N-1) matrix) should
     # be identical to the upper-left N-by-(N-1) block of the result from
     # any M (M>N) spherical Bessel functions.
-    T = norm_fac.reshape(-1,1) * rq(C)[0] # same as np.diag(norm_fac) @ rq(C)[0]
+    T = inv_raw_norm.reshape(-1,1) * rq(C)[0] if from_raw else rq(C)[0]
 
     # make sure the largest-magnitude element in each column is positive
     idx = np.argmax(np.abs(T), axis=0)
     return T * np.sign(T[idx, range(n-1)])
 
 
-# precompute jl_reduce for rcut = 1, 2, ..., 15 with lmax=7
-JL_REDUCE = {rcut : [jl_reduce(l, 100, rcut) for l in range(8)]
-             for rcut in np.arange(1, 16, dtype=float)}
-
-
-def coeff_recover(coeff, rcut):
+def coeff_reduced2raw(coeff, rcut):
     '''
-    Converts the coefficients w.r.t the orthonormal end-smoothed mixed spherical
-    Bessel basis to those w.r.t the truncated spherical Bessel functions.
+    Converts the coefficients in the smoothly reduced spherical Bessel basis
+    to those w.r.t the (raw) truncated spherical Bessel functions.
 
     Parameters
     ----------
@@ -221,20 +230,71 @@ def coeff_recover(coeff, rcut):
     Returns
     -------
         coeff_raw : list of list of list of float
-            A nested list of truncated spherical Bessel coefficients.
+            A list of coefficients in the (raw) truncated spherical Bessel basis.
 
     Notes
     -----
     Items of the same l must consist of the same number of basis functions.
 
     '''
-    # temporarily use a column-wise coefficient layout within each l
     coeff_basis = [ np.array(coeff_l).T for coeff_l in coeff ]
 
-    # note that (array([]) @ array([])).tolist() gives 0, but we want []
-    return [ (jl_reduce(l, coeff_l.shape[0] + 1, rcut) @ coeff_l).T.tolist() \
-            if coeff_l.size > 0 else [] \
+    # note that (array([]) @ array([])).tolist() would give 0 where we want []
+    return [(jl_reduce(l, coeff_l.shape[0] + 1, rcut, True) @ coeff_l).T.tolist()
+            if coeff_l.size > 0 else []
             for l, coeff_l in enumerate(coeff_basis)]
+
+
+def coeff_raw2normalized(coeff, rcut):
+    '''
+    Converts the coefficients in the raw truncated spherical Bessel basis
+    to those w.r.t the normalized truncated spherical Bessel functions.
+
+    Parameters
+    ----------
+        coeff: list of list of list of float
+            A nested list of basis coefficients organized as coeff[l][zeta][p]
+            where l, zeta and p label the angular momentum, zeta number and basis
+            index respectively.
+        rcut : int or float
+            Cutoff radius.
+
+    Returns
+    -------
+        coeff_normalized: list of list of list of float
+            A list of coefficients in the normalized truncated spherical Bessel basis.
+
+    '''
+    return [[[coeff_lzq * jl_raw_norm(l, q, rcut)
+              for q, coeff_lzq in enumerate(coeff_lz)]
+             for coeff_lz in coeff_l]
+            for l, coeff_l in enumerate(coeff)]
+
+
+def coeff_normalized2raw(coeff, rcut):
+    '''
+    Converts the coefficients in the normalized truncated spherical Bessel basis
+    to those w.r.t the raw truncated spherical Bessel functions.
+
+    Parameters
+    ----------
+        coeff: list of list of list of float
+            A nested list of basis coefficients organized as coeff[l][zeta][p]
+            where l, zeta and p label the angular momentum, zeta number and basis
+            index respectively.
+        rcut : int or float
+            Cutoff radius.
+
+    Returns
+    -------
+        coeff_raw : list of list of list of float
+            A list of coefficients in the (raw) truncated spherical Bessel basis.
+
+    '''
+    return [[[coeff_lzq / jl_raw_norm(l, q, rcut)
+              for q, coeff_lzq in enumerate(coeff_lz)]
+             for coeff_lz in coeff_l]
+            for l, coeff_l in enumerate(coeff)]
 
 
 def build_raw(coeff, rcut, r, sigma=0.0, orth=False, normalize=False):
@@ -289,7 +349,7 @@ def build_raw(coeff, rcut, r, sigma=0.0, orth=False, normalize=False):
     return chi
 
 
-def build_reduced(coeff, rcut, r, orthonormal=False, normalize=False):
+def build_reduced(coeff, rcut, r, orthonormal=False):
     '''
     Builds a set of numerical radial functions by linear combinations of
     orthonormal end-smoothed mixed spherical Bessel basis.
@@ -307,10 +367,6 @@ def build_reduced(coeff, rcut, r, orthonormal=False, normalize=False):
         orthonormal : bool
             Whether to orthonormalize the radial functions. If True, the resulting radial
             functions may not be consistent with the given coefficients.
-        normalize : bool
-            Whether to normalize the radial functions. If True, the resulting radial
-            functions may not be consistent with the given coefficients.
-            If "orthonormal" is True, this option is ignored.
     
     Returns
     -------
@@ -322,27 +378,18 @@ def build_reduced(coeff, rcut, r, orthonormal=False, normalize=False):
     Items of the same l must consist of the same number of basis functions.
 
     '''
-    # temporarily change to a column-wise coefficient layout within each l
-    coeff_reduced = [ np.array(coeff_l).T for coeff_l in coeff ]
-
-    # It is easier to do orthogonalization or normalization now than later
-    # since the end-smoothed mixed spherical Bessel basis is orthonormal.
     if orthonormal:
-        for l, coeff_l in enumerate(coeff_reduced):
-            coeff_reduced[l] = np.linalg.qr(coeff_l, mode='reduced')[0]
-    elif normalize:
-        for l, coeff_l in enumerate(coeff_reduced):
-            coeff_reduced[l] /= np.linalg.norm(coeff_l, axis=0)
+        coeff = [np.linalg.qr(np.array(coeff_l).T)[0].T.tolist() for coeff_l in coeff]
 
-    coeff_reduced = [ coeff_l.T.tolist() for coeff_l in coeff_reduced ]
-
-    return build_raw(coeff_recover(coeff_reduced, rcut), rcut, r, 0.0, False, False)
+    return build_raw(coeff_reduced2raw(coeff, rcut), rcut, r, 0.0, False, False)
 
 
 ############################################################
 #                       Test
 ############################################################
 import unittest
+
+from numpy.linalg import norm
 import matplotlib.pyplot as plt
 
 class _TestRadial(unittest.TestCase):
@@ -359,8 +406,8 @@ class _TestRadial(unittest.TestCase):
             k = JLZEROS[l] / rcut
             for q in range(1, nq):
                 for p in range(q):
-                    self.assertLess(abs(_inner_prod(spherical_jn(l, k[q]*r), \
-                            spherical_jn(l, k[p]*r), r)), 1e-12)
+                    self.assertLess(abs(_inner_prod(spherical_jn(l, k[q]*r),
+                                                    spherical_jn(l, k[p]*r), r)), 1e-12)
 
 
     def test_rad_norm(self):
@@ -392,8 +439,8 @@ class _TestRadial(unittest.TestCase):
         self.assertTrue(np.all(g[rp] == 0.0))
 
 
-    def test_jl_trunc_norm(self):
-        # cross-checks jl_trunc_norm with _rad_norm
+    def test_jl_raw_norm(self):
+        # cross-checks jl_raw_norm with _rad_norm
         rcut = 7.0
         dr = 0.001
         r = np.linspace(0, rcut, int(rcut/dr) + 1)
@@ -401,11 +448,11 @@ class _TestRadial(unittest.TestCase):
         for l in range(5):
             k = JLZEROS[l] / rcut
             for q in range(nzeros):
-                f = spherical_jn(l, k[q]*r) / jl_trunc_norm(l, q, rcut)
+                f = spherical_jn(l, k[q]*r) / jl_raw_norm(l, q, rcut)
                 self.assertLess(abs(_rad_norm(f, r) - 1.0), 1e-12)
 
 
-    def test_jl_trunc(self):
+    def test_jl_raw(self):
         rcut = 5.0
         dr = 0.001
         r = np.linspace(0, rcut, int(rcut/dr) + 1)
@@ -414,10 +461,10 @@ class _TestRadial(unittest.TestCase):
         for l in range(5):
             kin_ref = (JLZEROS[l] / rcut)**2
             for q in range(5):
-                norm_fac = 1.0 / jl_trunc_norm(l, q, rcut)
-                f = jl_trunc(l, q, r, rcut, 0) * norm_fac
-                df = jl_trunc(l, q, r, rcut, 1) * norm_fac
-                d2f = jl_trunc(l, q, r, rcut, 2) * norm_fac
+                inv_raw_norm = 1.0 / jl_raw_norm(l, q, rcut)
+                f = jl_raw(l, q, r, rcut, 0) * inv_raw_norm
+                df = jl_raw(l, q, r, rcut, 1) * inv_raw_norm
+                d2f = jl_raw(l, q, r, rcut, 2) * inv_raw_norm
 
                 spline = CubicSpline(r, f)
                 df_spline = spline(r, 1)
@@ -426,7 +473,7 @@ class _TestRadial(unittest.TestCase):
                 self.assertLess(simpson((r * (df-df_spline))**2, x=r), 1e-12)
                 self.assertLess(simpson((r * (d2f-d2f_spline))**2, x=r), 1e-9)
 
-                kin = simpson(-2 * r * f * df - r**2 * f * d2f + l*(l+1) * f**2, x=r)
+                kin = simpson((-2 * r * df - r**2 * d2f + l*(l+1) * f) * f, x=r)
                 self.assertLess(abs(kin - kin_ref[q]), 1e-8)
 
     
@@ -437,34 +484,51 @@ class _TestRadial(unittest.TestCase):
         rcut = 9.0
         nq = 10
         raw = np.zeros((2, nq))
+        nrm = np.zeros((2, nq))
         for l in range(lmax+1):
             for q in range(nq):
-                raw[0, q] = jl_trunc(l, q, rcut, deriv=1)
-                raw[1, q] = jl_trunc(l, q, rcut, deriv=2)
-            self.assertLess(np.linalg.norm(raw @ jl_reduce(l, nq, rcut), np.inf), 1e-12)
+                raw[0, q] = jl_raw(l, q, rcut, deriv=1)
+                raw[1, q] = jl_raw(l, q, rcut, deriv=2)
+
+                nrm[0, q] = jl_raw(l, q, rcut, deriv=1) / jl_raw_norm(l, q, rcut)
+                nrm[1, q] = jl_raw(l, q, rcut, deriv=2) / jl_raw_norm(l, q, rcut)
+
+            self.assertLess(norm(raw @ jl_reduce(l, nq, rcut, True), np.inf), 1e-12)
+            self.assertLess(norm(nrm @ jl_reduce(l, nq, rcut, False), np.inf), 1e-12)
 
         # checks the consistency of jl_reduce w.r.t. different numbers of basis functions
         for l in range(lmax+1):
-            T = jl_reduce(l, nq, rcut)
+            T_raw = jl_reduce(l, nq, rcut, True)
+            T_nrm = jl_reduce(l, nq, rcut, False)
+
             for n in range(2, nq):
-                T_ = jl_reduce(l, n, rcut)
-                self.assertLess(np.linalg.norm(T[:n, :n-1] - T_, np.inf), 1e-12)
+                T_raw_ = jl_reduce(l, n, rcut, True)
+                T_nrm_ = jl_reduce(l, n, rcut, False)
+
+                self.assertLess(norm(T_raw[:n, :n-1] - T_raw_, np.inf), 1e-12)
+                self.assertLess(norm(T_nrm[:n, :n-1] - T_nrm_, np.inf), 1e-12)
 
 
-    def test_coeff_recover(self):
-        nzeta = [1, 2, 3, 4]
-        lmax = len(nzeta) - 1
+    def test_coeff_reduced2raw(self):
         rcut = 9.0
         nq = 10
 
-        coeff = [[np.random.randn(nq-1) for zeta in range(nzeta[l])] for l in range(lmax+1)]
-        coeff_raw = coeff_recover(coeff, rcut) 
+        nzeta = [1, 2, 3, 4]
+        lmax = len(nzeta) - 1
+        coeff_rdc = [np.random.randn(nzeta[l], nq-1).tolist() for l in range(lmax+1)]
+        coeff_raw = coeff_reduced2raw(coeff_rdc, rcut) 
 
         for l in range(lmax+1):
             raw = np.array(coeff_raw[l]).T
-            reduced = np.array(coeff[l]).T
-            self.assertLess(np.linalg.norm(jl_reduce(l, nq, rcut) @ reduced - raw, np.inf), \
-                    1e-12)
+            rdc = np.array(coeff_rdc[l]).T
+            self.assertLess(norm(jl_reduce(l, nq, rcut) @ rdc - raw, np.inf), 1e-12)
+
+        nzeta = [0, 1, 0, 1]
+        lmax = len(nzeta) - 1
+        coeff_rdc = [np.random.randn(nzeta[l], nq-1).tolist() for l in range(lmax+1)]
+        coeff_raw = coeff_reduced2raw(coeff_rdc, rcut)
+
+        self.assertTrue(coeff_raw[0] == [] and coeff_raw[2] == [])
 
 
     def test_build_raw(self):
@@ -485,34 +549,34 @@ class _TestRadial(unittest.TestCase):
                     self.assertLess(abs(_inner_prod(chi[l][zeta], chi[l][y], r)), 1e-12)
 
                 # cross check with NAO file
-                self.assertLess(np.linalg.norm(chi[l][zeta] - nao['chi'][l][zeta]), 1e-12)
+                self.assertLess(norm(chi[l][zeta] - nao['chi'][l][zeta]), 1e-12)
 
 
     def test_build_reduced(self):
-        nzeta = [1, 2, 3, 4]
-        lmax = len(nzeta) - 1
         rcut = 9.0
         nq = 10
-        coeff_reduced = [[np.random.randn(nq-1) for zeta in range(nzeta[l])] for l in range(lmax+1)]
-        coeff_raw = coeff_recover(coeff_reduced, rcut)
+
+        nzeta = [1, 2, 3, 4]
+        lmax = len(nzeta) - 1
+        coeff_rdc = [np.random.randn(nzeta[l], nq-1).tolist() for l in range(lmax+1)]
+        coeff_raw = coeff_reduced2raw(coeff_rdc, rcut)
 
         dr = 0.01
         r = np.linspace(0, rcut, int(rcut/dr)+1)
 
-        for orth, norm in [(True, True), (False, True), (False, False)]:
-            chi_reduced = build_reduced(coeff_reduced, rcut, r, orth, norm)
-            chi_raw = build_raw(coeff_raw, rcut, r, 0.0, orth, norm)
+        for orthnorm in [True, False]:
+            chi_rdc = build_reduced(coeff_rdc, rcut, r, orthnorm)
+            chi_raw = build_raw(coeff_raw, rcut, r, 0.0, orthnorm, orthnorm)
             for l in range(lmax+1):
                 for zeta in range(nzeta[l]):
                     # adjust the sign of the reduced chi to match the raw chi
                     idx = np.argmax(np.abs(chi_raw[l][zeta]))
-                    if chi_raw[l][zeta][idx] * chi_reduced[l][zeta][idx] < 0:
-                        chi_reduced[l][zeta] *= -1
-                    self.assertLess(np.linalg.norm(chi_raw[l][zeta] - chi_reduced[l][zeta], np.inf), 1e-12)
+                    if chi_raw[l][zeta][idx] * chi_rdc[l][zeta][idx] < 0:
+                        chi_rdc[l][zeta] *= -1
+                    self.assertLess(norm(chi_raw[l][zeta] - chi_rdc[l][zeta], np.inf), 1e-12)
 
 
-    # change the function name to test_xxx to activate
-    def est_plot_basis(self):
+    def est_plot_reduced(self):
         lmax = 10
         nq = 7
 
@@ -522,11 +586,13 @@ class _TestRadial(unittest.TestCase):
         r = np.linspace(0, rcut, nr)
 
         coeff_reduced = [np.eye(nq).tolist()] * (lmax+1)
-        chi_reduced = build_reduced(coeff_reduced, rcut, r, False, False)
+        chi_reduced = build_reduced(coeff_reduced, rcut, r, False)
 
         l = 3
         for chi in chi_reduced[l]:
             plt.plot(r, chi)
+
+        plt.xlim([0, rcut])
         plt.show()
 
 

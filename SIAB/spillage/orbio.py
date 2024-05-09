@@ -79,7 +79,9 @@ def _write_chi(f, l, zeta, chi):
 
     '''
     f.write('                Type                   L                   N\n')
-    f.write('                   0                   {0}                   {1}\n'.format(l, zeta))
+    f.write('                   0                   {0}                   {1}\n'
+            .format(l, zeta))
+
     for ir, chi_of_r in enumerate(chi):
         f.write('{: 23.14e}'.format(chi_of_r))
         if ir % 4 == 3 and ir != len(chi)-1:
@@ -155,7 +157,7 @@ def read_nao(fpath):
     lmax = int(data[data.index('Lmax')+1])
 
     spec_symbol = 'SPDFGHIKLMNOQRTUVWXYZ'
-    nzeta = [ int(data[data.index(spec_symbol[l] + 'orbital-->') + 1]) for l in range(lmax+1) ]
+    nzeta = [int(data[data.index(spec_symbol[l] + 'orbital-->') + 1]) for l in range(lmax+1)]
 
     nr = int(data[data.index('Mesh')+1])
     dr = float(data[data.index('dr')+1])
@@ -163,8 +165,8 @@ def read_nao(fpath):
     delim = [i for i, x in enumerate(data) if x == 'Type'] + [len(data)]
     nzeta_cumu = [0] + list(accumulate(nzeta))
     iorb = lambda l, zeta : nzeta_cumu[l] + zeta
-    chi = [ [ np.array(data[delim[iorb(l,zeta)]+6:delim[iorb(l,zeta)+1]], np.float64) \
-            for zeta in range(nzeta[l]) ] for l in range(lmax+1) ]
+    chi = [[np.array(data[delim[iorb(l,zeta)]+6:delim[iorb(l,zeta)+1]], np.float64)
+            for zeta in range(nzeta[l]) ] for l in range(lmax+1)]
 
     return {'elem': elem, 'ecut': ecut, 'rcut': rcut, 'nr': nr, 'dr': dr, 'chi': chi}
 
@@ -255,14 +257,21 @@ def write_param(fpath, coeff, rcut, sigma, elem):
         lmax = len(coeff)-1
         nzeta = [len(coeff[l]) for l in range(lmax+1)]
         n = sum(nzeta)
-        f.write('<Coefficient rcut="{0}" sigma="{1}" element="{2}">\n'.format(rcut, sigma, elem))
-        f.write('     {0} Total number of radial orbitals.\n'.format(n))
+
+        f.write('<Coefficient rcut="{0}" sigma="{1}" element="{2}">\n'
+                .format(rcut, sigma, elem))
+        f.write('     {0} Total number of radial orbitals.\n'
+                .format(n))
+
         for l in range(lmax+1):
             for zeta in range(nzeta[l]):
                 f.write('    Type   L   Zeta-Orbital\n')
-                f.write('      {elem}   {angmom}       {zeta}\n'.format(elem=elem, angmom=l, zeta=zeta))
+                f.write('      {elem}   {angmom}       {zeta}\n'
+                        .format(elem=elem, angmom=l, zeta=zeta))
+
                 for i in range(len(coeff[l][zeta])):
                     f.write('{: 21.14f}\n'.format(coeff[l][zeta][i]))
+
         f.write('</Coefficient>\n')
 
 ############################################################

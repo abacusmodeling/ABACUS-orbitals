@@ -88,8 +88,9 @@ def bracket(l, nzeros, return_all=False):
         zeros = np.array([i * np.pi for i in range(1, nz+1)]) # zeros of j_0
 
         for ll in range(l_start, l+1, stride):
-            return_all and (yield zeros[:nzeros]) # yield when return_all is True. Any better way?
-            zeros = np.array([brentq(jl, zeros[i], zeros[i+1], xtol=1e-14) for i in range(nz-1)])
+            return_all and (yield zeros[:nzeros])
+            zeros = np.array([brentq(jl, zeros[i], zeros[i+1], xtol=1e-14)
+                              for i in range(nz-1)])
             nz -= 1
 
         yield zeros[:nzeros]
