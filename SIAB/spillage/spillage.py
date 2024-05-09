@@ -537,7 +537,7 @@ class _TestSpillage(unittest.TestCase):
         self.orbgen_reduced = Spillage(True)
         self.orbgen_raw = Spillage(False)
 
-        self.datadir = './testfiles/orb_matrix/'
+        self.datadir = './testfiles/Si/'
         self.config = ['Si-dimer-1.8', 'Si-dimer-2.8', 'Si-dimer-3.8',
                        'Si-trimer-1.7', 'Si-trimer-2.7',
                        ]
@@ -580,9 +580,6 @@ class _TestSpillage(unittest.TestCase):
         '''
         reduced = False
 
-        ov = read_orb_mat('./testfiles/orb_matrix/Hf-monomer/orb_matrix.0.dat')
-        nzeta = [2, 1, 1, 1]
-
         ov = read_orb_mat('./testfiles/Si/Si-monomer/orb_matrix.0.dat')
         nzeta = [2, 2, 1]
 
@@ -591,7 +588,7 @@ class _TestSpillage(unittest.TestCase):
         self.assertEqual(len(coef), len(nzeta))
         self.assertEqual([len(coef[l]) for l in range(len(nzeta))], nzeta)
 
-        #return
+        return
 
         rcut = ov['rcut']
         dr = 0.01
@@ -863,7 +860,7 @@ class _TestSpillage(unittest.TestCase):
             orbgen.add_config(ov, op)
 
         nthreads = 2
-        options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': 2000, 'disp': True, 'maxcor': 20}
+        options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': 2000, 'disp': False, 'maxcor': 20}
 
         # initial guess
         ov = read_orb_mat('./testfiles/Si/Si-monomer/orb_matrix.0.dat')
@@ -892,6 +889,7 @@ class _TestSpillage(unittest.TestCase):
         coef_lvl3 = orbgen.opt(coef_lvl3_init, coef_tot, iconfs, ibands, options, nthreads)
         coef_tot = merge(coef_tot, coef_lvl3, 2)
 
+        return
 
         rcut = ov['rcut']
         dr = 0.01

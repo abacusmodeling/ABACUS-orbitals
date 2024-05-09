@@ -187,13 +187,13 @@ import unittest
 class _TestDatParse(unittest.TestCase):
 
     def test_read_orb_mat(self):
-        fpath = './testfiles/orb_matrix/Si-dimer-1.8/orb_matrix.0.dat'
+        fpath = './testfiles/Si/Si-dimer-1.8/orb_matrix.0.dat'
         dat = read_orb_mat(fpath)
 
         self.assertEqual(dat['ntype'], 1)
         self.assertEqual(dat['natom'], [2])
-        self.assertEqual(dat['ecutwfc'], 10.0)
-        self.assertEqual(dat['ecutjlq'], 10.0)
+        self.assertEqual(dat['ecutwfc'], 40.0)
+        self.assertEqual(dat['ecutjlq'], 40.0)
         self.assertEqual(dat['rcut'], 7.0)
         self.assertEqual(dat['lmax'], [2])
         self.assertEqual(dat['nbands'], 8)
@@ -209,16 +209,16 @@ class _TestDatParse(unittest.TestCase):
         self.assertEqual(dat['mo_mo'].shape, (dat['nk'], dat['nbands']))
 
 
-        fpath = './testfiles/orb_matrix/Si-trimer-1.7/orb_matrix.1.dat'
+        fpath = './testfiles/Si/Si-trimer-1.7/orb_matrix.1.dat'
         dat = read_orb_mat(fpath)
 
         self.assertEqual(dat['ntype'], 1)
         self.assertEqual(dat['natom'], [3])
-        self.assertEqual(dat['ecutwfc'], 10.0)
-        self.assertEqual(dat['ecutjlq'], 10.0)
+        self.assertEqual(dat['ecutwfc'], 40.0)
+        self.assertEqual(dat['ecutjlq'], 40.0)
         self.assertEqual(dat['rcut'], 7.0)
         self.assertEqual(dat['lmax'], [2])
-        self.assertEqual(dat['nbands'], 10)
+        self.assertEqual(dat['nbands'], 12)
         self.assertEqual(dat['nbes'], int(np.sqrt(dat['ecutjlq']) * dat['rcut'] / np.pi))
         self.assertEqual(dat['nk'], 2)
         self.assertTrue(np.all( dat['kpt'] == np.array([[0., 0., 0.], [0., 0., 0.]]) ))
