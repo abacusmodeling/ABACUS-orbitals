@@ -48,7 +48,19 @@ class TestBasic(unittest.TestCase):
         self.assertListEqual(result, [3, 5, 3])
         result = basic.orbconf_fromxzyp("TZ5P", minimal_basis=[["4S"], [], ["3D"]])
         self.assertEqual(result, "3s3d5p")
-
+        # crazy usage test
+        result = basic.orbconf_fromxzyp("TZ5PP6PP", minimal_basis=[1, 1])
+        self.assertEqual(result, "3s3p5d1f6g1h")
+        result = basic.orbconf_fromxzyp("TZ5PP6PP", minimal_basis=[1, 1], as_list=True)
+        self.assertListEqual(result, [3, 3, 5, 1, 6, 1])
+        result = basic.orbconf_fromxzyp("TZ5PP6PP", minimal_basis=[["1S"], ["1P"]])
+        self.assertEqual(result, "3s3p5d1f6g1h")
+        result = basic.orbconf_fromxzyp("TZ5PP6PP", minimal_basis=[["1S"], ["1P"]], as_list=True)
+        self.assertListEqual(result, [3, 3, 5, 1, 6, 1])
+        result = basic.orbconf_fromxzyp("TZ5PP6PP", minimal_basis=[["4S"], [], ["3D"]])
+        self.assertEqual(result, "3s3d5p1f6g1h")
+        result = basic.orbconf_fromxzyp("TZ5PP6PP", minimal_basis=[["4S"], [], ["3D"]], as_list=True)
+        self.assertListEqual(result, [3, 5, 3, 1, 6, 1])
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,10 +1,10 @@
-from orbio import read_nao
+from SIAB.spillage.orbio import read_nao
 import numpy as np
 import matplotlib.pyplot as plt
 
 from matplotlib import rc
-rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})
-rc('text', usetex=True)
+rc('font',**{'family':'sans-serif','sans-serif':['Arial']})
+rc('text', usetex=False)
 
 def plot_chi(chi, r, save=None):
     lmax = len(chi)-1

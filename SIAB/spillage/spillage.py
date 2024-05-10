@@ -1,7 +1,7 @@
-from datparse import read_orb_mat, _assert_consistency
-from radial import jl_reduce, jl_raw_norm, coeff_normalized2raw
-from listmanip import flatten, nest, nestpat
-from jlzeros import JLZEROS
+from SIAB.spillage.datparse import read_orb_mat, _assert_consistency
+from SIAB.spillage.radial import jl_reduce, jl_raw_norm, coeff_normalized2raw
+from SIAB.spillage.listmanip import flatten, nest, nestpat
+from SIAB.spillage.jlzeros import JLZEROS
 
 import numpy as np
 from scipy.optimize import minimize, basinhopping
@@ -525,8 +525,8 @@ class Spillage:
 ############################################################
 import unittest
 
-from radial import build_reduced, build_raw, coeff_reduced2raw
-from plot import plot_chi
+from SIAB.spillage.radial import build_reduced, build_raw, coeff_reduced2raw
+from SIAB.spillage.plot import plot_chi
 
 import matplotlib.pyplot as plt
 
@@ -868,6 +868,7 @@ class _TestSpillage(unittest.TestCase):
 
         ibands = range(4)
         iconfs = [0, 1, 2]
+        # coef_lvl1_init: [t][l][z][q]
         coef_lvl1_init = [[[coef_init[0][0]],
                            [coef_init[1][0]]]]
         coef_lvl1 = orbgen.opt(coef_lvl1_init, None, iconfs, ibands, options, nthreads)

@@ -258,7 +258,8 @@ def siab_settings(user_settings: dict, minimal_basis: list):
         "spill_coefs": user_settings.get("spill_coefs", [2.0, 1.0]),
         "spill_thr": user_settings.get("spill_thr", 1e-8),
         "nthreads_rcut": user_settings.get("nthreads_rcut", -1),
-        "orbitals": [{} for _ in range(len(user_settings["orbitals"]))]
+        "orbitals": [{} for _ in range(len(user_settings["orbitals"]))],
+        "jY_type": user_settings.get("jY_type", "reduced")
     }
     shapes = [rs["shape"] for rs in user_settings["reference_systems"]]
     for iorb, orbital in enumerate(user_settings["orbitals"]):

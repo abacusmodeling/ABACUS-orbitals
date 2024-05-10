@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.integrate import simpson
 from scipy.special import spherical_jn
-from jlzeros import JLZEROS
+from SIAB.spillage.jlzeros import JLZEROS
 
 from scipy.interpolate import CubicSpline
 from scipy.linalg import rq
