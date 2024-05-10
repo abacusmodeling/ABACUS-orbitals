@@ -62,7 +62,7 @@ def abacus(general: dict,
 # interface to Spillage optimization
 import SIAB.spillage.util as ssu
 import SIAB.spillage.pytorch_swat.api as ssps_api  # old version of backend
-#import SIAB.spillage.api as ss_api  # new version of backend
+import SIAB.spillage.api as ss_api  # new version of backend
 def spillage(folders: list,
              calculation_settings: list,
              siab_settings: dict,
@@ -125,12 +125,10 @@ def spillage(folders: list,
     ```
     """
     # iteratively generate numerical atomic orbitals here
-    if siab_version == "0.1.0":
+    optimizer = siab_settings.get("optimizer", "pytorch.SWAT")
+    if optimizer == "pytorch.SWAT":
         ssps_api.iter(siab_settings=siab_settings, calculation_settings=calculation_settings)
-    else:
-        # reserve for new implementation of orbital optimization
-        raise NotImplementedError("SIAB version %s is not supported yet"%siab_version)
-        #ss_api.run(siab_settings=siab_settings)
-    
+    elif optimizer == "bfgs":
+        ss_api.iter(siab_settings, calculation_settings, folders)
     return
 

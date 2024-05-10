@@ -10,11 +10,12 @@
     "bessel_nao_rcut": [6, 7, 8, 9, 10],
     "smearing_sigma": 0.01,
 
-    "optimizer": "pytorch.SWAT",
+    "optimizer": "bfgs",
     "max_steps": 1000,
     "spill_coefs": [0.0, 1.0],
     "spill_guess": "atomic",
     "nthreads_rcut": 4,
+    "jY_type": "reduced",
 
     "reference_systems": [
         {

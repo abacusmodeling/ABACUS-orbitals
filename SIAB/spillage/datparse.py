@@ -2,9 +2,9 @@ import re
 import numpy as np
 import itertools
 
-from jlzeros import JLZEROS
+from SIAB.spillage.jlzeros import JLZEROS
 from scipy.special import spherical_jn
-from indexmap import _index_map
+from SIAB.spillage.indexmap import _index_map
 
 
 def read_orb_mat(fpath):

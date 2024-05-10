@@ -1,36 +1,97 @@
-import SIAB.spillage.spillage as sss
-import SIAB.spillage.datparse as ssd
+"""this file defines interface between newly implemented spillage optimization algorithm
+with the driver of SIAB"""
+def orbgen_of_rcut(rcut: float, siab_settings: dict, folders: list):
+    """generate orbitals for one single rcut value"""
+    import os
+    import numpy as np
+    from SIAB.spillage.spillage import Spillage, initgen
+    from SIAB.spillage.datparse import read_orb_mat
+    from SIAB.spillage.listmanip import merge
 
-def run(siab_settings: dict):
-    nbes_min = 1000
-    # get number of threads of present environment
-    nthreads = siab_settings.get("nthreads", 4)
-    """run optimization, workflow function"""
+    # folders will be directly the `configs`
+    folders = list(set([item for sublist in folders for item in sublist]))
+    iconfs = [[] for _ in range(len(siab_settings['orbitals']))]
+    for iorb, orb in enumerate(siab_settings['orbitals']):
+        iconfs[iorb] = [folders.index(f) for f in orb['folder']]
+    # run optimization
+    reduced = siab_settings.get('jY_type', "reduced")
+    reduced = True if reduced in ["reduced", "nullspace", "svd"] else False
+    orbgen = Spillage(reduced)
+    # load orb_matix with correct rcut
+    fov = None
+    for folder in folders:
+        for fov_, fop_ in orb_matrices(folder):
+            ov, op = map(read_orb_mat, [fov_, fop_])
+            assert ov['rcut'] == op['rcut']
+            if np.abs(ov['rcut'] - rcut) < 1e-10:
+                orbgen.add_config(ov, op)
+                fov = fov_ if fov is None else fov
+    symbol = folders[0].split('-')[0]
+    monomer_dir = "-".join([symbol, "monomer"]) # weak binding
+    ov = read_orb_mat(os.path.join(monomer_dir, fov.replace('\\', '/').split('/')[-1]))
+    # calculate the firs param of function initgen
+    lmax = max([len(orb['nzeta']) for orb in siab_settings['orbitals']]) - 1
+    # calculate maxial number of zeta for each l
+    nzeta_max = [(lambda nzeta: nzeta + (lmax + 1 - len(nzeta))*[-1])(orb['nzeta']) for orb in siab_settings['orbitals']]
+    nzeta_max = [max([orb[i] for orb in nzeta_max]) for i in range(lmax + 1)]
+    coefs_init = initgen(nzeta_max, ov, reduced)
+    # prepare opt params
+    options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': siab_settings.get('max_steps', 2000),
+               'disp': True, 'maxcor': 20}
+    nthreads = siab_settings.get('nthreads_per_rcut', 1)
+    # run optimization for each level hierarchy
+    coef_tot = None
+    coefs_init = peel(coefs_init, [orb['nzeta'] for orb in siab_settings['orbitals']])
+    for iorb, orb in enumerate(siab_settings['orbitals']):
+        coefs_shell = orbgen.opt([coefs_init[iorb]], coef_tot, iconfs[iorb], range(orb['nbands_ref']), options, nthreads)
+        coef_tot = merge(coef_tot, coefs_shell, 2) if coef_tot is not None else coefs_shell
+    
+    return coef_tot
 
-    # iterate on orbital levels
-    for orb in siab_settings["orbitals"]:
-        # first create spillage instance
-        spillopt = sss.Spillage()
-        folders = orb["folder"]
-        # iterate on reference structures
-        for mat, dmat in orb_matrices(folders):
-            ov = ssd.read_orb_mat(mat)
-            op = ssd.read_orb_mat(dmat)
-            spillopt.add_config(ov, op)
-            nbes_min = min(nbes_min, ov['nbes'])
-        # initialize coefficients
-        coef_frozen, coef0 = coefs_init(nbes_min)
-        spillopt._tab_frozen(coef_frozen)
-        spillopt._tab_deriv(coef0)
-        # import optimization configuration from siab_settings
-        ibands = orb["nbands_ref"]
-        options = {'maxiter': siab_settings["max_steps"], 'disp': True, 'maxcor': 20}
-        # run optimization
-        coef_opt = spillopt.opt(coef0, coef_frozen, 'all', ibands, options, nthreads)
+def iter(siab_settings: dict, calculation_settings: list, folders: list):
+    """Loop over rcut values and yield orbitals"""
+    rcuts = calculation_settings[0]["bessel_nao_rcut"]
+    for rcut in rcuts:
+        coef_tot = orbgen_of_rcut(rcut, siab_settings, folders)
+        # because element does not really matter when optimizing orbitals, the only thing
+        # has element information is the name of folder. So we extract the element from the
+        # first folder name. Not elegant, we know.
+        save_orb(coef_tot, folders[0][0].split("-")[0], calculation_settings[0]["ecutwfc"],
+                 rcut, [orb['nzeta'] for orb in siab_settings['orbitals']],
+                 siab_settings.get('jY_type', "reduced"))
+    return
 
-import os
-import re
+def peel(coef, nzeta_lvl_tot):
+    from copy import deepcopy
+    coef_lvl = [deepcopy(coef)]
+    for nzeta_lvl in reversed(nzeta_lvl_tot):
+        coef_lvl.append([[coef_lvl[-1][l].pop(0) for _ in range(nzeta)] for l,nzeta in enumerate(nzeta_lvl)])
+    return coef_lvl[1:][::-1]
+
+def coefs_subset(nzeta, nzeta0, data):
+    """
+    Compare `nzeta` and `nzeta0`, get the subset of `data` that `nzeta` has but
+    `nzeta0` does not have. Returned nested list has dimension:
+    [t][l][z][q]
+    t: atom type
+    l: angular momentum
+    z: zeta
+    q: q of j(qr)Y(q)
+    """
+    if nzeta0 is None:
+        return [[[ data[l][iz] for iz in range(nz) ] for l, nz in enumerate(nzeta)]]
+    assert len(nzeta) >= len(nzeta0), f"(at least) size error of nzeta and nzeta0: {len(nzeta)} and {len(nzeta0)}"
+    nzeta0 = nzeta0 + (len(nzeta) - len(nzeta0))*[0]
+    for nz, nz0 in zip(nzeta, nzeta0):
+        assert nz >= nz0, f"not hirarcal structure of these two nzeta set: {nzeta0} and {nzeta}"
+    iz_subset = [list(range(iz, jz)) for iz, jz in zip(nzeta0, nzeta)]
+    # then get coefs from data with iz_subset, the first dim of iz_subset is l
+    #               l  zeta                 l  list of zeta
+    return [[[ data[l][j] for j in jz ] for l, jz in enumerate(iz_subset)]]
+
 def orb_matrices(folder: str):
+    import os
+    import re
     """
     on the refactor of ABACUS Numerical_Basis class
     
@@ -41,15 +102,17 @@ def orb_matrices(folder: str):
     while the latter will yield orb_matrix_rcutRderivD.dat, in which R and D
     are the corresponding bessel_nao_rcut and order of derivatives of the
     wavefunctions, presently ranges from 6 to 10 and 0 to 1, respectively.
+
+    Returns:
+    tuple of str: the file names of orb_matrix and its derivative (absolute path)
     """
     old = r"orb_matrix.([01]).dat"
     new = r"orb_matrix_rcut(\d+)deriv([01]).dat"
-    
+
     files = [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
     # convert to absolute path
-    files = [os.path.join(folder, f) for f in files]
-    old_files = [f for f in files if re.match(old, f)]
-    new_files = [f for f in files if re.match(new, f)]
+    old_files = [os.path.join(folder, f) for f in files if re.match(old, f)]
+    new_files = [os.path.join(folder, f) for f in files if re.match(new, f)]
     # not allowed to have both old and new files
     assert not (old_files and new_files)
     assert len(old_files) == 2 or not old_files
@@ -68,78 +131,178 @@ def orb_matrices(folder: str):
     for f in files:
         yield f
 
-import numpy as np
-def coefs_init(nbes_min: int):
-    """initialize coefficients"""
-    coef_frozen = [[np.random.randn(1, nbes_min-1).tolist(),
-                    np.random.randn(2, nbes_min-1).tolist(),
-                    np.random.randn(1, nbes_min-1).tolist()]]
+def save_orb(coef_tot, elem, ecut, rcut, nzeta, jY_type: str = "reduced"):
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from SIAB.spillage.radial import build_reduced, build_raw, coeff_normalized2raw
+    from SIAB.spillage.plot import plot_chi
+    from SIAB.spillage.orbio import write_nao
 
-    coef0 = [[np.random.randn(1, nbes_min-1).tolist(),
-                np.random.randn(2, nbes_min-1).tolist(),
-                np.random.randn(1, nbes_min-1).tolist()]]
-    return coef_frozen, coef0
+    """
+    Plot the orbital and save .orb file
+    """
+    coef = coef_tot[0] # get the first and the only element from coef_tot
+    assert len(nzeta) == len(coef), \
+        f"nzeta and coef_tot size mismatch: {len(nzeta)} and {len(coef_tot)}"
+
+    dr = 0.01
+    r = np.linspace(0, rcut, int(rcut/dr)+1)
+    if jY_type in ["reduced", "nullspace", "svd"]:
+        chi = build_reduced(coef, rcut, r, True)
+    else:
+        coeff_raw = coeff_normalized2raw(coef_tot, rcut)
+        chi = build_raw(coeff_normalized2raw(coeff_raw[0], rcut), rcut, r, 0.0, True, True)
+
+    fpng = f"{elem}_gga_{rcut}au_{ecut}Ry.png"
+    plot_chi(chi, r, save=fpng)
+    plt.close()
+
+    syms = "SPDFGHIKLMNOQRTUVWXYZ".lower()
+    for i, nz in enumerate(nzeta): # for each level of present rcut
+        suffix = "".join([f"{nz[j]}{syms[j]}" for j in range(len(nz))])
+        forb = fpng.replace(".png", f"_{suffix}.orb")
+        write_nao(forb, elem, ecut, rcut, len(r), dr, chi)
+        print(f"orbital saved as {forb}")
 
 import unittest
 class TestAPI(unittest.TestCase):
 
     def test_orb_matrices(self):
+        import os
+        test_folder = "test_orb_matrices"
+        os.makedirs(test_folder, exist_ok=True)
         # test old version
-        with open("orb_matrix.0.dat", "w") as f:
+        with open(os.path.join(test_folder, "orb_matrix.0.dat"), "w") as f:
             f.write("old version")
         # expect an assertion error
         with self.assertRaises(AssertionError):
-            for files in orb_matrices("."):
+            for files in orb_matrices(test_folder):
                 pass
         # continue to write orb_matrix.1.dat
-        with open("orb_matrix.1.dat", "w") as f:
+        with open(os.path.join(test_folder, "orb_matrix.1.dat"), "w") as f:
             f.write("old version")
         # will not raise an error, but return orb_matrix.0.dat and orb_matrix.1.dat
-        for files in orb_matrices("."):
-            self.assertEqual(files, ("orb_matrix.0.dat", "orb_matrix.1.dat"))
+        for files in orb_matrices(test_folder):
+            self.assertEqual(files, 
+            (os.path.join(test_folder, "orb_matrix.0.dat"), 
+             os.path.join(test_folder, "orb_matrix.1.dat")))
         # write new version
-        with open("orb_matrix_rcut6deriv0.dat", "w") as f:
+        with open(os.path.join(test_folder, "orb_matrix_rcut6deriv0.dat"), "w") as f:
             f.write("new version")
         # expect an assertion error due to coexistence of old and new files
         with self.assertRaises(AssertionError):
-            for files in orb_matrices("."):
+            for files in orb_matrices(test_folder):
                 pass
         # continue to write new files
-        with open("orb_matrix_rcut6deriv1.dat", "w") as f:
+        with open(os.path.join(test_folder, "orb_matrix_rcut6deriv1.dat"), "w") as f:
             f.write("new version")
         # expect an assertion error due to coexistence of old and new files
         with self.assertRaises(AssertionError):
-            for files in orb_matrices("."):
+            for files in orb_matrices(test_folder):
                 pass
         # remove old files
-        os.remove("orb_matrix.0.dat")
-        os.remove("orb_matrix.1.dat")
+        os.remove(os.path.join(test_folder, "orb_matrix.0.dat"))
+        os.remove(os.path.join(test_folder, "orb_matrix.1.dat"))
         # now will return new files
-        for files in orb_matrices("."):
-            self.assertEqual(files, ("orb_matrix_rcut6deriv0.dat", "orb_matrix_rcut6deriv1.dat"))
+        for files in orb_matrices(test_folder):
+            self.assertEqual(files, 
+            (os.path.join(test_folder, "orb_matrix_rcut6deriv0.dat"), 
+             os.path.join(test_folder, "orb_matrix_rcut6deriv1.dat")))
         # continue to write new files
-        with open("orb_matrix_rcut7deriv0.dat", "w") as f:
+        with open(os.path.join(test_folder, "orb_matrix_rcut7deriv0.dat"), "w") as f:
             f.write("new version")
         # expect an assertion error due to odd number of new files
         with self.assertRaises(AssertionError):
-            for files in orb_matrices("."):
+            for files in orb_matrices(test_folder):
                 pass
         # continue to write new files
-        with open("orb_matrix_rcut7deriv1.dat", "w") as f:
+        with open(os.path.join(test_folder, "orb_matrix_rcut7deriv1.dat"), "w") as f:
             f.write("new version")
         # now will return new files
-        for ifmats, fmats in enumerate(orb_matrices(".")):
+        for ifmats, fmats in enumerate(orb_matrices(test_folder)):
             if ifmats == 0:
-                self.assertEqual(fmats, ("orb_matrix_rcut6deriv0.dat", "orb_matrix_rcut6deriv1.dat"))
+                self.assertEqual(fmats, 
+            (os.path.join(test_folder, "orb_matrix_rcut6deriv0.dat"), 
+             os.path.join(test_folder, "orb_matrix_rcut6deriv1.dat")))
             elif ifmats == 1:
-                self.assertEqual(fmats, ("orb_matrix_rcut7deriv0.dat", "orb_matrix_rcut7deriv1.dat"))
+                self.assertEqual(fmats, 
+            (os.path.join(test_folder, "orb_matrix_rcut7deriv0.dat"), 
+             os.path.join(test_folder, "orb_matrix_rcut7deriv1.dat")))
             else:
                 self.fail("too many files")
         # remove new files
-        os.remove("orb_matrix_rcut6deriv0.dat")
-        os.remove("orb_matrix_rcut6deriv1.dat")
-        os.remove("orb_matrix_rcut7deriv0.dat")
-        os.remove("orb_matrix_rcut7deriv1.dat")
+        os.remove(os.path.join(test_folder, "orb_matrix_rcut6deriv0.dat"))
+        os.remove(os.path.join(test_folder, "orb_matrix_rcut6deriv1.dat"))
+        os.remove(os.path.join(test_folder, "orb_matrix_rcut7deriv0.dat"))
+        os.remove(os.path.join(test_folder, "orb_matrix_rcut7deriv1.dat"))
+        # remove the folder
+        os.rmdir(test_folder)
+
+    def test_nzeta_to_initgen(self):
+        import numpy as np
+        nz1 = np.random.randint(0, 5, 2).tolist()
+        nz2 = np.random.randint(0, 5, 3).tolist()
+        nz3 = np.random.randint(0, 5, 4).tolist()
+        nz4 = np.random.randint(0, 5, 5).tolist()
+        lmax = max([len(nz) for nz in [nz1, nz2, nz3, nz4]]) - 1
+        total_init = [(lambda nzeta: nzeta + (lmax + 1 - len(nzeta))*[-1])(nz) for nz in [nz1, nz2, nz3, nz4]]
+        total_init = [max([orb[i] for orb in total_init]) for i in range(lmax + 1)]
+        for iz in range(lmax + 1):
+            self.assertEqual(total_init[iz], max([
+                nz[iz] if iz < len(nz) else -1 for nz in [nz1, nz2, nz3, nz4]]))
+
+    def test_coefs_subset(self):
+        import numpy as np
+        nz3 = [3, 3, 2]
+        nz2 = [2, 2, 1]
+        nz1 = [1, 1]
+        data = [np.random.random(i).tolist() for i in nz3]
+        
+        subset = coefs_subset(nz1, None, data)
+        self.assertEqual(subset, [[[data[0][0]], 
+                                   [data[1][0]]]])
+
+        subset = coefs_subset(nz2, None, data)
+        self.assertEqual(subset, [[[data[0][0], data[0][1]], 
+                                   [data[1][0], data[1][1]],
+                                   [data[2][0]]
+                                  ]])
+
+        subset = coefs_subset(nz3, None, data)
+        self.assertEqual(subset, [[[data[0][0], data[0][1], data[0][2]], 
+                                   [data[1][0], data[1][1], data[1][2]],
+                                   [data[2][0], data[2][1]]
+                                  ]])
+
+        subset = coefs_subset(nz3, nz2, data)
+        self.assertEqual(subset, [[[data[0][2]], 
+                                   [data[1][2]], 
+                                   [data[2][1]]]])
+        
+        subset = coefs_subset(nz2, nz1, data)
+        self.assertEqual(subset, [[[data[0][1]], 
+                                   [data[1][1]], 
+                                   [data[2][0]]]])
+        
+        subset = coefs_subset(nz3, nz1, data)
+        self.assertEqual(subset, [[[data[0][1], data[0][2]], 
+                                   [data[1][1], data[1][2]], 
+                                   [data[2][0], data[2][1]]]])
+        
+        nz2 = [1, 2, 1]
+        subset = coefs_subset(nz3, nz2, data)
+        self.assertEqual(subset, [[[data[0][1], data[0][2]], 
+                                   [data[1][2]], 
+                                   [data[2][1]]]])
+
+        subset = coefs_subset(nz3, nz3, data)
+        self.assertEqual(subset, [[[], [], []]])
+        
+        with self.assertRaises(AssertionError):
+            subset = coefs_subset(nz1, nz3, data) # nz1 < nz3
+
+        with self.assertRaises(AssertionError):
+            subset = coefs_subset(nz2, nz3, data) # nz2 < nz3
 
 if __name__ == "__main__":
     unittest.main()

@@ -17,8 +17,8 @@ def decompose_data(data):
         raise ValueError("data is not numeric")
 
 def orbconf_fromxzyp(zeta_notation: str, 
-                                  minimal_basis: list = None,
-                                  as_list: bool = False):
+                     minimal_basis: list = None,
+                     as_list: bool = False):
     """convert zeta notation to orbital configuration
     
     zeta_notation: str, like "DZP", "TZDP", "TZ5P"
@@ -46,33 +46,37 @@ def orbconf_fromxzyp(zeta_notation: str,
             break
     if not is_numeric:
         minimal_basis = [len(layer) for layer in minimal_basis]
-    pattern = r"([SDTQPH]?Z)([SDTQ5-9]?P)?"
+    pattern = r"([SDTQ5-9]?Z)(([SDTQ5-9]?P)*)"
     symbols = ["s", "p", "d", "f", "g", "h", "i", "k", "l", "m", "n", "o"]
     multiplier = {"S": 1, "D": 2, "T": 3, "Q": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9}
     _match = re.match(pattern, zeta_notation)
     if _match is None:
-        print(zeta_notation)
-        raise ValueError("zeta_notation is not valid")
+        raise ValueError(f"zeta_notation is not valid: {zeta_notation}")
     nzeta = multiplier[_match.group(1)[0]] if len(_match.group(1)) > 1 else 1
     basis = [nzeta*i for i in minimal_basis]
-    result = ""
-    for i in range(len(minimal_basis)):
-        if basis[i] != 0:
-            result += str(basis[i]) + symbols[i]
+    result = "".join([f"{basis[i]}{symbols[i]}" for i in range(len(minimal_basis)) if basis[i] != 0])
     # Polarization
     if _match.group(2) is not None:
         if len(_match.group(2)) > 1:
+            nzeta_p = list(map(int, [multiplier[x] if x != "" else 1 for x in _match.group(2).split("P")[:-1]]))
             # case 1: no 0 in minimal_basis, means each l has at least one electron
             if 0 not in minimal_basis:
-                result += str(multiplier[_match.group(2)[0]]) + symbols[len(minimal_basis)]
-                basis.append(multiplier[_match.group(2)[0]])
+                result += "".join([f"{nzeta_p[i]}{symbols[len(minimal_basis) + i]}" for i in range(len(nzeta_p))])
+                basis.extend(nzeta_p)
+                #result += str(multiplier[_match.group(2)[0]]) + symbols[len(minimal_basis)]
+                #basis.append(multiplier[_match.group(2)[0]])
             # case 2: 0 in minimal_basis, means some l has no electron
             # in this case, polarization is added to all l with 0 electron
             else:
-                for i in range(len(minimal_basis)):
-                    if basis[i] == 0:
-                        result += str(multiplier[_match.group(2)[0]]) + symbols[i]
-                        basis[i] = multiplier[_match.group(2)[0]]
+                for l in range(len(minimal_basis)):
+                    if basis[l] == 0: # if l has no electron
+                        result += f"{nzeta_p[0]}{symbols[l]}"
+                        basis[l] = nzeta_p[0]
+                        nzeta_p.pop(0)
+                        if len(nzeta_p) == 0:
+                            break
+                result += "".join([f"{nzeta_p[i]}{symbols[len(minimal_basis) + i]}" for i in range(len(nzeta_p))])
+                basis.extend(nzeta_p)
         else:
             # case 1: no 0 in minimal_basis, means each l has at least one electron
             if 0 not in minimal_basis:

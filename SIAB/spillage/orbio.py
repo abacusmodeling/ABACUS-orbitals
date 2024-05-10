@@ -274,6 +274,31 @@ def write_param(fpath, coeff, rcut, sigma, elem):
 
         f.write('</Coefficient>\n')
 
+
+def fname_convention(elem, ecut, rcut, nzeta):
+    '''
+    Generates a filename convention for a SIAB/PTG orbital file.
+    
+    Parameters
+    ----------
+        elem : str
+            Element symbol.
+        ecut : float
+            Energy cutoff.
+        rcut : float
+            Cutoff radius.
+        nzeta : list of int
+            Number of orbitals for each angular momentum.
+    
+    Returns
+    -------
+        A string representing the filename convention.
+
+    '''
+    spec_symbol = 'SPDFGHIKLMNOQRTUVWXYZ'
+    return f"{elem}_gga_{rcut}au_{ecut}Ry_" + \
+              '_'.join([f"{nzeta[l]}{spec_symbol[l].lower()}" for l in range(len(nzeta))]) + '.orb'
+
 ############################################################
 #                           Test
 ############################################################
