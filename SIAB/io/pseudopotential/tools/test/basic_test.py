@@ -20,7 +20,10 @@ class TestBasic(unittest.TestCase):
         self.assertEqual(basic.decompose_data("1.0e-1 2.0e-1 3.0e-1"), [0.1, 0.2, 0.3])
     
     def test_zeta_notation_toorbitalconfig(self):
-
+        result = basic.orbconf_fromxzyp("Z", minimal_basis=[1, 1])
+        self.assertEqual(result, "1s1p")
+        result = basic.orbconf_fromxzyp("SZ", minimal_basis=[1, 1])
+        self.assertEqual(result, "1s1p")
         result = basic.orbconf_fromxzyp("DZP", minimal_basis=[1, 1])
         self.assertEqual(result, "2s2p1d")
         result = basic.orbconf_fromxzyp("TZDP", minimal_basis=[1, 1])
