@@ -19,11 +19,29 @@ def initialize(command_line: bool = True):
     return
     """
     welcome = """
-Starting new version of Systematically Improvable Atomic-orbital Basis (SIAB) method
-for generating numerical atomic orbitals (NAOs) for Linar Combinations of Atomic 
-Orbitals (LCAO) based electronic structure calculations.
+===================================================================================================
 
-This version is refactored from PTG_dpsi, by ABACUS-AISI developers.
+                            ▄████████  ▄█     ▄████████ ▀█████████▄  
+                           ███    ███  ███    ███    ███   ███    ███ 
+                           ███    █▀   ███▌   ███    ███   ███    ███ 
+                           ███         ███▌   ███    ███  ▄███▄▄▄██▀  
+                         ▀███████████  ███▌ ▀███████████ ▀▀███▀▀▀██▄  
+                                  ███  ███    ███    ███   ███    ██▄ 
+                            ▄█    ███  ███    ███    ███   ███    ███ 
+                          ▄████████▀   █▀     ███    █▀  ▄█████████▀  
+
+New version of Systematically Improvable Atomic-orbital Basis (SIAB) method for generating
+numerical atomic orbitals (NAOs) for Linar Combinations of Atomic Orbitals (LCAO) based electronic
+structure calculations.
+This version is refactored from PTG_DPSI, by ABACUS-AISI developers.
+
+Github repo: https://github.com/abacusmodeling/ABACUS-orbitals
+Tutorials: https://mcresearch.github.io/abacus-user-guide/abacus-nac1.html
+           https://mcresearch.github.io/abacus-user-guide/abacus-nac2.html
+           https://mcresearch.github.io/abacus-user-guide/abacus-nac3.html
+           
+See reference for more information.
+===================================================================================================
     """
     print(welcome)
     placeholder_1 = ""

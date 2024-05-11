@@ -56,7 +56,7 @@ def orbconf_fromxzyp(zeta_notation: str,
     basis = [nzeta*i for i in minimal_basis]
     result = "".join([f"{basis[i]}{symbols[i]}" for i in range(len(minimal_basis)) if basis[i] != 0])
     # Polarization
-    if _match.group(2) is not None:
+    if _match.group(3) is not None: # really matches polarization part
         if len(_match.group(2)) > 1:
             nzeta_p = list(map(int, [multiplier[x] if x != "" else 1 for x in _match.group(2).split("P")[:-1]]))
             # case 1: no 0 in minimal_basis, means each l has at least one electron

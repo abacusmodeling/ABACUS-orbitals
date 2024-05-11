@@ -8,6 +8,7 @@ def orbgen_of_rcut(rcut: float, siab_settings: dict, folders: list):
     from SIAB.spillage.datparse import read_orb_mat
     from SIAB.spillage.listmanip import merge
 
+    print(f"ORBGEN: Optimizing orbitals for rcut = {rcut} au", flush=True)
     # folders will be directly the `configs`
     folders = list(set([item for sublist in folders for item in sublist]))
     iconfs = [[] for _ in range(len(siab_settings['orbitals']))]
@@ -22,8 +23,9 @@ def orbgen_of_rcut(rcut: float, siab_settings: dict, folders: list):
     for folder in folders:
         for fov_, fop_ in orb_matrices(folder):
             ov, op = map(read_orb_mat, [fov_, fop_])
-            assert ov['rcut'] == op['rcut']
+            assert ov['rcut'] == op['rcut'], "Data violation: rcut of ov and op matrices are different"
             if np.abs(ov['rcut'] - rcut) < 1e-10:
+                print(f"ORBGEN: jy_jy, mo_jy and mo_mo matrices loaded from {fov_} and {fop_}", flush=True)
                 orbgen.add_config(ov, op)
                 fov = fov_ if fov is None else fov
     symbol = folders[0].split('-')[0]
@@ -38,25 +40,25 @@ def orbgen_of_rcut(rcut: float, siab_settings: dict, folders: list):
     # prepare opt params
     options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': siab_settings.get('max_steps', 2000),
                'disp': True, 'maxcor': 20}
-    nthreads = siab_settings.get('nthreads_per_rcut', 1)
+    nthreads = siab_settings.get('nthreads_rcut', 1)
     # run optimization for each level hierarchy
-    coef_tot = None
-    coefs_init = peel(coefs_init, [orb['nzeta'] for orb in siab_settings['orbitals']])
+    coefs_init, coefs_tot = peel(coefs_init, [orb['nzeta'] for orb in siab_settings['orbitals']]), None
     for iorb, orb in enumerate(siab_settings['orbitals']):
-        coefs_shell = orbgen.opt([coefs_init[iorb]], coef_tot, iconfs[iorb], range(orb['nbands_ref']), options, nthreads)
-        coef_tot = merge(coef_tot, coefs_shell, 2) if coef_tot is not None else coefs_shell
-    
-    return coef_tot
+        print(f"ORBGEN: Optimize on level {iorb + 1} orbital.", flush=True)
+        coefs_shell = orbgen.opt([coefs_init[iorb]], coefs_tot, iconfs[iorb], range(orb['nbands_ref']), options, nthreads)
+        print(f"ORBGEN: End optimization on level {iorb + 1} orbital, merge with previous orbital shell(s).", flush=True)
+        coefs_tot = merge(coefs_tot, coefs_shell, 2) if coefs_tot is not None else coefs_shell
+    return coefs_tot
 
 def iter(siab_settings: dict, calculation_settings: list, folders: list):
     """Loop over rcut values and yield orbitals"""
     rcuts = calculation_settings[0]["bessel_nao_rcut"]
-    for rcut in rcuts:
-        coef_tot = orbgen_of_rcut(rcut, siab_settings, folders)
+    for rcut in rcuts: # can be parallelized here
+        coefs_tot = orbgen_of_rcut(rcut, siab_settings, folders)
         # because element does not really matter when optimizing orbitals, the only thing
         # has element information is the name of folder. So we extract the element from the
         # first folder name. Not elegant, we know.
-        save_orb(coef_tot, folders[0][0].split("-")[0], calculation_settings[0]["ecutwfc"],
+        save_orb(coefs_tot, folders[0][0].split("-")[0], calculation_settings[0]["ecutwfc"],
                  rcut, [orb['nzeta'] for orb in siab_settings['orbitals']],
                  siab_settings.get('jY_type', "reduced"))
     return
@@ -131,7 +133,7 @@ def orb_matrices(folder: str):
     for f in files:
         yield f
 
-def save_orb(coef_tot, elem, ecut, rcut, nzeta, jY_type: str = "reduced"):
+def save_orb(coefs_tot, elem, ecut, rcut, nzeta, jY_type: str = "reduced"):
     import numpy as np
     import matplotlib.pyplot as plt
     from SIAB.spillage.radial import build_reduced, build_raw, coeff_normalized2raw
@@ -141,16 +143,16 @@ def save_orb(coef_tot, elem, ecut, rcut, nzeta, jY_type: str = "reduced"):
     """
     Plot the orbital and save .orb file
     """
-    coef = coef_tot[0] # get the first and the only element from coef_tot
+    coef = coefs_tot[0] # get the first and the only element from coefs_tot
     assert len(nzeta) == len(coef), \
-        f"nzeta and coef_tot size mismatch: {len(nzeta)} and {len(coef_tot)}"
+        f"nzeta and coefs_tot size mismatch: {len(nzeta)} and {len(coefs_tot)}"
 
     dr = 0.01
     r = np.linspace(0, rcut, int(rcut/dr)+1)
     if jY_type in ["reduced", "nullspace", "svd"]:
         chi = build_reduced(coef, rcut, r, True)
     else:
-        coeff_raw = coeff_normalized2raw(coef_tot, rcut)
+        coeff_raw = coeff_normalized2raw(coefs_tot, rcut)
         chi = build_raw(coeff_normalized2raw(coeff_raw[0], rcut), rcut, r, 0.0, True, True)
 
     fpng = f"{elem}_gga_{rcut}au_{ecut}Ry.png"
