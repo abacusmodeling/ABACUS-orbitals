@@ -8,16 +8,14 @@ def orbgen_of_rcut(rcut: float, siab_settings: dict, folders: list):
     from SIAB.spillage.datparse import read_orb_mat
     from SIAB.spillage.listmanip import merge
 
-    print(f"ORBGEN: Optimizing orbitals for rcut = {rcut} au", flush=True)
+    print(f"ORBGEN: Optimizing orbitals for rcut = {rcut} au")
     # folders will be directly the `configs`
     folders = list(set([item for sublist in folders for item in sublist]))
     iconfs = [[] for _ in range(len(siab_settings['orbitals']))]
     for iorb, orb in enumerate(siab_settings['orbitals']):
         iconfs[iorb] = [folders.index(f) for f in orb['folder']]
-    # run optimization
     reduced = siab_settings.get('jY_type', "reduced")
-    reduced = True if reduced in ["reduced", "nullspace", "svd"] else False
-    orbgen = Spillage(reduced)
+    orbgen = Spillage(reduced in ["reduced", "nullspace", "svd"])
     # load orb_matix with correct rcut
     fov = None
     for folder in folders:
@@ -25,7 +23,7 @@ def orbgen_of_rcut(rcut: float, siab_settings: dict, folders: list):
             ov, op = map(read_orb_mat, [fov_, fop_])
             assert ov['rcut'] == op['rcut'], "Data violation: rcut of ov and op matrices are different"
             if np.abs(ov['rcut'] - rcut) < 1e-10:
-                print(f"ORBGEN: jy_jy, mo_jy and mo_mo matrices loaded from {fov_} and {fop_}", flush=True)
+                print(f"ORBGEN: jy_jy, mo_jy and mo_mo matrices loaded from {fov_} and {fop_}")
                 orbgen.add_config(ov, op)
                 fov = fov_ if fov is None else fov
     symbol = folders[0].split('-')[0]
@@ -38,17 +36,22 @@ def orbgen_of_rcut(rcut: float, siab_settings: dict, folders: list):
     nzeta_max = [max([orb[i] for orb in nzeta_max]) for i in range(lmax + 1)]
     coefs_init = initgen(nzeta_max, ov, reduced)
     # prepare opt params
-    options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': siab_settings.get('max_steps', 2000),
-               'disp': True, 'maxcor': 20}
+    options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': siab_settings.get('max_steps', 2000), 'disp': True, 'maxcor': 20}
     nthreads = siab_settings.get('nthreads_rcut', 1)
     # run optimization for each level hierarchy
-    coefs_init, coefs_tot = peel(coefs_init, [orb['nzeta'] for orb in siab_settings['orbitals']]), None
+    nzeta = [orb['nzeta'] for orb in siab_settings['orbitals']] # element of this list will always be unique
+    iorbs_ref = [orb['nzeta_from'] for orb in siab_settings['orbitals']] # index of reference orbitals
+    iorbs_ref = list(map(lambda x: nzeta.index(x) if x is not None else None, iorbs_ref))
+    # optimize orbitals
+    coefs = [None for _ in range(len(siab_settings['orbitals']))]
     for iorb, orb in enumerate(siab_settings['orbitals']):
-        print(f"ORBGEN: Optimize on level {iorb + 1} orbital.", flush=True)
-        coefs_shell = orbgen.opt([coefs_init[iorb]], coefs_tot, iconfs[iorb], range(orb['nbands_ref']), options, nthreads)
-        print(f"ORBGEN: End optimization on level {iorb + 1} orbital, merge with previous orbital shell(s).", flush=True)
-        coefs_tot = merge(coefs_tot, coefs_shell, 2) if coefs_tot is not None else coefs_shell
-    return coefs_tot
+        print(f"""ORBGEN: optimization on level {iorb + 1} (with # of zeta functions for each l: {orb['nzeta']}), 
+        based on orbital ({orb['nzeta_from']})""")
+        coef_inner = coefs[iorbs_ref[iorb]] if iorbs_ref[iorb] is not None else None
+        coefs_shell = orbgen.opt(coefs_subset(orb['nzeta'], orb['nzeta_from'], coefs_init), coef_inner, iconfs[iorb], range(orb['nbands_ref']), options, nthreads)
+        coefs[iorb] = merge(coef_inner, coefs_shell, 2) if coef_inner is not None else coefs_shell
+        print(f"ORBGEN: End optimization on level {iorb + 1} orbital, merge with previous orbital shell(s).")
+    return coefs
 
 def iter(siab_settings: dict, calculation_settings: list, folders: list):
     """Loop over rcut values and yield orbitals"""
@@ -139,31 +142,36 @@ def save_orb(coefs_tot, elem, ecut, rcut, nzeta, jY_type: str = "reduced"):
     from SIAB.spillage.radial import build_reduced, build_raw, coeff_normalized2raw
     from SIAB.spillage.plot import plot_chi
     from SIAB.spillage.orbio import write_nao
-
+    import os
     """
     Plot the orbital and save .orb file
     """
-    coef = coefs_tot[0] # get the first and the only element from coefs_tot
-    assert len(nzeta) == len(coef), \
-        f"nzeta and coefs_tot size mismatch: {len(nzeta)} and {len(coefs_tot)}"
-
+    assert len(nzeta) == len(coefs_tot)
+    
     dr = 0.01
     r = np.linspace(0, rcut, int(rcut/dr)+1)
-    if jY_type in ["reduced", "nullspace", "svd"]:
-        chi = build_reduced(coef, rcut, r, True)
-    else:
-        coeff_raw = coeff_normalized2raw(coefs_tot, rcut)
-        chi = build_raw(coeff_normalized2raw(coeff_raw[0], rcut), rcut, r, 0.0, True, True)
 
-    fpng = f"{elem}_gga_{rcut}au_{ecut}Ry.png"
-    plot_chi(chi, r, save=fpng)
-    plt.close()
+    for i, coefs in enumerate(coefs_tot): # loop over all levels of orbitals
+        assert len(coefs) == 1, "multiple elements?"
+        if jY_type in ["reduced", "nullspace", "svd"]:
+            chi = build_reduced(coefs[0], rcut, r, True) # the first param should be [l][zeta][q]
+        else:
+            coeff_raw = coeff_normalized2raw(coefs, rcut)
+            chi = build_raw(coeff_normalized2raw(coeff_raw[0], rcut), rcut, r, 0.0, True, True)
 
-    syms = "SPDFGHIKLMNOQRTUVWXYZ".lower()
-    for i, nz in enumerate(nzeta): # for each level of present rcut
+        syms = "SPDFGHIKLMNOQRTUVWXYZ".lower()
+        nz = nzeta[i]
         suffix = "".join([f"{nz[j]}{syms[j]}" for j in range(len(nz))])
-        forb = fpng.replace(".png", f"_{suffix}.orb")
+
+        folder, subfolder = f"{elem}_{suffix}", f"{rcut}au_{ecut}Ry"
+        os.makedirs(f"{folder}/{subfolder}", exist_ok=True)
+        fpng = f"{elem}_gga_{rcut}au_{ecut}Ry_{suffix}.png"
+        plot_chi(chi, r, save=fpng)
+        os.rename(fpng, os.path.join(f"{folder}/{subfolder}", fpng))
+        plt.close()
+        forb = fpng.replace(".png", ".orb")
         write_nao(forb, elem, ecut, rcut, len(r), dr, chi)
+        os.rename(forb, os.path.join(f"{folder}/{subfolder}", forb))
         print(f"orbital saved as {forb}")
 
 import unittest
