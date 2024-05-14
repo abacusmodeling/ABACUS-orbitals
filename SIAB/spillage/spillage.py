@@ -516,7 +516,7 @@ class Spillage:
         pool.close()
 
         coef_opt = nest(res.x.tolist(), pat)
-        return [[np.linalg.qr(np.array(coef_tl).T)[0].T.tolist()
+        return [[np.linalg.qr(np.array(coef_tl).T)[0].T.tolist() if coef_tl else []
                  for coef_tl in coef_t] for coef_t in coef_opt]
 
 
