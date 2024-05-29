@@ -202,7 +202,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float):
         index_shape = shape_index_mapping.index(user_settings["orbitals"][iorb]["shape"])
         if user_settings["orbitals"][iorb]["zeta_notation"].endswith("P"):
             with_polarization[index_shape] = True
-    natom = {"monomer": 1, "dimer": 2, "trimer": 3, "tetramer": 4}
+    natom = {"monomer": 1, "dimer": 2, "trimer": 3, "tetrahedron": 4, "triangular_bipyramid": 5, "octahedron": 6, "cube": 8}
     # monomer is special, it is used as initial guess for spillage optimization, therefore it should have all possible
     # lmax values, therefore the maximal one over all reference systems
     lmax_monomer = 0
