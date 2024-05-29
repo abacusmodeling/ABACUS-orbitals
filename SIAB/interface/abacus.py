@@ -183,7 +183,8 @@ def configure(input_setting: dict,
     keys_in_foldername = ["element", "shape"]
     keys_in_foldername.append("bond_length") if stru_setting["shape"] != "monomer" else None
     # because bond_length is not necessary for monomer
-    folder = "-".join([str(stru_setting[key]) for key in keys_in_foldername])
+    folder = f"{stru_setting['element']}-{stru_setting['shape']}"
+    folder += "-%3.2f"%stru_setting["bond_length"] if stru_setting["shape"] != "monomer" else ""
     _input = INPUT(input_setting, suffix=folder)
     _stru, _ = STRU(**stru_setting)
     _kpt = KPOINTS()

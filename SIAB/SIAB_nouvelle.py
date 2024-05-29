@@ -21,14 +21,13 @@ def initialize(command_line: bool = True):
     welcome = """
 ===================================================================================================
 
-                            ▄████████  ▄█     ▄████████ ▀█████████▄  
-                           ███    ███  ███    ███    ███   ███    ███ 
-                           ███    █▀   ███▌   ███    ███   ███    ███ 
-                           ███         ███▌   ███    ███  ▄███▄▄▄██▀  
-                         ▀███████████  ███▌ ▀███████████ ▀▀███▀▀▀██▄  
-                                  ███  ███    ███    ███   ███    ██▄ 
-                            ▄█    ███  ███    ███    ███   ███    ███ 
-                          ▄████████▀   █▀     ███    █▀  ▄█████████▀  
+                          .oooooo..o ooooo       .o.       oooooooooo.  
+                         d8P'    `Y8 `888'      .888.      `888'   `Y8b 
+                         Y88bo.       888      .8"888.      888     888 
+                          `"Y8888o.   888     .8' `888.     888oooo888' 
+                              `"Y88b  888    .88ooo8888.    888    `88b 
+                         oo     .d8P  888   .8'     `888.   888    .88P 
+                         8""88888P'  o888o o88o     o8888o o888bood8P'  
 
 New version of Systematically Improvable Atomic-orbital Basis (SIAB) method for generating
 numerical atomic orbitals (NAOs) for Linar Combinations of Atomic Orbitals (LCAO) based electronic
@@ -43,7 +42,7 @@ Tutorials: https://mcresearch.github.io/abacus-user-guide/abacus-nac1.html
 See reference for more information.
 ===================================================================================================
     """
-    print(welcome)
+    print(welcome, flush = True)
     placeholder_1 = ""
     placeholder_2 = ""
     if command_line:
@@ -165,7 +164,7 @@ import SIAB.include.citation as sicite
 def finalize():
     """finalize the whole workflow of orbital generation:
     """
-    print(sicite.citation())
+    print(sicite.citation(), flush = True)
 
 import time
 def main(command_line: bool = True):
@@ -186,7 +185,7 @@ def main(command_line: bool = True):
 {"run":20s} {t_run - t_initialize:10.2f} s
 {"finalize":20s} {t_finalize - t_run:10.2f} s
 {"total":20s} {t_end - t_start:10.2f} s
-""")
+""", flush = True)
 
 if __name__ == '__main__':
 

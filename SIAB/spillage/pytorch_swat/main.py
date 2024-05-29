@@ -126,7 +126,7 @@ SIAB.pytorch_swat starts, numerical atomic orbitals are optimized.
     if C_init_info["init_from_file"]:
         C, C_read_index = sspsifc.read_C_init(C_init_info["C_init_file"], info_element)
     else:
-        C = sspsifc.random_C_init(info_element)
+        C = sspsifc.random_C_init(info_element) if params.get("spill_guess") == "random" else sspsifc.identity_C_init(info_element)
     E = sspso.set_E(info_element)
     sspso.normalize(orb=sspso.generate_orbital(info_element, C, E),
                     dr={it:info_element[it].dr for it in info_element},
