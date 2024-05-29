@@ -435,6 +435,10 @@ def blscan(general: dict,                  # general settings
     bond_lengths = [float(folder.split("-")[-1]) for folder in folders]
     energies = [read_output.read_energy(folder=folder,
                                         suffix=folder) for folder in folders]
+    natoms = [read_output.read_natom(folder=folder,
+                                    suffix=folder) for folder in folders]
+    energies = [energy/natom for energy, natom in zip(energies, natoms)]
+    
     """fitting morse potential"""
     De, a, re, e0 = blscan_fitmorse(bond_lengths, energies)
 
@@ -566,7 +570,7 @@ def blscan_returnbls(bl0: float,
         i_emax_r = len(delta_energies) - 1
 
     if i_emax_l == -1:
-        print("\nSummary of bond lengths and energies:".upper(), flush=True)
+        print("\nSummary of bond lengths and energies per atom:".upper(), flush=True)
         print("| Bond length (Angstrom) |   Energy (eV)   | Relative Energy (eV) |", flush=True)
         print("|------------------------|-----------------|----------------------|", flush=True)
         for bl, e, de in zip(bond_lengths, energies, delta_energies):
@@ -578,7 +582,7 @@ search in left direction (bond length decrease direction), this is absolutely un
 the right direction which may because of low dissociation energy. Exit."""%ener_thr)
 
     indices = [i_emax_l, (i_emax_l+i_emin)//2, i_emin, (i_emax_r+i_emin)//2, i_emax_r]
-    print("\nSummary of bond lengths and energies:".upper(), flush=True)
+    print("\nSummary of bond lengths and energies per atom:".upper(), flush=True)
     print("| Bond length (Angstrom) |   Energy (eV)   | Relative Energy (eV) |", flush=True)
     print("|------------------------|-----------------|----------------------|", flush=True)
     for bl, e, de in zip(bond_lengths, energies, delta_energies):

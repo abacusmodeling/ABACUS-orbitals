@@ -17,6 +17,24 @@ def read_energy(folder: str,
                     return energy
     return -1
 
+def read_natom(folder: str,
+               suffix: str,
+               calculation: str = "scf"):
+    if suffix is None:
+        suffix = "ABACUS"
+    frunninglog = "%s/OUT.%s/running_%s.log"%(folder, suffix, calculation)
+    if not os.path.exists(frunninglog):
+        raise FileNotFoundError("running log %s not found."%frunninglog)
+    else:
+        with open(frunninglog, "r") as f:
+            line = "start"
+            while line is not None:
+                line = f.readline().strip()
+                if line.startswith("TOTAL ATOM NUMBER"):
+                    natom = int(line.split()[-1])
+                    return natom
+    return -1
+
 import unittest
 class TestReadOutput(unittest.TestCase):
 
