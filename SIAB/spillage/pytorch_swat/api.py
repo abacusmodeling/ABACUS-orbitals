@@ -243,8 +243,12 @@ def checkpoint(src: str,
     fu = out_files["ORBITAL.dat"]
     sienv.op("mv", src = f"{src}/{fu}", dst = f"{dst}/{forb}", env=env)
     forb = f"{dst}/{forb}"
-    print("Orbital file %s generated."%forb)
+    print("Orbital file %s generated."%forb, flush=True)
     
+    """plot the orbital"""
+    from SIAB.spillage.plot import plot_orbfile
+    plot_orbfile(forb, save=forb.replace(".orb", ".png"))
+
     # deprecated
     # """and directly move it to the folder"""
     # index = sdi.PERIODIC_TABLE_TOINDEX[element]

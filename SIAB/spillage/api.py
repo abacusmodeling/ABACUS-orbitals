@@ -8,7 +8,7 @@ def orbgen_of_rcut(rcut: float, siab_settings: dict, folders: list):
     from SIAB.spillage.datparse import read_orb_mat
     from SIAB.spillage.listmanip import merge
 
-    print(f"ORBGEN: Optimizing orbitals for rcut = {rcut} au")
+    print(f"ORBGEN: Optimizing orbitals for rcut = {rcut} au", flush = True)
     # folders will be directly the `configs`
     folders = list(set([item for sublist in folders for item in sublist]))
     iconfs = [[] for _ in range(len(siab_settings['orbitals']))]
@@ -23,7 +23,7 @@ def orbgen_of_rcut(rcut: float, siab_settings: dict, folders: list):
             ov, op = map(read_orb_mat, [fov_, fop_])
             assert ov['rcut'] == op['rcut'], "Data violation: rcut of ov and op matrices are different"
             if np.abs(ov['rcut'] - rcut) < 1e-10:
-                print(f"ORBGEN: jy_jy, mo_jy and mo_mo matrices loaded from {fov_} and {fop_}")
+                print(f"ORBGEN: jy_jy, mo_jy and mo_mo matrices loaded from {fov_} and {fop_}", flush = True)
                 orbgen.add_config(ov, op)
                 fov = fov_ if fov is None else fov
     symbol = folders[0].split('-')[0]
@@ -46,11 +46,11 @@ def orbgen_of_rcut(rcut: float, siab_settings: dict, folders: list):
     coefs = [None for _ in range(len(siab_settings['orbitals']))]
     for iorb, orb in enumerate(siab_settings['orbitals']):
         print(f"""ORBGEN: optimization on level {iorb + 1} (with # of zeta functions for each l: {orb['nzeta']}), 
-        based on orbital ({orb['nzeta_from']})""")
+        based on orbital ({orb['nzeta_from']})""", flush = True)
         coef_inner = coefs[iorbs_ref[iorb]] if iorbs_ref[iorb] is not None else None
         coefs_shell = orbgen.opt(coefs_subset(orb['nzeta'], orb['nzeta_from'], coefs_init), coef_inner, iconfs[iorb], range(orb['nbands_ref']), options, nthreads)
         coefs[iorb] = merge(coef_inner, coefs_shell, 2) if coef_inner is not None else coefs_shell
-        print(f"ORBGEN: End optimization on level {iorb + 1} orbital, merge with previous orbital shell(s).")
+        print(f"ORBGEN: End optimization on level {iorb + 1} orbital, merge with previous orbital shell(s).", flush = True)
     return coefs
 
 def iter(siab_settings: dict, calculation_settings: list, folders: list):

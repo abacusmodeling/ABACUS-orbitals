@@ -4,6 +4,7 @@ import numpy as np
 
 def random_C_init(info_element):
     """ C[it][il][ie,iu]    <jY|\phi> """
+    print("\nORBGEN: use random initial guess for coefficients of jY basis functions.", flush=True)
     C = dict()
     for it in info_element.keys():
         C[it] = ND_list(info_element[it].Nl)
@@ -11,15 +12,25 @@ def random_C_init(info_element):
             initial_guess = np.random.uniform(-1,1, (info_element[it].Ne, info_element[it].Nu[il]))
             C[it][il] = torch.tensor(initial_guess, dtype=torch.float64, requires_grad=True)
     return C
-    
-def read_C_init(file_name,info_element):
+
+def identity_C_init(info_element):
+    """ C[it][il][ie,iu]    <jY|\phi> """
+    print("\nORBGEN: use identity initial guess for coefficients of jY basis functions.", flush=True)
+    C = dict()
+    for it in info_element.keys():
+        C[it] = ND_list(info_element[it].Nl)
+        for il in range(info_element[it].Nl):
+            C[it][il] = torch.eye(info_element[it].Ne, info_element[it].Nu[il], dtype=torch.float64, requires_grad=True)
+    return C
+
+def read_C_init(file_name, info_element, guess: str = "random"):
     """ C[it][il][ie,iu]    <jY|\phi> 
     it: index of atomtype
     il: index of angular momentum l
     iu: index of radial orbital of angular momentum l
     ie: index of truncated spherical Bessel function of present radial orbital
     """
-    C = random_C_init(info_element)
+    C = random_C_init(info_element) if guess == "random" else identity_C_init(info_element)
 
     with open(file_name,"r") as file:
     

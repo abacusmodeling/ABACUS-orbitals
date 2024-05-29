@@ -195,7 +195,7 @@ def initgen(nzeta, ov, reduced=False):
 
         # eigenvectors corresponding to the largest nzeta eigenvalues
         coef.append(vec[:,-nzeta[l]:][:,::-1].T.tolist())
-
+        print(f"ORBGEN: Y*Y (jy_mo*mo_jy) eigval diagnosis:\n        l = {l}: {val[-nzeta[l]:][::-1]}", flush = True)
     #return coef
     return [np.linalg.qr(np.array(coef_l).T)[0].T.tolist() for coef_l in coef]
 
