@@ -379,7 +379,7 @@ def build_reduced(coeff, rcut, r, orthonormal=False):
 
     '''
     if orthonormal:
-        coeff = [np.linalg.qr(np.array(coeff_l).T)[0].T.tolist() for coeff_l in coeff]
+        coeff = [np.linalg.qr(np.array(coeff_l).T)[0].T.tolist() if coeff_l else [] for coeff_l in coeff]
 
     return build_raw(coeff_reduced2raw(coeff, rcut), rcut, r, 0.0, False, False)
 
