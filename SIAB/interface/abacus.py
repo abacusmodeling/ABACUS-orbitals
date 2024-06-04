@@ -323,8 +323,21 @@ def run_all(general: dict,
     for isp, shape in enumerate(structures.keys()):
         folders_istructure = []
         """abacus_driver can be created iteratively in this layer, and feed in following functions"""
-        if structures[shape] == "auto" and shape != "monomer":
+        if structures[shape] == "auto": print("""WARNING: since SIAB version 2.1(2024.6.3), the original functionality invoked
+ by value \"auto\" is replaced by \"scan\", and for dimer the \"auto\" now will directly use in-built dimer database if 
+available, otherwise will fall back to \"scan\". This warning will be print everytime if \"auto\" is used. To disable 
+this warning, specify directly the \"bond_lengths\" in any one of following ways:
+1. a list of floats, e.g. [2.0, 2.5, 3.0]
+2. a string \"default\", which will use default bond length for dimer, and scan for other shapes, for other shapes, will
+   fall back to \"scan\".
+3. a string \"scan\", which will scan bond lengths for present shape.""", flush=True)
+        # deal with "auto" keyword
+        structures[shape] = "default" if (structures[shape] == "auto" and shape == "dimer") else structures[shape]
+        structures[shape] = "scan" if structures[shape] == "auto" else structures[shape]
+        if (structures[shape] == "scan" and shape != "monomer"):
             """search bond lengths"""
+            if structures[shape] == "default": 
+                print("WARNING: default bond length only support dimer. Now fall back to \"scan\"", flush=True)
             folders_istructure = blscan(general=general,
                                         calculation_setting=calculation_settings[isp],
                                         env_settings=env_settings,
@@ -335,6 +348,10 @@ def run_all(general: dict,
                                         test=test)
         else:
             bond_lengths = structures[shape] if shape != "monomer" else [0.0]
+            bond_lengths = DEFAULT_DIMER_BOND_LENGTH[general["element"]] \
+                if (shape == "dimer" and structures[shape] == "default") else bond_lengths
+            assert isinstance(bond_lengths, list), "bond_lengths should be a list"
+            assert all([isinstance(bond_length, float) for bond_length in bond_lengths]), "bond_lengths should be a list of floats"
             folders_istructure = normal(general=general,
                                         reference_shape=shape,
                                         bond_lengths=bond_lengths,
@@ -485,7 +502,7 @@ def blscan_fitmorse(bond_lengths: list,
     # always be sure there are at least two points on the both
     # left and right side of the minimum energy point
     idx_min = energies.index(min(energies))
-    assert idx_min > 1, "There are fewer than 2 points on the left side of the minimum energy point."
+    assert idx_min > 1, "There are fewer than 2 points on the left side of the minimum energy point, which indicates unreasonable bond length sampling."
     assert idx_min < len(energies) - 2, "There are fewer than 2 points on the right side of the minimum energy point."
     assert len(energies) > 5, "There are fewer than 5 points in total."
     # set threshold to be 10, this will force the point with the energy no higher than 10 eV
@@ -656,6 +673,42 @@ def read_INPUT(folder: str = "") -> dict:
 
 def abacus_params():
     return list(read_INPUT(ABACUS_INPUT_TEMPLATE).keys())
+
+DEFAULT_DIMER_BOND_LENGTH = {'H': [0.6, 0.75, 0.9, 1.2, 1.5], 'He': [1.25, 1.75, 2.4, 3.25], 
+'Li': [1.5, 2.1, 2.5, 2.8, 3.2, 3.5, 4.2], 'Be': [1.75, 2.0, 2.375, 3.0, 4.0], 'B': [1.25, 1.625, 2.5, 3.5], 
+'C': [1.0, 1.25, 1.5, 2.0, 3.0], 'N': [1.0, 1.1, 1.5, 2.0, 3.0], 'O': [1.0, 1.208, 1.5, 2.0, 3.0], 
+'F': [1.2, 1.418, 1.75, 2.25, 3.25], 'Fm': [1.98, 2.375, 2.75, 3.25, 4.25], 'Md': [2.08, 2.5, 3.0, 3.43, 4.25], 
+'No': [2.6, 3.125, 3.75, 4.27, 5.0], 'Ne': [1.5, 1.75, 2.25, 2.625, 3.0, 3.5], 'Na': [2.05, 2.4, 2.8, 3.1, 3.3, 3.8, 4.3], 
+'Mg': [2.125, 2.375, 2.875, 3.375, 4.5], 'Al': [2.0, 2.5, 3.0, 3.75, 4.5], 'Si': [1.75, 2.0, 2.25, 2.75, 3.75], 
+'P': [1.625, 1.875, 2.5, 3.25, 4.0], 'S': [1.6, 1.9, 2.5, 3.25, 4.0], 'Cl': [1.65, 2.0, 2.5, 3.25, 4.0], 
+'Ar': [2.25, 2.625, 3.0, 3.375, 4.0], 'K': [1.8, 2.6, 3.4, 3.8, 4.0, 4.4, 4.8], 'Ca': [2.5, 3.0, 3.5, 4.0, 5.0], 
+'Sc': [1.75, 2.15, 2.75, 3.5, 4.5], 'Ti': [1.6, 1.85, 2.5, 3.25, 4.25], 'V': [1.45, 1.65, 2.25, 3.0, 4.0], 
+'Cr': [1.375, 1.55, 2.0, 2.75, 3.75], 'Mn': [1.4, 1.6, 2.1, 2.75, 3.75], 'Fe': [1.45, 1.725, 2.25, 3.0, 4.0], 
+'Co': [1.8, 2.0, 2.5, 3.5], 'Ni': [1.65, 2.0, 2.5, 3.0, 4.0], 'Cu': [1.8, 2.2, 3.0, 4.0], 
+'Zn': [2.0, 2.3, 2.85, 3.5, 4.25], 'Ga': [1.85, 2.1, 2.45, 3.0, 4.0], 'Ge': [1.8, 2.0, 2.35, 3.0, 4.0], 
+'As': [1.75, 2.1, 2.5, 3.0, 4.0], 'Se': [1.85, 2.15, 2.5, 3.0, 4.0], 'Br': [1.9, 2.25, 2.75, 3.25, 4.0], 
+'Kr': [2.4, 3.0, 3.675, 4.25, 5.0], 'Rb': [2.45, 3.0, 4.0, 5.0], 'Sr': [2.75, 3.5, 4.4, 5.0], 
+'Y': [2.125, 2.5, 2.875, 3.25, 4.0, 5.0], 'Zr': [1.9, 2.25, 3.0, 4.0], 'Nb': [1.75, 2.05, 2.4, 3.0, 4.0], 
+'Mo': [1.675, 1.9, 2.375, 3.0, 4.0], 'Tc': [1.7, 1.915, 2.375, 3.0, 4.0], 'Ru': [1.725, 1.925, 2.375, 3.0, 4.0], 
+'Rh': [1.8, 2.1, 2.5, 3.0, 4.0], 'Pd': [2.0, 2.275, 2.75, 3.75], 'Ag': [2.1, 2.45, 3.0, 4.0], 
+'Cd': [2.15, 2.5, 3.1, 4.0, 5.0], 'In': [2.15, 2.5, 3.0, 3.75, 4.75], 'Sn': [2.1, 2.4, 3.75, 3.5, 4.5], 
+'Sb': [2.1, 2.5, 3.0, 3.5, 4.5], 'Te': [2.15, 2.55, 3.1, 3.6, 4.5], 'I': [2.22, 2.65, 3.25, 4.25], 
+'Xe': [3.0, 3.5, 4.06, 4.5, 5.25], 'Cs': [2.7, 3.5, 4.5, 5.5], 'Ba': [2.65, 3.0, 3.5, 4.4, 5.5], 
+'La': [2.2, 2.6, 3.25, 4.0, 5.0], 'Ce': [2.0, 2.375, 2.875, 3.5, 4.5], 'Pr': [1.9, 2.25, 2.75, 3.5, 4.5], 
+'Nd': [1.8, 2.125, 2.625, 3.375, 4.5], 'Pm': [1.775, 2.05, 2.5, 3.25, 4.25], 'Sm': [1.775, 2.05, 2.5, 3.25, 4.25], 
+'Eu': [1.775, 2.075, 2.5, 3.25, 4.25], 'Gd': [1.8, 2.11, 2.625, 3.375, 4.1, 5.0], 'Tb': [1.825, 2.16, 2.625, 3.375, 4.1, 5.0], 
+'Dy': [1.85, 2.24, 2.625, 3.375, 4.1, 5.0], 'Ho': [1.93, 2.375, 3.0, 4.1, 5.0], 'Er': [2.025, 2.5, 3.125, 4.1, 5.0], 
+'Tm': [2.2, 2.625, 3.25, 4.1, 5.0], 'Yb': [2.5, 3.0, 3.5, 4.1, 5.0], 'Lu': [2.2, 2.5, 3.04, 4.0, 5.0], 
+'Hf': [1.975, 2.49, 3.25, 4.5], 'Ta': [1.85, 2.12, 2.625, 3.25, 4.5], 'W': [1.775, 1.99, 2.5, 3.25, 4.5], 
+'Re': [1.775, 2.01, 2.5, 3.25, 4.25], 'Os': [1.8, 2.04, 2.5, 3.25, 4.5], 'Ir': [1.85, 2.125, 2.5, 3.25, 4.25], 
+'Pt': [2.0, 2.275, 2.75, 3.75], 'Au': [2.1, 2.45, 3.0, 4.0], 'Hg': [2.225, 2.5, 3.04, 4.0, 5.0], 
+'Tl': [2.21, 2.6, 3.11, 3.75, 4.75], 'Pb': [2.225, 2.5, 2.88, 3.625, 4.5], 'Bi': [2.225, 2.61, 3.125, 3.75, 4.75], 
+'Po': [2.3, 2.72, 3.25, 3.875, 4.75], 'At': [2.375, 2.83, 3.5, 4.5], 'Rn': [2.8, 3.5, 4.17, 4.75, 5.5], 
+'Fr': [2.85, 3.5, 4.43, 5.5], 'Ra': [3.15, 3.5, 4.25, 5.12, 6.0], 'Ac': [2.48, 3.1, 3.72, 4.25, 5.0], 
+'Th': [2.25, 2.65, 3.25, 4.0, 5.0], 'Pa': [2.04, 2.3, 3.0, 3.75, 4.75], 'U': [1.89, 2.09, 2.75, 3.5, 4.5], 
+'Np': [1.84, 2.05, 2.625, 3.375, 4.5], 'Pu': [1.81, 2.02, 2.5, 3.25, 4.25], 'Am': [1.81, 2.03, 2.5, 3.25, 4.25], 
+'Cm': [1.83, 2.07, 2.5, 3.25, 4.25], 'Bk': [1.86, 2.12, 2.5, 3.0, 4.0], 'Cf': [1.89, 2.19, 2.625, 3.125, 4.0], 
+'Es': [1.93, 2.29, 2.625, 3.125, 4.0]}
 
 ABACUS_INPUT_TEMPLATE = """INPUT_PARAMETERS
 #Parameters (1.General)
