@@ -262,23 +262,34 @@ def siab_settings(user_settings: dict, minimal_basis: list):
         "jY_type": user_settings.get("jY_type", "reduced")
     }
     shapes = [rs["shape"] for rs in user_settings["reference_systems"]]
+    # for determining the nzeta, there are two ways supported, one is specifying the zeta_notation,
+    # the other is specifying the nzeta directly
     for iorb, orbital in enumerate(user_settings["orbitals"]):
-
-        result["orbitals"][iorb]["nzeta"] = siptb.orbconf_fromxzyp(
-            zeta_notation=orbital["zeta_notation"], 
-            minimal_basis=minimal_basis, 
-            as_list=True)
-        if orbital["orb_ref"] == "none":
-            result["orbitals"][iorb]["nzeta_from"] = None
-        else:
-            result["orbitals"][iorb]["nzeta_from"] = siptb.orbconf_fromxzyp(
-                zeta_notation=orbital["orb_ref"], 
-                minimal_basis=minimal_basis, 
-                as_list=True)
+        result["orbitals"][iorb]["nzeta"] = nzetagen(orbital["zeta_notation"], minimal_basis)
+        result["orbitals"][iorb]["nzeta_from"] = None if orbital["orb_ref"] == "none" \
+            else nzetagen(orbital["orb_ref"], minimal_basis)
         result["orbitals"][iorb]["nbands_ref"] = orbital["nbands_ref"]
         result["orbitals"][iorb]["folder"] = shapes.index(orbital["shape"])
         
     return result
+
+def nzetagen(zeta_notation, minimal_basis: list):
+    """generate the nzeta from the zeta_notation"""
+    import re
+    assert isinstance(minimal_basis, list), "minimal_basis should be a list"
+    # zeta_notation can be of three formats: 2s2p1d, DZP or [2, 2, 1]
+    if isinstance(zeta_notation, list) and all([isinstance(v, int) for v in zeta_notation]):
+        return zeta_notation
+    if re.match(r"([SDTQ5-9]?Z)(([SDTQ5-9]?P)*)", zeta_notation):
+        return siptb.orbconf_fromxzyp(zeta_notation, minimal_basis, as_list=True)
+    if re.match(r"(\d+[a-z])+", zeta_notation):
+        spectra = ["s", "p", "d", "f", "g", "h", "i", "k", "l", "m", "n", "o"]
+        result = {v[-1]: int(v[:-1]) for v in re.findall(r"\d+[a-z]", zeta_notation)}
+        result = [result.get(s, 0) for s in spectra]
+        while result[-1] == 0:
+            result.pop()
+        return result
+    assert False, "ERROR: \"zeta_notation\" is not in the correct format. It should be like \"2s2p1d\" or \"DZP\" or [2, 2, 1]"
 
 def environment_settings(user_settings: dict):
 
@@ -773,6 +784,7 @@ class TestReadInput(unittest.TestCase):
               'nbands': 10, 'lmaxmax': 2, 'nspin': 1}
               ])
         self.assertDictEqual(result[2], {
+            'jY_type': 'reduced',
             'optimizer': 'pytorch.SWAT', 
             'nthreads_rcut': -1,
             'max_steps': 200, 
@@ -878,5 +890,17 @@ class TestReadInput(unittest.TestCase):
         for i in result:
             self.assertEqual(i["lmaxmax"], 3)
 
+    def test_nzetagen(self):
+        result = nzetagen("DZP", [2, 1, 1])
+        self.assertEqual(result, [4, 2, 2, 1])
+        result = nzetagen("1s1p", [2, 1, 1])
+        self.assertEqual(result, [1, 1])
+        result = nzetagen("2s2p1d", [2, 1, 1])
+        self.assertEqual(result, [2, 2, 1])
+        result = nzetagen("1s0p1d", [2, 1, 1])
+        self.assertEqual(result, [1, 0, 1])
+        result = nzetagen([2, 2, 1], [2, 1, 1])
+        self.assertEqual(result, [2, 2, 1])
+        
 if __name__ == "__main__":
     unittest.main()
