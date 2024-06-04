@@ -19,6 +19,7 @@ def version_compare(version_1: str, version_2: str) -> bool:
 ##############################################
 def monomer(element, mass, fpseudo, lattice_constant, nspin):
     """generate monomer structure"""
+    shift = lattice_constant/2/1.8897259886
     starting_magnetization = 0.0 if nspin == 1 else 2.0
     result = "ATOMIC_SPECIES\n%s %.6f %s\n"%(element, mass, fpseudo)
     result += "LATTICE_CONSTANT\n%.6f  // add lattice constant(a.u.)\n"%lattice_constant
@@ -30,11 +31,12 @@ def monomer(element, mass, fpseudo, lattice_constant, nspin):
     result += "%s      //Element Label\n"%element
     result += "%.2f     //starting magnetism\n"%starting_magnetization
     result += "1       //number of atoms\n"
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0, 0.0, 0.0)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0 + shift, 0.0 + shift, 0.0 + shift)
     return result
 
 def dimer(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     """generate dimer structure"""
+    shift = lattice_constant/2/1.8897259886
     starting_magnetization = 0.0 if nspin == 1 else 2.0
     result = "ATOMIC_SPECIES\n%s %.6f %s\n"%(element, mass, fpseudo)
     result += "LATTICE_CONSTANT\n%.6f  // add lattice constant(a.u.)\n"%lattice_constant
@@ -46,12 +48,13 @@ def dimer(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     result += "%s      //Element Label\n"%element
     result += "%.2f     //starting magnetism\n"%starting_magnetization
     result += "2       //number of atoms\n"
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0, 0.0, 0.0)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0, 0.0, bond_length)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0 + shift, 0.0 + shift, 0.0 + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0 + shift, 0.0 + shift, bond_length + shift)
     return result
 
 def trimer(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     """generate trimer structure"""
+    shift = lattice_constant/2/1.8897259886
     starting_magnetization = 0.0 if nspin == 1 else 2.0
     dis1 = bond_length * 0.86603
     dis2 = bond_length * 0.5
@@ -65,13 +68,14 @@ def trimer(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     result += "%s      //Element Label\n"%element
     result += "%.2f     //starting magnetism\n"%starting_magnetization
     result += "3       //number of atoms\n"
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0, 0.0, 0.0)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0, 0.0, bond_length)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0, dis1, dis2)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0 + shift, 0.0 + shift, 0.0 + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0 + shift, 0.0 + shift, bond_length + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0 + shift, dis1 + shift, dis2 + shift)
     return result
 
 def tetrahedron(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     """generate tetrahedron structure"""
+    shift = lattice_constant/2/1.8897259886
     starting_magnetization = 0.0 if nspin == 1 else 2.0
     dis1 = bond_length * 0.86603
     dis2 = bond_length * 0.5
@@ -87,14 +91,15 @@ def tetrahedron(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     result += "%s      //Element Label\n"%element
     result += "%.2f     //starting magnetism\n"%starting_magnetization
     result += "4       //number of atoms\n"
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0, 0.0, 0.0)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0, 0.0, bond_length)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0, dis1, dis2)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(dis3, dis4, dis2)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0 + shift, 0.0 + shift, 0.0 + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0 + shift, 0.0 + shift, bond_length + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0 + shift, dis1 + shift, dis2 + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(dis3 + shift, dis4 + shift, dis2 + shift)
     return result
 
 def square(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     """generate square structure"""
+    shift = lattice_constant/2/1.8897259886
     starting_magnetization = 0.0 if nspin == 1 else 2.0
     result = "ATOMIC_SPECIES\n%s %.6f %s\n"%(element, mass, fpseudo)
     result += "LATTICE_CONSTANT\n%.6f  // add lattice constant(a.u.)\n"%lattice_constant
@@ -108,12 +113,13 @@ def square(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     result += "4       //number of atoms\n"
     result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0, 0.0, 0.0)
     result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0, 0.0, bond_length)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length, 0.0, 0.0)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length, 0.0, bond_length)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length + shift, 0.0 + shift, 0.0 + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length + shift, 0.0 + shift, bond_length + shift)
     return result
 
 def triangular_bipyramid(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     """generate triangular bipyramid structure"""
+    shift = lattice_constant/2/1.8897259886
     starting_magnetization = 0.0 if nspin == 1 else 2.0
     result = "ATOMIC_SPECIES\n%s %.6f %s\n"%(element, mass, fpseudo)
     result += "LATTICE_CONSTANT\n%.6f  // add lattice constant(a.u.)\n"%lattice_constant
@@ -125,15 +131,16 @@ def triangular_bipyramid(element, mass, fpseudo, lattice_constant, bond_length, 
     result += "%s      //Element Label\n"%element
     result += "%.2f     //starting magnetism\n"%starting_magnetization
     result += "5       //number of atoms\n"
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length / 1.73205, 0.0, 0.0)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(-bond_length / 1.73205 / 2, bond_length / 2, 0.0)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(-bond_length / 1.73205 / 2, -bond_length / 2, 0.0)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0, 0.0, bond_length * (2/3)**(1/2))
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0, 0.0, -bond_length * (2/3)**(1/2))
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length / 1.73205 + shift, 0.0 + shift, 0.0 + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(-bond_length / 1.73205 / 2 + shift, bond_length / 2 + shift, 0.0 + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(-bond_length / 1.73205 / 2 + shift, -bond_length / 2 + shift, 0.0 + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0 + shift, 0.0 + shift, bond_length * (2/3)**(1/2) + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0 + shift, 0.0 + shift, -bond_length * (2/3)**(1/2) + shift)
     return result
 
 def octahedron(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     """generate octahedron structure"""
+    shift = lattice_constant/2/1.8897259886
     starting_magnetization = 0.0 if nspin == 1 else 2.0
     result = "ATOMIC_SPECIES\n%s %.6f %s\n"%(element, mass, fpseudo)
     result += "LATTICE_CONSTANT\n%.6f  // add lattice constant(a.u.)\n"%lattice_constant
@@ -145,16 +152,17 @@ def octahedron(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     result += "%s      //Element Label\n"%element
     result += "%.2f     //starting magnetism\n"%starting_magnetization
     result += "6       //number of atoms\n"
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length / 2, bond_length / 2, 0.0)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(-bond_length / 2, -bond_length / 2, 0.0)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length / 2, -bond_length / 2, 0.0)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(-bond_length / 2, bond_length / 2, 0.0)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0, 0.0, bond_length / 2**(1/2))
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0, 0.0, -bond_length / 2**(1/2))
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length / 2 + shift, bond_length / 2 + shift, 0.0 + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(-bond_length / 2 + shift, -bond_length / 2 + shift, 0.0 + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length / 2 + shift, -bond_length / 2 + shift, 0.0 + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(-bond_length / 2 + shift, bond_length / 2 + shift, 0.0 + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0 + shift, 0.0 + shift, bond_length / 2**(1/2) + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0 + shift, 0.0 + shift, -bond_length / 2**(1/2) + shift)
     return result
 
 def cube(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     """generate cube structure"""
+    shift = lattice_constant/2/1.8897259886
     starting_magnetization = 0.0 if nspin == 1 else 2.0
     result = "ATOMIC_SPECIES\n%s %.6f %s\n"%(element, mass, fpseudo)
     result += "LATTICE_CONSTANT\n%.6f  // add lattice constant(a.u.)\n"%lattice_constant
@@ -166,14 +174,14 @@ def cube(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     result += "%s      //Element Label\n"%element
     result += "%.2f     //starting magnetism\n"%starting_magnetization
     result += "8       //number of atoms\n"
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length / 2, bond_length / 2, bond_length / 2)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(-bond_length / 2, -bond_length / 2, bond_length / 2)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length / 2, -bond_length / 2, bond_length / 2)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(-bond_length / 2, bond_length / 2, bond_length / 2)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length / 2, bond_length / 2, -bond_length / 2)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(-bond_length / 2, -bond_length / 2, -bond_length / 2)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length / 2, -bond_length / 2, -bond_length / 2)
-    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(-bond_length / 2, bond_length / 2, -bond_length / 2)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length / 2 + shift, bond_length / 2 + shift, bond_length / 2 + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(-bond_length / 2 + shift, -bond_length / 2 + shift, bond_length / 2 + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length / 2 + shift, -bond_length / 2 + shift, bond_length / 2 + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(-bond_length / 2 + shift, bond_length / 2 + shift, bond_length / 2 + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length / 2 + shift, bond_length / 2 + shift, -bond_length / 2 + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(-bond_length / 2 + shift, -bond_length / 2 + shift, -bond_length / 2 + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length / 2 + shift, -bond_length / 2 + shift, -bond_length / 2 + shift)
+    result += "%10.8f %10.8f %10.8f 0 0 0\n"%(-bond_length / 2 + shift, bond_length / 2 + shift, -bond_length / 2 + shift)
     return result
 
 def STRU(shape: str, element: str, mass: float, fpseudo: str, 
