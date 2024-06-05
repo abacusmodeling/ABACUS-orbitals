@@ -343,10 +343,8 @@ WARNING: since SIAB version 2.1(2024.6.3), the original functionality invoked by
          3. a string \"scan\", which will scan bond lengths for present shape.
 """, flush=True)
         # deal with "auto" keyword
-        structures[shape] = "default" if (
-            (structures[shape] == "auto" and shape == "dimer" and element in DEFAULT_DIMER_BOND_LENGTH.keys())
-          or(structures[shape] == "auto" and shape == "trimer" and element in DEFAULT_TRIMER_BOND_LENGTH.keys())) else structures[shape]
-        structures[shape] = "scan" if structures[shape] == "auto" else structures[shape]
+        if structures[shape] == "auto":
+            structures[shape] = "default" if element in DEFAULT_BOND_LENGTH.get(shape, {}) else "scan"
         if (structures[shape] == "scan" and shape != "monomer"):
             """search bond lengths"""
             if structures[shape] == "default": 
@@ -361,8 +359,7 @@ WARNING: since SIAB version 2.1(2024.6.3), the original functionality invoked by
                                         test=test)
         else:
             bond_lengths = structures[shape] if shape != "monomer" else [0.0]
-            bond_lengths = DEFAULT_DIMER_BOND_LENGTH[element] \
-                if (shape == "dimer" and structures[shape] == "default") else bond_lengths
+            bond_lengths = DEFAULT_BOND_LENGTH.get(shape, {})[element] if structures[shape] == "default" else bond_lengths
             assert isinstance(bond_lengths, list), "bond_lengths should be a list"
             assert all([isinstance(bond_length, float) for bond_length in bond_lengths]), "bond_lengths should be a list of floats"
             folders_istructure = normal(general=general,
@@ -687,7 +684,8 @@ def read_INPUT(folder: str = "") -> dict:
 def abacus_params():
     return list(read_INPUT(ABACUS_INPUT_TEMPLATE).keys())
 
-DEFAULT_DIMER_BOND_LENGTH = {'H': [0.6, 0.75, 0.9, 1.2, 1.5], 'He': [1.25, 1.75, 2.4, 3.25], 
+DEFAULT_BOND_LENGTH = {
+"dimer": {'H': [0.6, 0.75, 0.9, 1.2, 1.5], 'He': [1.25, 1.75, 2.4, 3.25], 
 'Li': [1.5, 2.1, 2.5, 2.8, 3.2, 3.5, 4.2], 'Be': [1.75, 2.0, 2.375, 3.0, 4.0], 'B': [1.25, 1.625, 2.5, 3.5], 
 'C': [1.0, 1.25, 1.5, 2.0, 3.0], 'N': [1.0, 1.1, 1.5, 2.0, 3.0], 'O': [1.0, 1.208, 1.5, 2.0, 3.0], 
 'F': [1.2, 1.418, 1.75, 2.25, 3.25], 'Fm': [1.98, 2.375, 2.75, 3.25, 4.25], 'Md': [2.08, 2.5, 3.0, 3.43, 4.25], 
@@ -721,9 +719,8 @@ DEFAULT_DIMER_BOND_LENGTH = {'H': [0.6, 0.75, 0.9, 1.2, 1.5], 'He': [1.25, 1.75,
 'Th': [2.25, 2.65, 3.25, 4.0, 5.0], 'Pa': [2.04, 2.3, 3.0, 3.75, 4.75], 'U': [1.89, 2.09, 2.75, 3.5, 4.5], 
 'Np': [1.84, 2.05, 2.625, 3.375, 4.5], 'Pu': [1.81, 2.02, 2.5, 3.25, 4.25], 'Am': [1.81, 2.03, 2.5, 3.25, 4.25], 
 'Cm': [1.83, 2.07, 2.5, 3.25, 4.25], 'Bk': [1.86, 2.12, 2.5, 3.0, 4.0], 'Cf': [1.89, 2.19, 2.625, 3.125, 4.0], 
-'Es': [1.93, 2.29, 2.625, 3.125, 4.0]}
-
-DEFAULT_TRIMER_BOND_LENGTH = {'S': [1.7, 2.2, 2.8], 'Pd': [2.2, 2.6, 3.2], 'Si': [1.9, 2.1, 2.6], 
+'Es': [1.93, 2.29, 2.625, 3.125, 4.0]},
+"trimer": {'S': [1.7, 2.2, 2.8], 'Pd': [2.2, 2.6, 3.2], 'Si': [1.9, 2.1, 2.6], 
 'Te': [2.4, 2.8, 3.4], 'Sn': [2.3, 2.6, 3.1], 'Xe': [3.8, 4.3, 5.0], 'Mo': [1.8, 2.1, 2.7], 'In': [2.3, 2.8, 3.4], 
 'Nb': [1.6, 1.9, 2.7], 'Ga': [2.3, 2.7, 3.4], 'Br': [2.1, 2.5, 3.0], 'Ir': [2.0, 2.3, 3.8], 'Be': [2.2, 2.7, 3.4], 
 'W': [1.7, 1.9, 2.2], 'Mg': [2.7, 3.2, 3.9], 'Sb': [2.2, 2.7, 3.3], 'Re': [1.9, 2.2, 2.8], 'Ba': [3.2, 3.9, 4.7], 
@@ -736,7 +733,7 @@ DEFAULT_TRIMER_BOND_LENGTH = {'S': [1.7, 2.2, 2.8], 'Pd': [2.2, 2.6, 3.2], 'Si':
 'Ti': [1.7, 2.2, 2.9], 'K': [3.0, 3.8, 4.6], 'V': [1.6, 1.9, 2.6], 'Cu': [2.0, 2.4, 3.0], 'Pb': [2.3, 2.7, 3.3], 
 'O': [1.1, 1.4, 2.1], 'As': [2.0, 2.3, 2.7], 'Li': [1.9, 2.4, 3.3], 'Bi': [2.4, 2.9, 3.5], 'Ru': [1.8, 2.1, 2.7], 
 'Sr': [3.5, 4.1, 4.7], 'Kr': [3.3, 4.0, 4.7], 'I': [2.4, 2.9, 3.5], 'Ta': [1.7, 2.0, 2.3], 'Mn': [1.5, 1.8, 2.5], 
-'Tl': [2.4, 3.3, 4.3], 'Ni': [1.9, 2.3, 2.8], 'P': [1.7, 2.2, 2.8], 'Hf': [2.3, 2.8, 3.4], 'Cd': [2.7, 3.6, 4.5]}
+'Tl': [2.4, 3.3, 4.3], 'Ni': [1.9, 2.3, 2.8], 'P': [1.7, 2.2, 2.8], 'Hf': [2.3, 2.8, 3.4], 'Cd': [2.7, 3.6, 4.5]}}
 
 ABACUS_INPUT_TEMPLATE = """INPUT_PARAMETERS
 #Parameters (1.General)
