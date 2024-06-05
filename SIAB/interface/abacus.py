@@ -327,25 +327,30 @@ def run_all(general: dict,
             env_settings: tuple,
             test: bool = False):
     """iterately calculate planewave wavefunctions for reference shapes and bond lengths"""
+    element = general["element"]
     folders = []
     for isp, shape in enumerate(structures.keys()):
         folders_istructure = []
         """abacus_driver can be created iteratively in this layer, and feed in following functions"""
-        if structures[shape] == "auto": print("""WARNING: since SIAB version 2.1(2024.6.3), the original functionality invoked
- by value \"auto\" is replaced by \"scan\", and for dimer the \"auto\" now will directly use in-built dimer database if 
-available, otherwise will fall back to \"scan\". This warning will be print everytime if \"auto\" is used. To disable 
-this warning, specify directly the \"bond_lengths\" in any one of following ways:
-1. a list of floats, e.g. [2.0, 2.5, 3.0]
-2. a string \"default\", which will use default bond length for dimer, and scan for other shapes, for other shapes, will
-   fall back to \"scan\".
-3. a string \"scan\", which will scan bond lengths for present shape.""", flush=True)
+        if structures[shape] == "auto": print("""
+WARNING: since SIAB version 2.1(2024.6.3), the original functionality invoked by value \"auto\" is replaced by 
+        \"scan\", and for dimer the \"auto\" now will directly use in-built dimer database if available, otherwise will 
+         fall back to \"scan\". This warning will be print everytime if \"auto\" is used. To disable this warning, specify 
+         directly the \"bond_lengths\" in any one of following ways:
+         1. a list of floats, e.g. [2.0, 2.5, 3.0]
+         2. a string \"default\", which will use default bond length for dimer, and scan for other shapes, for other shapes, will
+            fall back to \"scan\".
+         3. a string \"scan\", which will scan bond lengths for present shape.
+""", flush=True)
         # deal with "auto" keyword
-        structures[shape] = "default" if (structures[shape] == "auto" and shape == "dimer") else structures[shape]
+        structures[shape] = "default" if (
+            (structures[shape] == "auto" and shape == "dimer" and element in DEFAULT_DIMER_BOND_LENGTH.keys())
+          or(structures[shape] == "auto" and shape == "trimer" and element in DEFAULT_TRIMER_BOND_LENGTH.keys())) else structures[shape]
         structures[shape] = "scan" if structures[shape] == "auto" else structures[shape]
         if (structures[shape] == "scan" and shape != "monomer"):
             """search bond lengths"""
             if structures[shape] == "default": 
-                print("WARNING: default bond length only support dimer. Now fall back to \"scan\"", flush=True)
+                print("WARNING: default bond length only support dimer/trimer. Now fall back to \"scan\"", flush=True)
             folders_istructure = blscan(general=general,
                                         calculation_setting=calculation_settings[isp],
                                         env_settings=env_settings,
@@ -356,7 +361,7 @@ this warning, specify directly the \"bond_lengths\" in any one of following ways
                                         test=test)
         else:
             bond_lengths = structures[shape] if shape != "monomer" else [0.0]
-            bond_lengths = DEFAULT_DIMER_BOND_LENGTH[general["element"]] \
+            bond_lengths = DEFAULT_DIMER_BOND_LENGTH[element] \
                 if (shape == "dimer" and structures[shape] == "default") else bond_lengths
             assert isinstance(bond_lengths, list), "bond_lengths should be a list"
             assert all([isinstance(bond_length, float) for bond_length in bond_lengths]), "bond_lengths should be a list of floats"
@@ -717,6 +722,21 @@ DEFAULT_DIMER_BOND_LENGTH = {'H': [0.6, 0.75, 0.9, 1.2, 1.5], 'He': [1.25, 1.75,
 'Np': [1.84, 2.05, 2.625, 3.375, 4.5], 'Pu': [1.81, 2.02, 2.5, 3.25, 4.25], 'Am': [1.81, 2.03, 2.5, 3.25, 4.25], 
 'Cm': [1.83, 2.07, 2.5, 3.25, 4.25], 'Bk': [1.86, 2.12, 2.5, 3.0, 4.0], 'Cf': [1.89, 2.19, 2.625, 3.125, 4.0], 
 'Es': [1.93, 2.29, 2.625, 3.125, 4.0]}
+
+DEFAULT_TRIMER_BOND_LENGTH = {'S': [1.7, 2.2, 2.8], 'Pd': [2.2, 2.6, 3.2], 'Si': [1.9, 2.1, 2.6], 
+'Te': [2.4, 2.8, 3.4], 'Sn': [2.3, 2.6, 3.1], 'Xe': [3.8, 4.3, 5.0], 'Mo': [1.8, 2.1, 2.7], 'In': [2.3, 2.8, 3.4], 
+'Nb': [1.6, 1.9, 2.7], 'Ga': [2.3, 2.7, 3.4], 'Br': [2.1, 2.5, 3.0], 'Ir': [2.0, 2.3, 3.8], 'Be': [2.2, 2.7, 3.4], 
+'W': [1.7, 1.9, 2.2], 'Mg': [2.7, 3.2, 3.9], 'Sb': [2.2, 2.7, 3.3], 'Re': [1.9, 2.2, 2.8], 'Ba': [3.2, 3.9, 4.7], 
+'Rb': [3.9, 4.7, 5.5], 'Ag': [2.3, 2.7, 3.2], 'Hg': [2.7, 3.5, 4.3], 'Zn': [2.5, 3.2, 3.8], 'Cr': [1.5, 1.8, 2.3], 
+'Os': [1.9, 2.2, 2.8], 'Na': [2.8, 3.4, 4.1], 'H': [0.7, 0.9, 1.3], 'Sc': [2.0, 2.5, 3.1], 'Zr': [2.1, 2.5, 3.1], 
+'Se': [2.1, 2.3, 2.7], 'Al': [2.3, 2.8, 3.4], 'Rh': [2.0, 2.3, 2.7], 'Y': [2.4, 2.9, 3.6], 'B': [1.2, 1.5, 2.1], 
+'Ca': [2.8, 3.6, 4.6], 'Fe': [1.6, 2.0, 2.9], 'Tc': [1.5, 1.8, 2.2], 'Cs': [4.3, 5.0, 5.8], 'Ne': [2.0, 2.7, 3.3], 
+'C': [1.1, 1.4, 2.1], 'Ar': [2.8, 3.2, 3.7], 'He': [1.5, 2.0, 2.6], 'N': [0.9, 1.2, 1.6], 'Au': [2.3, 2.7, 3.2], 
+'Pt': [2.2, 2.6, 3.2], 'F': [1.3, 1.6, 2.1], 'Ge': [1.9, 2.2, 2.8], 'Co': [2.0, 2.4, 2.9], 'Cl': [1.6, 1.8, 2.2], 
+'Ti': [1.7, 2.2, 2.9], 'K': [3.0, 3.8, 4.6], 'V': [1.6, 1.9, 2.6], 'Cu': [2.0, 2.4, 3.0], 'Pb': [2.3, 2.7, 3.3], 
+'O': [1.1, 1.4, 2.1], 'As': [2.0, 2.3, 2.7], 'Li': [1.9, 2.4, 3.3], 'Bi': [2.4, 2.9, 3.5], 'Ru': [1.8, 2.1, 2.7], 
+'Sr': [3.5, 4.1, 4.7], 'Kr': [3.3, 4.0, 4.7], 'I': [2.4, 2.9, 3.5], 'Ta': [1.7, 2.0, 2.3], 'Mn': [1.5, 1.8, 2.5], 
+'Tl': [2.4, 3.3, 4.3], 'Ni': [1.9, 2.3, 2.8], 'P': [1.7, 2.2, 2.8], 'Hf': [2.3, 2.8, 3.4], 'Cd': [2.7, 3.6, 4.5]}
 
 ABACUS_INPUT_TEMPLATE = """INPUT_PARAMETERS
 #Parameters (1.General)
