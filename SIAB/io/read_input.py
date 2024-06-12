@@ -179,6 +179,24 @@ def convert_plaintext_tojson(inp: dict):
         else:
             result[key] = value
 
+def natom_from_shape(shape: str):
+    natom = {"monomer": 1, "dimer": 2, "trimer": 3, "tetrahedron": 4, 
+             "square": 4, "triangular_bipyramid": 5, "octahedron": 6, "cube": 8}
+    return natom.get(shape, 0)
+
+def nbands_from_str(option: str|float|int, shape: str, z_val: float):
+    import re
+    if isinstance(option, str):
+        assert re.match(r"(auto|occ((\+|-)\d+)?|all)", option), f"option should be auto, occ, occ+/-n or all: {option}"
+        if option == "auto":
+            return "auto"
+        if option == "all":
+            return int(natom_from_shape(shape)*z_val)
+        if option.startswith("occ"):
+            occ = int(natom_from_shape(shape)*z_val/2)
+            return eval(option.replace("occ", str(occ)))
+    return int(option)
+
 def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float):
 
     # copy all possible shared parameters (shared by all reference systems)
@@ -202,7 +220,6 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float):
         index_shape = shape_index_mapping.index(user_settings["orbitals"][iorb]["shape"])
         if user_settings["orbitals"][iorb]["zeta_notation"].endswith("P"):
             with_polarization[index_shape] = True
-    natom = {"monomer": 1, "dimer": 2, "trimer": 3, "tetrahedron": 4, "triangular_bipyramid": 5, "octahedron": 6, "cube": 8}
     # monomer is special, it is used as initial guess for spillage optimization, therefore it should have all possible
     # lmax values, therefore the maximal one over all reference systems
     lmax_monomer = 0
@@ -210,7 +227,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float):
         # auto set nbands if for reference system the nbands is set to "auto"
         nbands = refsys[irs].get("nbands", "auto")
         shape = refsys[irs]["shape"]
-        nbands = nbands if nbands != "auto" else int(natom[shape]*z_val)
+        nbands = nbands if nbands != "auto" else int(natom_from_shape(shape)*z_val)
         # auto set lmaxmax
         lmaxmax = len(minimal_basis) if (with_polarization[irs] and [] not in minimal_basis) else len(minimal_basis) - 1
         lmax_monomer = max(lmax_monomer, lmaxmax)
@@ -227,7 +244,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float):
     return result
 
 import SIAB.io.pseudopotential.tools.basic as siptb
-def siab_settings(user_settings: dict, minimal_basis: list):
+def siab_settings(user_settings: dict, minimal_basis: list, z_val: float):
     """convert user_settings to SIAB settings the information needed by spillage optimization
     information is organized as follows:
     
@@ -266,9 +283,11 @@ def siab_settings(user_settings: dict, minimal_basis: list):
     # the other is specifying the nzeta directly
     for iorb, orbital in enumerate(user_settings["orbitals"]):
         result["orbitals"][iorb]["nzeta"] = nzetagen(orbital["zeta_notation"], minimal_basis)
-        result["orbitals"][iorb]["nzeta_from"] = None if orbital["orb_ref"] == "none" \
+        result["orbitals"][iorb]["nzeta_from"] = None \
+            if orbital["orb_ref"] == "none" \
             else nzetagen(orbital["orb_ref"], minimal_basis)
-        result["orbitals"][iorb]["nbands_ref"] = orbital["nbands_ref"]
+        # implement "occ", "occ+%d", "occ-%d" and "all" for nbands_ref
+        result["orbitals"][iorb]["nbands_ref"] = nbands_from_str(orbital["nbands_ref"], orbital["shape"], z_val)
         result["orbitals"][iorb]["folder"] = shapes.index(orbital["shape"])
         
     return result
@@ -341,7 +360,7 @@ def unpack_siab_input(user_settings: dict, pseudopotential: dict):
     symbol, minimal_basis, z_val = map(from_pseudopotential(pseudopotential).get, properties)
     structures = structure_settings(user_settings)
     abacus = abacus_settings(user_settings, minimal_basis, z_val)
-    siab = siab_settings(user_settings, minimal_basis)
+    siab = siab_settings(user_settings, minimal_basis, z_val)
     env = environment_settings(user_settings)
     general = description(symbol, user_settings)
     return structures, abacus, siab, env, general
@@ -901,6 +920,28 @@ class TestReadInput(unittest.TestCase):
         self.assertEqual(result, [1, 0, 1])
         result = nzetagen([2, 2, 1], [2, 1, 1])
         self.assertEqual(result, [2, 2, 1])
-        
+    
+    def test_nbands_from_str(self):
+        result = nbands_from_str(4, "dimer", 100)
+        self.assertEqual(result, 4)
+        result = nbands_from_str(6, "trimer", 100)
+        self.assertEqual(result, 6)
+        result = nbands_from_str("occ", "dimer", 4)
+        self.assertEqual(result, 4)
+        result = nbands_from_str("occ", "trimer", 6)
+        self.assertEqual(result, 9)
+        result = nbands_from_str("occ+5", "dimer", 4)
+        self.assertEqual(result, 9)
+        result = nbands_from_str("occ-2", "trimer", 6)
+        self.assertEqual(result, 7)
+        result = nbands_from_str("auto", "dimer", 4)
+        self.assertEqual(result, "auto")
+        result = nbands_from_str("auto", "trimer", 6)
+        self.assertEqual(result, "auto")
+        result = nbands_from_str("all", "dimer", 4)
+        self.assertEqual(result, 8)
+        result = nbands_from_str("all", "trimer", 6)
+        self.assertEqual(result, 18)
+
 if __name__ == "__main__":
     unittest.main()
