@@ -402,6 +402,7 @@ def is_duplicate(folder: str, abacus_setting: dict):
     rcuts = abacus_setting["bessel_nao_rcut"]
     print("DUPLICATE CHECK-3 pass: INPUT settings are consistent", flush=True)
     # STAGE4: existence of crucial output files
+    rcuts = [rcuts] if not isinstance(rcuts, list) else rcuts
     if len(rcuts) == 1:
         if "orb_matrix.0.dat" not in files:
             return False
