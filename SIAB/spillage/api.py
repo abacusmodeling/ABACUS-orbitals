@@ -142,8 +142,8 @@ def save_orb(coefs_tot, elem, ecut, rcut, nzeta, jY_type: str = "reduced"):
     import matplotlib.pyplot as plt
     from SIAB.spillage.radial import build_reduced, build_raw, coeff_normalized2raw
     from SIAB.spillage.plot import plot_chi
-    from SIAB.spillage.orbio import write_nao
-    import os
+    from SIAB.spillage.orbio import write_nao, write_param
+    import os, uuid
     """
     Plot the orbital and save .orb file
     """
@@ -172,7 +172,10 @@ def save_orb(coefs_tot, elem, ecut, rcut, nzeta, jY_type: str = "reduced"):
         plt.close()
         forb = fpng.replace(".png", ".orb")
         write_nao(forb, elem, ecut, rcut, len(r), dr, chi)
+        fparam = str(uuid.uuid4())
+        write_param(fparam, coefs[0], rcut, 0.0, elem)
         os.rename(forb, os.path.join(f"{folder}/{subfolder}", forb))
+        os.rename(fparam, os.path.join(f"{folder}/{subfolder}", "ORBITAL_RESULTS.txt"))
         print(f"orbital saved as {forb}")
 
 import unittest
