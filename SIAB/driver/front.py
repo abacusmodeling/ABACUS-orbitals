@@ -31,7 +31,7 @@ def initialize(version: str = "0.1.0",
 # interface to abacus
 import SIAB.interface.abacus as sia
 def abacus(general: dict,
-           structures: dict,
+           structures: list,
            calculation_settings: list,
            env_settings: dict,
            test: bool = True):

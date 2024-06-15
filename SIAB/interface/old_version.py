@@ -247,21 +247,10 @@ def ov_ovlps_qsv(element: str,
 
     result = [[] for _ in range(len(orbitals))]
     for iorb, orbital in enumerate(orbitals): # for each level
-        shape = scan_folder_consistency(orbital["folder"])[2]
-        # 20240204: seems should provide the first branch all the time, the second is not
-        # directly valid
-        #if orbital["nbands_ref"] == "auto":
         if True:
-            folder_header = "-".join([element, shape])
-            ishape = reference_shapes.index(shape)
             result[iorb] = [
-                ["-".join(
-                    [folder_header, str(bond_length)]
-                    ) + "/" + ovlp_qsv0 for bond_length in bond_lengths[ishape]],
-                [[
-                "-".join(
-                    [folder_header, str(bond_length)]
-                    ) + "/" + ovlp_qsv1 for bond_length in bond_lengths[ishape]]]
+                [f + "/" + ovlp_qsv0 for f in orbital["folder"]],
+                [[f + "/" + ovlp_qsv1 for f in orbital["folder"]]]
             ]
         elif isinstance(orbital["nbands_ref"], int):
             ishape = reference_shapes.index(shape)
@@ -310,7 +299,7 @@ def ov_reference_states(element: str,
             # as the occupied. In future version, "auto" will be changed to this.
             folder_header = element + "-" + shape
             ishape = reference_shapes.index(shape)
-            folders = [folder_header + "-" + str(bond_length) for bond_length in bond_lengths[ishape]]
+            folders = [folder_header + "-" + f"{bond_length:.2f}" for bond_length in bond_lengths[ishape]]
             result[iorb] = [folder + "/OUT.%s/istate.info"%folder for folder in folders]
 
         elif isinstance(orbital["nbands_ref"], int):
@@ -386,11 +375,13 @@ def convert(calculation_setting: dict,
     # and can calculate for all values in one-shot. In this case overlap matrices for different rcut
     # are distinguished by another naming convention: orb_matrix_rcut[R]deriv[D].dat, where R will be
     # corresponding rcut and D will be 0 or 1.
-    om_shortname = False if len(calculation_setting["bessel_nao_rcut"]) > 1 else True
+    rcuts = calculation_setting["bessel_nao_rcut"]
+    rcuts = [rcuts] if not isinstance(rcuts, list) else rcuts
+    om_shortname = False if len(rcuts) > 1 else True
     # ----------------------------------------------------------------------------------------------
     # for each rcut and each orbital configuration, yield tuple ("input", rcut, iorb), where the 
     # "input" is the one for pytorch_swat spillage submodule.
-    for rcut in calculation_setting["bessel_nao_rcut"]:
+    for rcut in rcuts:
         ovlp_qsv = ov_ovlps_qsv(element=element,
                                 reference_shapes=reference_shapes,
                                 bond_lengths=bond_lengths,
