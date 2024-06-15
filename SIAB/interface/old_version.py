@@ -256,11 +256,11 @@ def ov_ovlps_qsv(element: str,
             ishape = reference_shapes.index(shape)
             result[iorb] = [
                 ["-".join(
-                    [folder_header, str(bond_length)]
+                    [folder_header, f"{bond_length:.2f}"]
                     ) + "/" + ovlp_qsv0 for bond_length in bond_lengths[ishape]],
                 [[
                 "-".join(
-                    [folder_header, str(bond_length)]
+                    [folder_header, f"{bond_length:.2f}"]
                     ) + "/" + ovlp_qsv1 for bond_length in bond_lengths[ishape]]]
             ]
         elif isinstance(orbital["nbands_ref"], int):
@@ -310,7 +310,7 @@ def ov_reference_states(element: str,
             # as the occupied. In future version, "auto" will be changed to this.
             folder_header = element + "-" + shape
             ishape = reference_shapes.index(shape)
-            folders = [folder_header + "-" + str(bond_length) for bond_length in bond_lengths[ishape]]
+            folders = [folder_header + "-" + f"{bond_length:.2f}" for bond_length in bond_lengths[ishape]]
             result[iorb] = [folder + "/OUT.%s/istate.info"%folder for folder in folders]
 
         elif isinstance(orbital["nbands_ref"], int):
