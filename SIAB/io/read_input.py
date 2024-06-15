@@ -112,22 +112,23 @@ def convert_oldinp_tojson(inp: dict):
         if oldname in inp:
             result[newname] = inp[oldname]
         else:
-            print(f"Warning: {oldname} not found in the input file")
-    for key in inp.keys():
+            print(f"Warning: {oldname} not found in the input file", flush=True)
+    for key, val in inp.items():
         if key.startswith("STRU"):
             result["reference_systems"].append({
-                "shape": inp[key][0],
-                "nbands": int(inp[key][1]), # maxL the useless parameter skipped
-                "nspin": int(inp[key][3]),
-                "bond_lengths": ["auto"] if inp[key][4] == "auto" else [float(v) for v in inp[key][4:]]
+                "shape": val[0],
+                "nbands": int(val[1]), # maxL the useless parameter skipped
+                "nspin": int(val[3]),
+                "bond_lengths": ["auto"] if val[4] == "auto" else [float(v) for v in val[4:]]
             })
         elif key.startswith("Save"):
+            level = val[0]
             result["orbitals"].append({
-                "zeta_notation": inp[key][1],
-                "shape": inp[inp[inp[key][0]][0]][0],
-                "nbands_ref": "auto" if inp[inp[key][0]][1] == "auto" else int(inp[inp[key][0]][1]),
-                "orb_ref": "none" if inp[inp[key][0]][2] == "none" else inp[
-                    "Save"+str(int(inp[key][0][5:]) - 1)][1]
+                "zeta_notation": val[1],
+                "shape": [s for s in inp.keys() if s.startswith("STRU")].index(inp[level][0]),
+                "nbands_ref": "auto" if inp[level][1] == "auto" else int(inp[level][1]),
+                "orb_ref": "none" if inp[level][2] == "none" else inp[
+                    "Save"+str(int(level[5:]) - 1)][1]
             })
 
     return result
@@ -295,7 +296,6 @@ def siab_settings(user_settings: dict, minimal_basis: list, z_val: float):
         shape = shapes[index]
         result["orbitals"][iorb]["nbands_ref"] = nbands_from_str(orbital["nbands_ref"], shape, z_val)
         result["orbitals"][iorb]["folder"] = index
-        
     return result
 
 def nzetagen(zeta_notation, minimal_basis: list):
