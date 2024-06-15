@@ -329,10 +329,11 @@ def run_all(general: dict,
     """iterately calculate planewave wavefunctions for reference shapes and bond lengths"""
     element = general["element"]
     folders = []
-    for isp, shape in enumerate(structures.keys()):
+    for isp, shape in enumerate(structures):
+        shape, bond_lengths = shape
         folders_istructure = []
         """abacus_driver can be created iteratively in this layer, and feed in following functions"""
-        if structures[shape] == "auto": print("""
+        if bond_lengths == "auto": print("""
 WARNING: since SIAB version 2.1(2024.6.3), the original functionality invoked by value \"auto\" is replaced by 
         \"scan\", and for dimer the \"auto\" now will directly use in-built dimer database if available, otherwise will 
          fall back to \"scan\". This warning will be print everytime if \"auto\" is used. To disable this warning, specify 
@@ -343,11 +344,11 @@ WARNING: since SIAB version 2.1(2024.6.3), the original functionality invoked by
          3. a string \"scan\", which will scan bond lengths for present shape.
 """, flush=True)
         # deal with "auto" keyword
-        if structures[shape] == "auto":
-            structures[shape] = "default" if element in DEFAULT_BOND_LENGTH.get(shape, {}) else "scan"
-        if (structures[shape] == "scan" and shape != "monomer"):
+        if bond_lengths == "auto":
+            bond_lengths = "default" if element in DEFAULT_BOND_LENGTH.get(shape, {}) else "scan"
+        if (bond_lengths == "scan" and shape != "monomer"):
             """search bond lengths"""
-            if structures[shape] == "default": 
+            if bond_lengths == "default": 
                 print("WARNING: default bond length only support dimer/trimer. Now fall back to \"scan\"", flush=True)
             folders_istructure = blscan(general=general,
                                         calculation_setting=calculation_settings[isp],
@@ -358,8 +359,8 @@ WARNING: since SIAB version 2.1(2024.6.3), the original functionality invoked by
                                         ener_thr=1.5,
                                         test=test)
         else:
-            bond_lengths = structures[shape] if shape != "monomer" else [0.0]
-            bond_lengths = DEFAULT_BOND_LENGTH.get(shape, {})[element] if structures[shape] == "default" else bond_lengths
+            bond_lengths = bond_lengths if shape != "monomer" else [0.0]
+            bond_lengths = DEFAULT_BOND_LENGTH.get(shape, {})[element] if bond_lengths == "default" else bond_lengths
             assert isinstance(bond_lengths, list), "bond_lengths should be a list"
             assert all([isinstance(bond_length, float) for bond_length in bond_lengths]), "bond_lengths should be a list of floats"
             folders_istructure = normal(general=general,
@@ -396,8 +397,9 @@ def is_duplicate(folder: str, abacus_setting: dict):
             value = " ".join([str(v) for v in value])
         else:
             value = str(value)
-        if original[key] != value:
-            print("KEYWORD \"%s\" has different values. Original: %s, new: %s\nDifference detected, start a new job."%(key, original[key], value), flush=True)
+        value_ = original.get(key, None)
+        if value_ != value:
+            print("KEYWORD \"%s\" has different values. Original: %s, new: %s\nDifference detected, start a new job."%(key, value_, value), flush=True)
             return False
     rcuts = abacus_setting["bessel_nao_rcut"]
     print("DUPLICATE CHECK-3 pass: INPUT settings are consistent", flush=True)

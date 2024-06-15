@@ -217,7 +217,8 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float):
     shape_index_mapping = [v["shape"] for v in refsys]
     with_polarization = [False]*nsystem
     for iorb in range(len(user_settings["orbitals"])):
-        index_shape = shape_index_mapping.index(user_settings["orbitals"][iorb]["shape"])
+        val = user_settings["orbitals"][iorb]["shape"]
+        index_shape = shape_index_mapping.index(val) if not isinstance(val, int) else val
         if user_settings["orbitals"][iorb]["zeta_notation"].endswith("P"):
             with_polarization[index_shape] = True
     # monomer is special, it is used as initial guess for spillage optimization, therefore it should have all possible
@@ -287,8 +288,13 @@ def siab_settings(user_settings: dict, minimal_basis: list, z_val: float):
             if orbital["orb_ref"] == "none" \
             else nzetagen(orbital["orb_ref"], minimal_basis)
         # implement "occ", "occ+%d", "occ-%d" and "all" for nbands_ref
-        result["orbitals"][iorb]["nbands_ref"] = nbands_from_str(orbital["nbands_ref"], orbital["shape"], z_val)
-        result["orbitals"][iorb]["folder"] = shapes.index(orbital["shape"])
+
+        # support index to link reference structures
+        shape = orbital["shape"]
+        index = shapes.index(shape) if not isinstance(shape, int) else shape
+        shape = shapes[index]
+        result["orbitals"][iorb]["nbands_ref"] = nbands_from_str(orbital["nbands_ref"], shape, z_val)
+        result["orbitals"][iorb]["folder"] = index
         
     return result
 
@@ -329,8 +335,39 @@ def structure_settings(user_settings: dict):
     shapes.append("monomer") if need_monomer else None
     bond_lengths = [rs.get("bond_lengths", "auto") for rs in refsys] # list of list of float
     bond_lengths.append("auto") if need_monomer else None
-
-    return dict(zip(shapes, bond_lengths))
+    """a bug can occur here if:
+    ```json
+    "reference_systems": [
+        {
+            "shape": "dimer",
+            "nbands": 13,
+            "nspin": 1,
+            "bond_lengths": [2.1, 2.6, 3.1, 3.7, 4.3]
+        },
+        {
+            "shape": "trimer",
+            "nbands": 18,
+            "nspin": 1,
+            "bond_lengths": [2.8, 3.4, 4.1]
+        },
+        {
+            "shape": "trimer",
+            "nbands": 18,
+            "nspin": 1,
+            "bond_lengths": [2.7, 3.0, 3.6]
+        },
+        {
+            "shape": "trimer",
+            "nbands": 18,
+            "nspin": 1,
+            "bond_lengths": [2.6, 3.2, 3.8]
+        }
+    ],
+    ```
+    To solve this, must discard the use of shape by orbital to index reference systems. Instead, use
+    list(zip(...)) instead of dict(zip(...))
+    """
+    return list(zip(shapes, bond_lengths))
 
 def from_pseudopotential(pseudopotential: dict):
     """convert the pseudopotential to SIAB input"""
@@ -755,8 +792,53 @@ class TestReadInput(unittest.TestCase):
     """
     
     def test_parse(self):
-        self.maxDiff = None
-        result = read_siab_inp("SIAB/example_Si/SIAB_INPUT")
+        import uuid, os
+        example = """
+#--------------------------------------------------------------------------------
+#1. CMD & ENV
+#EXE_env    module purge && module load anaconda3_nompi gcc/9.2.0 elpa/2021.05.002/intelmpi2018 intelmpi/2018.update4 2>&1 && source activate pytorch110
+ EXE_mpi    mpirun -np 1
+ EXE_pw     abacus
+#EXE_pw     /home/nic/wszhang/abacus/abacus222_intel-2018u4/ABACUS.mpi
+#EXE_opt    /home/nic/wszhang/abacus/wszhang@github/abacus-develop/tools/SIAB/PyTorchGradient_dpsi/main.py
+
+#-------------------------------------------------------------------------------- 
+#2. Electronic calculatation
+ element     Si          # Element Name
+ Ecut        100         # in Ry
+ Rcut        6 7         # in Bohr
+ Pseudo_dir  /root/abacus-develop/pseudopotentials/SG15_ONCV_v1.0_upf
+ Pseudo_name Si_ONCV_PBE-1.0.upf 
+ sigma       0.01        # energy range for gauss smearing (in Ry) 
+
+#--------------------------------------------------------------------------------
+#3. Reference structure related parameters for PW calculation
+#For the built-in structure types (including 'dimer', 'trimer' and 'tetramer'):
+#STRU Name   #STRU Type  #nbands #MaxL   #nspin  #Bond Length list
+ STRU1       dimer       8       2       1       1.8 2.0 2.3 2.8 3.8
+ STRU2       trimer      10      2       1       1.9 2.1 2.6
+
+#-------------------------------------------------------------------------------- 
+#4. SIAB calculatation
+ max_steps    200
+# Orbital configure and reference target for each level
+#LevelIndex   #Ref STRU Name    #Ref Bands   #InputOrb    #OrbitalConf
+ Level1       STRU1             4            none         1s1p      
+ Level2       STRU1             4            fix          2s2p1d    
+ Level3       STRU2             6            fix          3s3p2d    
+
+#--------------------------------------------------------------------------------
+#5. Save Orbitals
+#Index       #LevelNum    #OrbitalType
+ Save1       Level1       Z           
+ Save2       Level2       DZP         
+ Save3       Level3       TZDP   
+"""
+        fsiab = str(uuid.uuid4())
+        with open(fsiab, "w") as f:
+            f.write(example)
+        result = read_siab_inp(fsiab)
+        os.remove(fsiab)
         self.assertDictEqual(result,
                             {'environment': '', 
                              'mpi_command': 'mpirun -np 1', 
@@ -775,6 +857,58 @@ class TestReadInput(unittest.TestCase):
                                  {'zeta_notation': 'Z', 'shape': 'dimer', 'nbands_ref': 4, 'orb_ref': 'none'}, 
                                  {'zeta_notation': 'DZP', 'shape': 'dimer', 'nbands_ref': 4, 'orb_ref': 'Z'}, 
                                  {'zeta_notation': 'TZDP', 'shape': 'trimer', 'nbands_ref': 6, 'orb_ref': 'DZP'}]})
+
+        example = """
+ 
+#--------------------------------------------------------------------------------
+#1. CMD & ENV
+ EXE_mpi      mpirun -np 16
+ EXE_pw       abacus
+
+#-------------------------------------------------------------------------------- 
+#2. Electronic calculatation
+ element     Na  # element name 
+ Ecut        100  # cutoff energy (in Ry)
+ Rcut        10  # cutoff radius (in a.u.)
+ Pseudo_dir  /root/deepmodeling/ABACUS-Pseudopot-Nao-Square/download/pseudopotentials/sg15_oncv_upf_2020-02-06/
+ Pseudo_name Na_ONCV_PBE-1.0.upf
+ sigma       0.01 # energy range for gauss smearing (in Ry)
+
+#--------------------------------------------------------------------------------
+#3. Reference structure related parameters for PW calculation
+#For the built-in structure types (including 'dimer', 'trimer' and 'tetramer'):
+#STRU Name   #STRU Type  #nbands #MaxL   #nspin  #Bond Length list 
+STRU1       dimer       13      2       1      2.1 2.6 3.1 3.7 4.3
+STRU2       trimer      18      2       1      2.8 3.4 4.1
+STRU3       trimer      18      2       1      2.7 3.0 3.6
+STRU4       trimer      18      2       1      2.6 3.2 3.8
+
+#-------------------------------------------------------------------------------- 
+#4. SIAB calculatation
+ max_steps    3000
+#Orbital configure and reference target for each level
+#LevelIndex  #Ref STRU name  #Ref Bands  #InputOrb    #OrbitalConf 
+ Level1      STRU1           auto        none        2s1p
+ Level2      STRU1           auto        fix         4s2p1d
+ Level3      STRU2           auto        fix         6s3p2d  
+ Level4      STRU3           auto        fix         8s4p3d
+ Level5      STRU4           auto        fix         10s5p4d
+
+#--------------------------------------------------------------------------------
+#5. Save Orbitals
+#Index    #LevelNum   #OrbitalType 
+ Save1    Level1      Z
+ Save2    Level2      DZP
+ Save3    Level3      TZDP
+ Save4    Level4      QZTP
+ Save5    Level5      5ZQP
+"""
+        fsiab = str(uuid.uuid4())
+        with open(fsiab, "w") as f:
+            f.write(example)
+        result = read_siab_inp(fsiab)
+        os.remove(fsiab)
+        print(result)
 
     def test_keywords_translate(self):
 

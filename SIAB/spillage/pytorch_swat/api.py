@@ -72,7 +72,9 @@ def iter(siab_settings, calculation_settings):
     nthreads_max = torch.get_num_threads()
     # if nthreads_rcut is -1, then use all available threads for one rcut, which results in serial calculation
     nthreads_rcut = nthreads_max if nthreads_rcut <= 0 else nthreads_rcut
-    nrcuts = len(calculation_settings[0]["bessel_nao_rcut"])
+    rcuts = calculation_settings[0]["bessel_nao_rcut"]
+    rcuts = [rcuts] if not isinstance(rcuts, list) else rcuts
+    nrcuts = len(rcuts)
     nrcuts_toparallel = nthreads_max // nthreads_rcut # the number of rcuts that can be parallelized
     # however, for bad settings, will result in nrcut_toparallel < 1, in this case, be_serial = True
     if nrcuts_toparallel <= 1 and nthreads_rcut > 0 and not be_serial:
@@ -98,6 +100,8 @@ nrcuts_toparallel: {nrcuts_toparallel} (number of rcuts that can be parallelized
         orbgen_plans = []
         for old_input, cache_dir, ilevel in siov.convert(calculation_setting=calculation_settings[0],
                                                          siab_settings=siab_settings):
+            print(f"old_input: {old_input}, cache_dir: {cache_dir}, ilevel: {ilevel}", flush=True)
+            
             if ilevel == 0:
                 orbgen_plans.append([])
             orbgen_plans[-1].append((old_input, cache_dir, ilevel))
@@ -107,7 +111,7 @@ nrcuts_toparallel: {nrcuts_toparallel} (number of rcuts that can be parallelized
         # nprocs_rcut is the number of processes for each rcut
         # be aware that nprocs_rcut < 1 is not allowed, if there are really only one
         # logical processor, then nprocs_rcut = 1
-        
+        exit()
         print(f"""
 Parallelization - RUNTIME
 Number of threads for each rcut: {nthreads_rcut}

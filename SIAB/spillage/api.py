@@ -56,6 +56,7 @@ def orbgen_of_rcut(rcut: float, siab_settings: dict, folders: list):
 def iter(siab_settings: dict, calculation_settings: list, folders: list):
     """Loop over rcut values and yield orbitals"""
     rcuts = calculation_settings[0]["bessel_nao_rcut"]
+    rcuts = [rcuts] if not isinstance(rcuts, list) else rcuts
     for rcut in rcuts: # can be parallelized here
         coefs_tot = orbgen_of_rcut(rcut, siab_settings, folders)
         # because element does not really matter when optimizing orbitals, the only thing
