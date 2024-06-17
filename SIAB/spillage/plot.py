@@ -18,7 +18,7 @@ def plot_chi(chi, r, save=None):
             if chi_lz[np.argmax(np.abs(chi_lz))] < 0:
                 chi_lz *= -1
     
-            ax[l].plot(r, chi_lz, label='$\zeta=%i$'%(zeta))
+            ax[0, l].plot(r, chi_lz, label='$\zeta=%i$'%(zeta))
     
         ax[0, l].legend(fontsize=16)
         ax[0, l].axhline(0, color='black', linestyle=':')
