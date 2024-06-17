@@ -10,7 +10,7 @@ def plot_chi(chi, r, save=None):
     lmax = len(chi)-1
     nzeta = [len(chi_l) for chi_l in chi]
 
-    fig, ax = plt.subplots(nrows=1, ncols=lmax+1, figsize=((lmax+1)*7, 6), layout='tight')
+    fig, ax = plt.subplots(nrows=1, ncols=lmax+1, figsize=((lmax+1)*7, 6), layout='tight', squeeze=False)
     
     for l, chi_l in enumerate(chi):
         for zeta, chi_lz in enumerate(chi_l):
