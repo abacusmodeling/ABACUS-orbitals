@@ -24,7 +24,7 @@ def orbgen_of_rcut(rcut: float, siab_settings: dict, folders: list):
             assert ov['rcut'] == op['rcut'], "Data violation: rcut of ov and op matrices are different"
             if np.abs(ov['rcut'] - rcut) < 1e-10:
                 print(f"ORBGEN: jy_jy, mo_jy and mo_mo matrices loaded from {fov_} and {fop_}", flush = True)
-                orbgen.add_config(ov, op)
+                orbgen.add_config(ov, op, siab_settings.get('spill_coefs', [0.0, 1.0]))
                 fov = fov_ if fov is None else fov
     symbol = folders[0].split('-')[0]
     monomer_dir = "-".join([symbol, "monomer"]) # weak binding

@@ -260,7 +260,7 @@ class Spillage:
         self.dao_jy = []
 
 
-    def add_config(self, ov, op):
+    def add_config(self, ov, op, weight):
         '''
         '''
         # The overlap and operator data must be consistent except
@@ -293,9 +293,11 @@ class Spillage:
 
         C = _jy2ao(coef, ov['lin2comp'], nbes, rcut)
 
-        dat['mo_mo'] = np.array([ov['mo_mo'], op['mo_mo']])
-        dat['mo_jy'] = np.array([ov['mo_jy'] @ C, op['mo_jy'] @ C])
-        dat['jy_jy'] = np.array([C.T @ ov['jy_jy'] @ C, C.T @ op['jy_jy'] @ C])
+        wov, wop = weight
+
+        dat['mo_mo'] = np.array([ov['mo_mo'], wov*ov['mo_mo'] + wop*op['mo_mo']])
+        dat['mo_jy'] = np.array([ov['mo_jy'] @ C, (wov*ov['mo_jy'] + wop*op['mo_jy']) @ C])
+        dat['jy_jy'] = np.array([C.T @ ov['jy_jy'] @ C, C.T @ (wov*ov['jy_jy']+wop*op['jy_jy']) @ C])
 
         self.config.append(dat)
 
