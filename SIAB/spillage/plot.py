@@ -18,12 +18,12 @@ def plot_chi(chi, r, save=None):
             if chi_lz[np.argmax(np.abs(chi_lz))] < 0:
                 chi_lz *= -1
     
-            ax[l].plot(r, chi_lz, label='$\zeta=%i$'%(zeta))
+            ax[0, l].plot(r, chi_lz, label='$\zeta=%i$'%(zeta))
     
-        ax[l].legend(fontsize=16)
-        ax[l].axhline(0, color='black', linestyle=':')
-        ax[l].set_title('$l=%d$'%(l), fontsize=20)
-        ax[l].set_xlim([0, r[-1]])
+        ax[0, l].legend(fontsize=16)
+        ax[0, l].axhline(0, color='black', linestyle=':')
+        ax[0, l].set_title('$l=%d$'%(l), fontsize=20)
+        ax[0, l].set_xlim([0, r[-1]])
 
     if save is not None:
         plt.savefig(save)
