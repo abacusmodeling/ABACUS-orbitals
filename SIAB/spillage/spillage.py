@@ -260,7 +260,7 @@ class Spillage:
         self.dao_jy = []
 
 
-    def add_config(self, ov, op, weight):
+    def add_config(self, ov, op, weight=(0.0, 1.0)):
         '''
         '''
         # The overlap and operator data must be consistent except
