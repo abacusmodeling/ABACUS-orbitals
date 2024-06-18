@@ -16,6 +16,7 @@ def orbgen_of_rcut(rcut: float, siab_settings: dict, folders: list):
         iconfs[iorb] = [folders.index(f) for f in orb['folder']]
     reduced = siab_settings.get('jY_type', "reduced")
     orbgen = Spillage(reduced in ["reduced", "nullspace", "svd"])
+
     # load orb_matix with correct rcut
     fov = None
     for folder in folders:
@@ -29,19 +30,24 @@ def orbgen_of_rcut(rcut: float, siab_settings: dict, folders: list):
     symbol = folders[0].split('-')[0]
     monomer_dir = "-".join([symbol, "monomer"]) # weak binding
     ov = read_orb_mat(os.path.join(monomer_dir, fov.replace('\\', '/').split('/')[-1]))
+
     # calculate the firs param of function initgen
     lmax = max([len(orb['nzeta']) for orb in siab_settings['orbitals']]) - 1
+
     # calculate maxial number of zeta for each l
     nzeta_max = [(lambda nzeta: nzeta + (lmax + 1 - len(nzeta))*[-1])(orb['nzeta']) for orb in siab_settings['orbitals']]
     nzeta_max = [max([orb[i] for orb in nzeta_max]) for i in range(lmax + 1)]
     coefs_init = initgen(nzeta_max, ov, reduced)
+
     # prepare opt params
     options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': siab_settings.get('max_steps', 2000), 'disp': True, 'maxcor': 20}
     nthreads = siab_settings.get('nthreads_rcut', 1)
+
     # run optimization for each level hierarchy
     nzeta = [orb['nzeta'] for orb in siab_settings['orbitals']] # element of this list will always be unique
     iorbs_ref = [orb['nzeta_from'] for orb in siab_settings['orbitals']] # index of reference orbitals
     iorbs_ref = list(map(lambda x: nzeta.index(x) if x is not None else None, iorbs_ref))
+    
     # optimize orbitals
     coefs = [None for _ in range(len(siab_settings['orbitals']))]
     for iorb, orb in enumerate(siab_settings['orbitals']):
