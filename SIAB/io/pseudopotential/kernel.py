@@ -41,8 +41,10 @@ def postprocess(parsed: dict):
                 if siptb.is_numeric_data(parsed[section]["attrib"][attrib]):
                     parsed[section]["attrib"][attrib] = siptb.decompose_data(parsed[section]["attrib"][attrib])
                 elif parsed[section]["attrib"][attrib] == "T":
+                    if attrib == "element": continue # fix the bug of element F
                     parsed[section]["attrib"][attrib] = True
                 elif parsed[section]["attrib"][attrib] == "F":
+                    if attrib == "element": continue # fix the bug of element F
                     parsed[section]["attrib"][attrib] = False
     return parsed
 
