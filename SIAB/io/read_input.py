@@ -242,7 +242,10 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float):
             if key in all_params and key not in ["shape", "nbands", "nspin"]:
                 result[irs][key] = value
     # set monomer
-    result[shape_index_mapping.index("monomer")].update({"lmaxmax": lmax_monomer}) if need_monomer else None
+    if need_monomer:
+        nbands_monomer = cal_nbands_fill_lmax(minimal_basis, z_val, lmax_monomer)
+        result[shape_index_mapping.index("monomer")].update(
+            {"lmaxmax": lmax_monomer, "nbands": nbands_monomer})
     return result
 
 import SIAB.io.pseudopotential.tools.basic as siptb
@@ -412,6 +415,42 @@ def abacus_params():
             #value = match.group(3).strip()
             keys.append(key)
     return keys
+
+def cal_nbands_fill_lmax(minimal_basis: list, zval: int, lmax: int) -> int:
+    """
+    WANRING: Only for use from single isolated atom case!
+
+    according to minimal_basis, select an appropriate value to include explicit calculation on states involving hydrogen-like
+    orbitals with angular momentum up to lmax.
+    
+    Args:
+    minimal_basis: list, the minimal basis set of pseudopotential. For K (Potassium), it can be [["3S", "4S"], ["3P"]]
+    zval: int, the valence electrons in pseudopotential. For K, it is 9 (3s2 3p6 4s1)
+    lmax: int, the maximal angular momentum to include in the calculation. For example for K, if want to include 3d states, lmax=2
+
+    Still take example of K, nbands for a isolated K atom should be no less than 9/2, but to fill up to 3d orbital, should be
+    21 (# of electrons of Sc, the first element with 3d orbital occupied)
+    - (2 + 2 + 6) (# of electrons pseudized)
+    = 11
+    therfore nbands should be at least ceiling(11/2) = 6
+    """
+    from numpy import ceil
+    # electrons will fill orbitals like -> H to Og (118)
+    seq = ["1S", "2S", "2P", "3S", "3P", "4S", "3D", "4P", "5S", "4D", "5P", "6S", "4F", "5D", "6P", "7S", "5F", "6D", "7P"]
+    occ = {"S": 2, "P": 6, "D": 10, "F": 14, "G": 18}
+    nelec = [1, 5, 21, 58]
+    # first flatten the minimal_basis
+    flat_basis = [orb for shell in minimal_basis for orb in shell]
+    ind = [seq.index(orb) for orb in flat_basis]
+    core = 0 # then calculate how many electrons are pseudized
+    for i in range(max(ind)): # I must proceed in this way because I am not sure if the pseudization of electrons are in order
+        if seq[i] not in flat_basis: # which means the electron is pseudized
+            core += occ[seq[i][-1]]
+    #print(f"Initial guess: estimated number of electrons pseudized for present pseudopotential: {core}", flush=True)
+    # calculation with pseudopotential can only calculate bands above core electrons, say for K, the first band would be of 3s, ideally
+    nbands = max(ceil(zval/2), ceil((nelec[min(lmax, 3)]-core)/2))
+    nbands *= 5 if lmax > 3 else 1 # for cases there are explicitly treated f-electrons. Because there is no element with g orbitals
+    return int(max(nbands, 2)) # for fixing the case of Hydrogen, zval = 1, if lmax = 0, then nbands = 1, which is not enough
 
 ABACUS_INPUT_TEMPLATE = """INPUT_PARAMETERS
 #Parameters (1.General)
@@ -793,6 +832,7 @@ class TestReadInput(unittest.TestCase):
     
     def test_parse(self):
         import uuid, os
+        self.maxDiff = None
         example = """
 #--------------------------------------------------------------------------------
 #1. CMD & ENV
@@ -854,9 +894,9 @@ class TestReadInput(unittest.TestCase):
                                  {'shape': 'trimer', 'nbands': 10, 'nspin': 1, 'bond_lengths': [1.9, 2.1, 2.6]}
                             ], 
                              'orbitals': [
-                                 {'zeta_notation': 'Z', 'shape': 'dimer', 'nbands_ref': 4, 'orb_ref': 'none'}, 
-                                 {'zeta_notation': 'DZP', 'shape': 'dimer', 'nbands_ref': 4, 'orb_ref': 'Z'}, 
-                                 {'zeta_notation': 'TZDP', 'shape': 'trimer', 'nbands_ref': 6, 'orb_ref': 'DZP'}]})
+                                 {'zeta_notation': 'Z', 'shape': 0, 'nbands_ref': 4, 'orb_ref': 'none'}, 
+                                 {'zeta_notation': 'DZP', 'shape': 0, 'nbands_ref': 4, 'orb_ref': 'Z'}, 
+                                 {'zeta_notation': 'TZDP', 'shape': 1, 'nbands_ref': 6, 'orb_ref': 'DZP'}]})
 
         example = """
  
@@ -902,7 +942,7 @@ STRU4       trimer      18      2       1      2.6 3.2 3.8
  Save3    Level3      TZDP
  Save4    Level4      QZTP
  Save5    Level5      5ZQP
-"""
+"""     # thanks to Huanjing GONG provides this example
         fsiab = str(uuid.uuid4())
         with open(fsiab, "w") as f:
             f.write(example)
@@ -927,7 +967,7 @@ STRU4       trimer      18      2       1      2.6 3.2 3.8
         result = read_siab_inp("SIAB/example_Si/SIAB_INPUT")
         result = unpack_siab_input(result, pseudo)
         self.assertEqual(len(result), 5)
-        self.assertDictEqual(result[0], dict(zip(['dimer', 'trimer'], [[1.8, 2.0, 2.3, 2.8, 3.8], [1.9, 2.1, 2.6]])))
+        self.assertEqual(result[0], list(zip(['dimer', 'trimer'], [[1.8, 2.0, 2.3, 2.8, 3.8], [1.9, 2.1, 2.6]])))
         self.assertListEqual(result[1], [
             {'pseudo_dir': '/root/abacus-develop/pseudopotentials/SG15_ONCV_v1.0_upf', 
              'ecutwfc': 100, 'bessel_nao_rcut': [6, 7], 'smearing_sigma': 0.01, 
@@ -1076,6 +1116,30 @@ STRU4       trimer      18      2       1      2.6 3.2 3.8
         self.assertEqual(result, 8)
         result = nbands_from_str("all", "trimer", 6)
         self.assertEqual(result, 18)
+
+    def test_cal_nbands_fill_lmax(self):
+        minimal_basis = [["1S", "2S"]] # Be
+        zval = 4.0
+        result = cal_nbands_fill_lmax(minimal_basis, zval, 2) # want d orbital
+        self.assertEqual(result, 11)
+
+        minimal_basis = [["1S", "2S"], ["2P"]] # B
+        zval = 5.0
+        result = cal_nbands_fill_lmax(minimal_basis, zval, 2) # want d orbital
+        self.assertEqual(result, 11)
+
+        minimal_basis = [["5S", "6S"], ["5P"], ["5D"], ["4F"]]
+        zval = 26.0
+        result = cal_nbands_fill_lmax(minimal_basis, zval, 2) # want only up to d
+        self.assertEqual(result, 13)
+
+        result = cal_nbands_fill_lmax(minimal_basis, zval, 3) # want only up to f
+        self.assertEqual(result, 13) # because already has f electrons
+        # f therefore can be effectively sampled
+
+        result = cal_nbands_fill_lmax(minimal_basis, zval, 4) # up to g orbital
+        self.assertEqual(result, 65)
+
 
 if __name__ == "__main__":
     unittest.main()
