@@ -418,7 +418,7 @@ def abacus_params():
 
 def cal_nbands_fill_lmax(minimal_basis: list, zval: int, lmax: int) -> int:
     """
-    WANRING: Only for use from single isolated atom case!
+    WARNING: Only for use from single isolated atom case!
 
     according to minimal_basis, select an appropriate value to include explicit calculation on states involving hydrogen-like
     orbitals with angular momentum up to lmax.
