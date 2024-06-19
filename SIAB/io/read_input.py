@@ -243,7 +243,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float):
                 result[irs][key] = value
     # set monomer
     if need_monomer:
-        nbands_monomer = cal_nbands_fill_lmax(minimal_basis, z_val, lmax_monomer)
+        nbands_monomer = cal_nbands_fill_lmax(minimal_basis, z_val, lmax_monomer) # fill the lmax shell
         result[shape_index_mapping.index("monomer")].update(
             {"lmaxmax": lmax_monomer, "nbands": nbands_monomer})
     return result
@@ -416,7 +416,7 @@ def abacus_params():
             keys.append(key)
     return keys
 
-def cal_nbands_fill_lmax(minimal_basis: list, zval: int, lmax: int) -> int:
+def cal_nbands_fill_lmax(minimal_basis: list, zval: int, lmax: int, fill_lmax: bool = True) -> int:
     """
     WARNING: Only for use from single isolated atom case!
 
@@ -438,7 +438,10 @@ def cal_nbands_fill_lmax(minimal_basis: list, zval: int, lmax: int) -> int:
     # electrons will fill orbitals like -> H to Og (118)
     seq = ["1S", "2S", "2P", "3S", "3P", "4S", "3D", "4P", "5S", "4D", "5P", "6S", "4F", "5D", "6P", "7S", "5F", "6D", "7P"]
     occ = {"S": 2, "P": 6, "D": 10, "F": 14, "G": 18}
-    nelec = [1, 5, 21, 58]
+    # the first and the last element that fills shell of lmax.
+    # S: 1, Hydrogen; P: 5, Boron; D: 21, Scandium; F: 58, Cerium;
+    # S: 2, Helium;   P: 10, Neon; D: 30, Zinc;     F: 70, Ytterbium
+    nelec = [[1, 5, 21, 58], [2, 10, 30, 70]] 
     # first flatten the minimal_basis
     flat_basis = [orb for shell in minimal_basis for orb in shell]
     ind = [seq.index(orb) for orb in flat_basis]
@@ -448,7 +451,8 @@ def cal_nbands_fill_lmax(minimal_basis: list, zval: int, lmax: int) -> int:
             core += occ[seq[i][-1]]
     #print(f"Initial guess: estimated number of electrons pseudized for present pseudopotential: {core}", flush=True)
     # calculation with pseudopotential can only calculate bands above core electrons, say for K, the first band would be of 3s, ideally
-    nbands = max(ceil(zval/2), ceil((nelec[min(lmax, 3)]-core)/2))
+    idx_nelec = 1 if fill_lmax else 0
+    nbands = max(ceil(zval/2), ceil((nelec[idx_nelec][min(lmax, 3)]-core)/2))
     nbands *= 5 if lmax > 3 else 1 # for cases there are explicitly treated f-electrons. Because there is no element with g orbitals
     return int(max(nbands, 2)) # for fixing the case of Hydrogen, zval = 1, if lmax = 0, then nbands = 1, which is not enough
 
@@ -1120,26 +1124,41 @@ STRU4       trimer      18      2       1      2.6 3.2 3.8
     def test_cal_nbands_fill_lmax(self):
         minimal_basis = [["1S", "2S"]] # Be
         zval = 4.0
-        result = cal_nbands_fill_lmax(minimal_basis, zval, 2) # want d orbital
+        result = cal_nbands_fill_lmax(minimal_basis, zval, 2, False) # want d orbital
         self.assertEqual(result, 11)
+        result = cal_nbands_fill_lmax(minimal_basis, zval, 2, True) # want d orbital to be filled
+        self.assertEqual(result, 15)
 
         minimal_basis = [["1S", "2S"], ["2P"]] # B
         zval = 5.0
-        result = cal_nbands_fill_lmax(minimal_basis, zval, 2) # want d orbital
+        result = cal_nbands_fill_lmax(minimal_basis, zval, 2, False) # want d orbital
         self.assertEqual(result, 11)
+        result = cal_nbands_fill_lmax(minimal_basis, zval, 2, True) # want d orbital to be filled
+        self.assertEqual(result, 15)
 
-        minimal_basis = [["5S", "6S"], ["5P"], ["5D"], ["4F"]]
+        minimal_basis = [["5S", "6S"], ["5P"], ["5D"], ["4F"]] # 46 electrons pseudized
         zval = 26.0
-        result = cal_nbands_fill_lmax(minimal_basis, zval, 2) # want only up to d
+        result = cal_nbands_fill_lmax(minimal_basis, zval, 2, False) # want only up to d
         self.assertEqual(result, 13)
+        result = cal_nbands_fill_lmax(minimal_basis, zval, 2, True) # want only up to d to be filled
+        self.assertEqual(result, 13) # still, d is effectively sampled
 
-        result = cal_nbands_fill_lmax(minimal_basis, zval, 3) # want only up to f
+        result = cal_nbands_fill_lmax(minimal_basis, zval, 3, False) # want only up to f
         self.assertEqual(result, 13) # because already has f electrons
         # f therefore can be effectively sampled
+        result = cal_nbands_fill_lmax(minimal_basis, zval, 3, True) # want only up to f to be filled
+        self.assertEqual(result, 13) # because already has 14 f electrons!
 
-        result = cal_nbands_fill_lmax(minimal_basis, zval, 4) # up to g orbital
-        self.assertEqual(result, 65)
+        result = cal_nbands_fill_lmax(minimal_basis, zval, 4, False) # up to g orbital
+        self.assertEqual(result, 65) # no, not possible to sample g orbital...
 
+        # test the original H case which will throw nbands < occ error by ABACUS
+        minimal_basis = [["1S"]]
+        zval = 1.0
+        result = cal_nbands_fill_lmax(minimal_basis, zval, 1, False) # want up to p, like DZP and TZDP, 2s1p and 3s2p, respecitively
+        self.assertEqual(result, 3) # 5 electrons, ceil(5/2) = 3
+        result = cal_nbands_fill_lmax(minimal_basis, zval, 1, True) # fill up to p
+        self.assertEqual(result, 5) # 10 electrons, ceil(10/2) = 5
 
 if __name__ == "__main__":
     unittest.main()
