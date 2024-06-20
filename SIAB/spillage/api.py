@@ -190,6 +190,14 @@ def jYgen_of_rcut(rcut: float, ecut: float, lmax: int, jY_type: str = "reduced")
     from SIAB.spillage.radial import build_raw, build_reduced, coeff_normalized2raw
     from SIAB.spillage.spillage import _nbes
     import numpy as np
+
+    if not isinstance(ecut, (int, float)):
+        raise ValueError("Expected ecut to be an integer or float")
+    if not isinstance(lmax, int):
+        raise ValueError("Expected lmax to be an integer")
+    if not isinstance(jY_type, str):
+        raise ValueError("Expected jY_type to be a string")
+
     nbes_rcut = [_nbes(l, rcut, ecut) for l in range(lmax + 1)] # calculate the number of "zeta" for each l
     r = np.linspace(0, rcut, int(rcut/0.01)+1) # dr is hard-coded to 0.01
     # then coefs will be, still [it][l][ibes][q], but q now should be identity, which means
@@ -201,7 +209,6 @@ def jYgen_of_rcut(rcut: float, ecut: float, lmax: int, jY_type: str = "reduced")
         coeff_raw = coeff_normalized2raw(coefs, rcut)
         chi = build_raw(coeff_raw[0], rcut, r, 0.0, True, True)
     return chi
-
 def iter_jY(calculation_settings: list, siab_settings: dict):
     """Loop over rcut values and yield jY basis"""
     import os
