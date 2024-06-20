@@ -132,3 +132,14 @@ def spillage(folders: list,
         ss_api.iter(siab_settings, calculation_settings, folders)
     return
 
+# shortcut for case optimizer = None, produce jY basis directly
+def shortcut_to_jY(calculation_settings: list,
+                   siab_settings) -> str:
+    """produce jY basis directly"""
+    optimizer = siab_settings.get("optimizer", "pytorch.SWAT")
+    optimizer = None if optimizer in ["none", "None", None] else optimizer
+    if optimizer:
+        return "no shortcut"
+    # shortcut case
+    ss_api.iter_jY(calculation_settings, siab_settings)
+    return "shortcut"

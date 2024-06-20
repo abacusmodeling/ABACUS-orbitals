@@ -184,6 +184,50 @@ def save_orb(coefs_tot, elem, ecut, rcut, nzeta, jY_type: str = "reduced"):
         os.rename(fparam, os.path.join(f"{folder}/{subfolder}", "ORBITAL_RESULTS.txt"))
         print(f"orbital saved as {forb}")
 
+def jYgen_of_rcut(rcut: float, ecut: float, lmax: int, jY_type: str = "reduced"):
+    """generate jY basis instead of zeta (the linearly combined jY). Or say the zeta 
+    function now is jY itself, the number of zeta for each l is substituted with nbes_rcut"""
+    from SIAB.spillage.radial import build_raw, build_reduced
+    from SIAB.spillage.spillage import _nbes
+    import numpy as np
+    nbes_rcut = [_nbes(l, rcut, ecut) for l in range(lmax + 1)] # calculate the number of "zeta" for each l
+    r = np.linspace(0, rcut, int(rcut/0.01)+1) # dr is hard-coded to 0.01
+    # then coefs will be, still [it][l][ibes][q], but q now should be identity, which means
+    # each [it][l] is a np.eye(nbes_rcut[l])
+    coefs = [[np.eye(nbes_rcut[l]).tolist() for l in range(lmax + 1)]]
+    if jY_type in ["reduced", "nullspace", "svd"]:
+        chi = build_reduced(coefs[0], rcut, r, True)
+    else: # it is jY_type == "raw"
+        chi = build_raw(coefs, rcut, r, 0.01, True, True)
+    return chi
+
+def iter_jY(siab_settings: dict, calculation_settings: list):
+    """Loop over rcut values and yield jY basis"""
+    import os
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from SIAB.spillage.plot import plot_chi
+    from SIAB.spillage.orbio import write_nao
+    rcuts = calculation_settings[0]["bessel_nao_rcut"]
+    ecut = calculation_settings[0]["ecutwfc"]
+    rcuts = [rcuts] if not isinstance(rcuts, list) else rcuts
+    r = np.linspace(0, rcuts[0], int(rcuts[0]/0.01)+1) # dr is hard-coded to 0.01
+    for rcut in rcuts: # can be parallelized here
+        for orb in siab_settings["orbitals"]: # loop over different levels
+            lmax = len(orb["nzeta"]) - 1
+            chi = jYgen_of_rcut(rcut, ecut, lmax, siab_settings.get("jY_type", "reduced"))
+            folder, subfolder = f"jY_lmax{lmax}", f"{rcut}au_{ecut}Ry"
+            os.makedirs(f"{folder}/{subfolder}", exist_ok=True)
+            fpng = f"jY_lmax{lmax}_{rcut}au_{ecut}Ry.png"
+            plot_chi(chi, r, save=fpng)
+            os.rename(fpng, os.path.join(f"{folder}/{subfolder}", fpng))
+            plt.close()
+            print(f"jY basis saved as {fpng}")
+            forb = fpng.replace(".png", ".orb")
+            write_nao(forb, "jY", ecut, rcut, len(r), 0.01, chi)
+            os.rename(forb, os.path.join(f"{folder}/{subfolder}", forb))
+            print(f"orbital saved as {forb}")
+
 import unittest
 class TestAPI(unittest.TestCase):
 

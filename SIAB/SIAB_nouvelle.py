@@ -133,6 +133,13 @@ def run(fname: str,
     structures, calculation_settings,\
     siab_settings, env_settings, general = sdf.initialize(fname=fname, version=siab_version)
 
+    # there is a development option that if "optimizer": None, will only output the
+    # jY basis together with ecutwfc, rcuts, lmax for each structure.
+    # this is quite useful for exploring the completeness limit of this construction
+    # of basis, if lmax is set very high.
+    shortcut = sdf.shortcut_to_jY(calculation_settings, siab_settings)
+    if shortcut == "shortcut": return
+
     # ABACUS corresponding refactor has done supporting multiple bessel_nao_rcut input
     # `folders` contains the folders for each reference shape, is a list of list of str.
     # The first dimension is the same as reference_shapes, the second dimension is the
