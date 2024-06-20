@@ -137,7 +137,7 @@ def shortcut_to_jY(calculation_settings: list,
                    siab_settings) -> str:
     """produce jY basis directly"""
     optimizer = siab_settings.get("optimizer", "pytorch.SWAT")
-    optimizer = None if optimizer in ["none", "None", None] else optimizer
+    optimizer = None if str(optimizer).lower() == "none" else optimizer
     if optimizer:
         return "no shortcut"
     # shortcut case
