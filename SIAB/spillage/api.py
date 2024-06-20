@@ -164,7 +164,7 @@ def save_orb(coefs_tot, elem, ecut, rcut, nzeta, jY_type: str = "reduced"):
             chi = build_reduced(coefs[0], rcut, r, True) # the first param should be [l][zeta][q]
         else:
             coeff_raw = coeff_normalized2raw(coefs, rcut)
-            chi = build_raw(coeff_normalized2raw(coeff_raw[0], rcut), rcut, r, 0.0, True, True)
+            chi = build_raw(coeff_raw[0], rcut, r, 0.0, True, True)
 
         syms = "SPDFGHIKLMNOQRTUVWXYZ".lower()
         nz = nzeta[i]
@@ -187,7 +187,7 @@ def save_orb(coefs_tot, elem, ecut, rcut, nzeta, jY_type: str = "reduced"):
 def jYgen_of_rcut(rcut: float, ecut: float, lmax: int, jY_type: str = "reduced"):
     """generate jY basis instead of zeta (the linearly combined jY). Or say the zeta 
     function now is jY itself, the number of zeta for each l is substituted with nbes_rcut"""
-    from SIAB.spillage.radial import build_raw, build_reduced
+    from SIAB.spillage.radial import build_raw, build_reduced, coeff_normalized2raw
     from SIAB.spillage.spillage import _nbes
     import numpy as np
     nbes_rcut = [_nbes(l, rcut, ecut) for l in range(lmax + 1)] # calculate the number of "zeta" for each l
@@ -197,22 +197,24 @@ def jYgen_of_rcut(rcut: float, ecut: float, lmax: int, jY_type: str = "reduced")
     coefs = [[np.eye(nbes_rcut[l]).tolist() for l in range(lmax + 1)]]
     if jY_type in ["reduced", "nullspace", "svd"]:
         chi = build_reduced(coefs[0], rcut, r, True)
-    else: # it is jY_type == "raw"
-        chi = build_raw(coefs, rcut, r, 0.01, True, True)
+    else:
+        coeff_raw = coeff_normalized2raw(coefs, rcut)
+        chi = build_raw(coeff_raw[0], rcut, r, 0.0, True, True)
     return chi
 
-def iter_jY(siab_settings: dict, calculation_settings: list):
+def iter_jY(calculation_settings: list, siab_settings: dict):
     """Loop over rcut values and yield jY basis"""
     import os
+    import uuid
     import numpy as np
     import matplotlib.pyplot as plt
     from SIAB.spillage.plot import plot_chi
-    from SIAB.spillage.orbio import write_nao
+    from SIAB.spillage.orbio import write_nao, write_param
     rcuts = calculation_settings[0]["bessel_nao_rcut"]
     ecut = calculation_settings[0]["ecutwfc"]
     rcuts = [rcuts] if not isinstance(rcuts, list) else rcuts
-    r = np.linspace(0, rcuts[0], int(rcuts[0]/0.01)+1) # dr is hard-coded to 0.01
     for rcut in rcuts: # can be parallelized here
+        r = np.linspace(0, rcut, int(rcut/0.01)+1) # dr is hard-coded to 0.01
         for orb in siab_settings["orbitals"]: # loop over different levels
             lmax = len(orb["nzeta"]) - 1
             chi = jYgen_of_rcut(rcut, ecut, lmax, siab_settings.get("jY_type", "reduced"))
@@ -227,6 +229,10 @@ def iter_jY(siab_settings: dict, calculation_settings: list):
             write_nao(forb, "jY", ecut, rcut, len(r), 0.01, chi)
             os.rename(forb, os.path.join(f"{folder}/{subfolder}", forb))
             print(f"orbital saved as {forb}")
+            fparam = str(uuid.uuid4())
+            write_param(fparam, chi, rcut, 0.01, "jY")
+            os.rename(fparam, os.path.join(f"{folder}/{subfolder}", "ORBITAL_RESULTS.txt"))
+    return
 
 import unittest
 class TestAPI(unittest.TestCase):
