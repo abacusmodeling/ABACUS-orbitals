@@ -388,7 +388,8 @@ def description(symbol: str, user_settings: dict):
     return {
         "element": symbol,
         "pseudo_dir": user_settings["pseudo_dir"],
-        "pseudo_name": user_settings["pseudo_name"]
+        "pseudo_name": user_settings["pseudo_name"],
+        "skip_abacus": user_settings.get("optimizer") in ["none", "restart"]
     }
 
 def unpack_siab_input(user_settings: dict, pseudopotential: dict):

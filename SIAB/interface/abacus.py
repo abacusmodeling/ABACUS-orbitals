@@ -329,6 +329,9 @@ def run_all(general: dict,
     """iterately calculate planewave wavefunctions for reference shapes and bond lengths"""
     element = general["element"]
     folders = []
+    if general.get("skip_abacus", False):
+        print("INFO: required by orbital generation setting the \'optimizer\' = \'none\'/\'restart\', skip abacus.", flush=True)
+        return [[f"{element}-virtual-folder"]]
     for isp, shape in enumerate(structures):
         shape, bond_lengths = shape
         folders_istructure = []

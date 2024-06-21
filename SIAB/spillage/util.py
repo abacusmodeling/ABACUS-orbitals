@@ -23,6 +23,7 @@ def initialize(calculation_settings, siab_settings, folders):
         # and the "abacus_setup" is then expanded to the corresponding folder
         # therefore this setup is to expand the "folder" key to the corresponding folder
         # list
-        orbital["folder"] = folders[orbital["folder"]]
+        i = orbital["folder"] if siab_settings.get("optimizer", "none") not in ["none", "restart"] else 0
+        orbital["folder"] = folders[i]
 
     return siab_settings
