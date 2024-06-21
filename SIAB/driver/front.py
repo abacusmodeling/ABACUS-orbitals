@@ -125,10 +125,10 @@ def spillage(folders: list,
     ```
     """
     # iteratively generate numerical atomic orbitals here
-    optimizer = siab_settings.get("optimizer", "pytorch.SWAT")
-    if optimizer == "pytorch.SWAT":
-        ssps_api.iter(siab_settings=siab_settings, calculation_settings=calculation_settings)
-    elif optimizer == "bfgs":
+    optimizer = siab_settings.get("optimizer", "none").lower()
+    if optimizer in ["pytorch.swat"]:
+        ssps_api.iter(siab_settings, calculation_settings)
+    elif optimizer in ["none", "restart", "bfgs"]:
         ss_api.iter(siab_settings, calculation_settings, folders)
-    return
-
+    else:
+        raise ValueError(f"Unsupported optimizer setting: {optimizer}")
