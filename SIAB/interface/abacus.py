@@ -330,7 +330,8 @@ def run_all(general: dict,
     element = general["element"]
     folders = []
     if general.get("skip_abacus", False):
-        print("INFO: required by orbital generation setting the \'optimizer\' = \'none\'/\'restart\', skip abacus.", flush=True)
+        # Skipping calculations as per the configuration to optimize performance
+        print("INFO: required by orbital generation setting the 'optimizer' = 'none'/'restart', skip abacus.", flush=True)
         return [[f"{element}-virtual-folder"]]
     for isp, shape in enumerate(structures):
         shape, bond_lengths = shape
