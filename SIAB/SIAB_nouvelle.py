@@ -150,6 +150,8 @@ def run(fname: str,
                          env_settings=env_settings,
                          test=test)
     
+# TODO: Remove `siab_version` in future versions as it will be deprecated
+sdf.spillage(folders=folders, calculation_settings=calculation_settings, siab_settings=siab_settings, siab_version=siab_version)
     # then call optimizer
     # in new version, the original pytorch.SWAT is moved into folder spillage, as one of the
     # submodules of spillage. 
