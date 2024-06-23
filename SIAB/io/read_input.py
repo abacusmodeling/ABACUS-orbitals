@@ -447,17 +447,18 @@ def cal_nbands_fill_lmax(minimal_basis: list, zval: int, lmax: int, fill_lmax: b
     for i in range(max(ind)): # I must proceed in this way because I am not sure if the pseudization of electrons are in order
         if seq[i] not in flat_basis: # which means the electron is pseudized
             core += occ[seq[i][-1]]
+    print(f"Autoset: # of pseudized electrons estimated to be: {core}", flush=True)
 
     # the first and the last element that fills shell of lmax.
     # S: 1, Hydrogen; P: 5, Boron; D: 21, Scandium; F: 58, Cerium;
     # S: 2, Helium;   P: 10, Neon; D: 30, Zinc;     F: 70, Ytterbium
     # nelec_max: the maximal number of electrons for each l and each period (can fill up to lmax orbitals)
     # nelec_min: the minimal number of electrons for each l and each period (can reach to lmax orbitals)
-    nelec_max = [[2, 4, 12, 20, 38, 56, 88, 120], [10, 18, 36, 54, 86, 118], 
-                 [30, 48, 80, 112], [70, 102]]
-    nelec_min = [[1, 3, 11, 19, 37, 55, 87, 119], [5, 13, 31, 49, 81, 113],
-                 [21, 39, 57, 89], [58, 90]]
-    nelec_ref = nelec_max if fill_lmax else nelec_min
+    z_max = [[2, 4, 12, 20, 38, 56, 88, 120], [10, 18, 36, 54, 86, 118], 
+             [30, 48, 80, 112], [70, 102]]
+    z_min = [[1, 3, 11, 19, 37, 55, 87, 119], [5, 13, 31, 49, 81, 113],
+             [21, 39, 57, 89], [58, 90]]
+    z_ref = z_max if fill_lmax else z_min
     
     # for long-sp case, the element always explicit has s and p electrons but has been after the first element that can fill the d
     # orbital, thus the number of electrons needed to fill d is calculated to be negative number in the past, will result in zval/2
@@ -471,26 +472,30 @@ def cal_nbands_fill_lmax(minimal_basis: list, zval: int, lmax: int, fill_lmax: b
     # subshells that are not occupied are needed to be sampled by manually adding electrons/ bands
     l_occ = [True if len(minimal_basis[i]) > 0 else False for i in range(len(minimal_basis))]
     assert len(l_occ) <= lmax, "lmax smaller than minimal basis"
-    l_occ = l_occ + [False]*(lmax - len(l_occ))
-    l_tofill = [l for l in range(lmax) if not l_occ[l]]
+    l_occ = l_occ + [False]*(lmax + 1 - len(l_occ))
+    l_tofill = [l for l in range(lmax + 1) if not l_occ[l]]
 
-    nelec_needed = 0
+    print("Autoset: pseudopotential valence treated subshells: ", minimal_basis, flush=True)
+    print("Autoset: angular momentum of subshells needed to sample additionally:", l_tofill, flush=True)
+
+    zval_needed = 0
     for l in l_tofill:
         if l > 3: 
             print(f"Warning: l = {l} > 3, but there is no element with g orbitals", flush=True)
             continue
-        nelec_delta = [n - core for n in nelec_ref[l] if n - core >= 0]
-        nelec_needed = max(nelec_needed, min(nelec_delta))
-        print(f"Autoset: fill l = {l} orbitals, needed # of extra electrons to fill: {nelec_needed}", flush=True)
-    nbands = max(ceil(zval/2), ceil(nelec_needed/2))
+        z_delta = [z - core for z in z_ref[l] if z >= (zval + core)]
+        zval_needed = max(zval_needed, min(z_delta))
+        print(f"Autoset: fill (next/not pseudized) l = {l} orbitals, need {zval_needed - zval} additional electrons", flush=True)
+    nbands = max(ceil(zval/2), ceil(zval_needed/2))
 
-    if zval > nelec_needed:
-        print(f"Autoset: zval = {zval} > nelec_needed = {nelec_needed}. But due to smearing, will add additional 5 nbands", flush=True)
+    if zval > zval_needed:
+        print(f"Autoset: zval = {zval} > zval_needed = {zval_needed}. But due to smearing, will add additional 5 nbands", flush=True)
         nbands += 5
     
     # for g-orbital case
     nbands *= 5 if lmax > 3 else 1 # for cases there are explicitly treated f-electrons. Because there is no element with g orbitals
-    if lmax > 3: print("Warning: lmax > 3, to sample as much as possible, multiply nbands by 5", flush=True)
+    if lmax > 3:
+        print("Warning: lmax > 3, to sample as much as possible, multiply nbands by 5", flush=True)
     
     # for hydrogen case, needed?
     return int(max(nbands, 2)) # for fixing the case of Hydrogen, zval = 1, if lmax = 0, then nbands = 1, which is not enough
