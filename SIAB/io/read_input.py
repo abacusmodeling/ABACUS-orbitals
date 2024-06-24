@@ -220,7 +220,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float):
     for iorb in range(len(user_settings["orbitals"])):
         val = user_settings["orbitals"][iorb]["shape"]
         index_shape = shape_index_mapping.index(val) if not isinstance(val, int) else val
-        if user_settings["orbitals"][iorb]["zeta_notation"].endswith("P"):
+        if user_settings["orbitals"][iorb]["zeta_notation"][-1] == "P":
             with_polarization[index_shape] = True
     # monomer is special, it is used as initial guess for spillage optimization, therefore it should have all possible
     # lmax values, therefore the maximal one over all reference systems
