@@ -198,7 +198,7 @@ def nbands_from_str(option: str|float|int, shape: str, z_val: float):
             return eval(option.replace("occ", str(occ)))
     return int(option)
 
-def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float):
+def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float, z_core: float):
 
     # copy all possible shared parameters (shared by all reference systems)
     all_params = abacus_params()
@@ -243,7 +243,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float):
                 result[irs][key] = value
     # set monomer
     if need_monomer:
-        nbands_monomer = cal_nbands_fill_lmax(minimal_basis, z_val, lmax_monomer) # fill the lmax shell
+        nbands_monomer = cal_nbands_fill_lmax(z_val, z_core, lmax_monomer) # fill the lmax shell
         result[shape_index_mapping.index("monomer")].update(
             {"lmaxmax": lmax_monomer, "nbands": nbands_monomer})
     return result
@@ -397,10 +397,12 @@ def unpack_siab_input(user_settings: dict, pseudopotential: dict):
     input setting of abacus, orbital generation settings, environmental settings and general description
     """
     # get value from the dict returned by function from_pseudopotential
+    from SIAB.data.interface import PERIODIC_TABLE_TOINDEX
     properties = ["element", "minimal_basis", "z_val"]
     symbol, minimal_basis, z_val = map(from_pseudopotential(pseudopotential).get, properties)
+    z_core = PERIODIC_TABLE_TOINDEX[symbol] - z_val
     structures = structure_settings(user_settings)
-    abacus = abacus_settings(user_settings, minimal_basis, z_val)
+    abacus = abacus_settings(user_settings, minimal_basis, z_val, z_core)
     siab = siab_settings(user_settings, minimal_basis, z_val)
     env = environment_settings(user_settings)
     general = description(symbol, user_settings)
@@ -417,38 +419,23 @@ def abacus_params():
             keys.append(key)
     return keys
 
-def cal_nbands_fill_lmax(minimal_basis: list, zval: int, lmax: int, fill_lmax: bool = True) -> int:
+def cal_nbands_fill_lmax(zval: int, zcore: int, lmax: int, fill_lmax: bool = True) -> int:
     """
     WARNING: Only for use from single isolated atom case!
 
-    according to minimal_basis, select an appropriate value to include explicit calculation on states involving hydrogen-like
+    according to Hund's rule, select an appropriate value to include explicit calculation on states involving hydrogen-like
     orbitals with angular momentum up to lmax.
-    
-    Args:
-    minimal_basis: list, the minimal basis set of pseudopotential. For K (Potassium), it can be [["3S", "4S"], ["3P"]]
-    zval: int, the valence electrons in pseudopotential. For K, it is 9 (3s2 3p6 4s1)
-    lmax: int, the maximal angular momentum to include in the calculation. For example for K, if want to include 3d states, lmax=2
 
-    Still take example of K, nbands for a isolated K atom should be no less than 9/2, but to fill up to 3d orbital, should be
-    21 (# of electrons of Sc, the first element with 3d orbital occupied)
-    - (2 + 2 + 6) (# of electrons pseudized)
-    = 11
-    therfore nbands should be at least ceiling(11/2) = 6
+    Args:
+        zval (int): the number of valence electrons, always can be founded in PP_HEADER.attrib.z_valence
+        zcore (int): the number of core electrons, equals to Z - zval
+        lmax (int): the maximal angular momentum to include in the calculation
+        fill_lmax (bool): if True, fill up to lmax, otherwise reach to lmax
+    
+    Returns:
+        int: the number of bands to include in the calculation
     """
     from numpy import ceil
-    # electrons will fill orbitals like -> H to Og (118)
-    seq = ["1S", "2S", "2P", "3S", "3P", "4S", "3D", "4P", "5S", "4D", "5P", "6S", "4F", "5D", "6P", "7S", "5F", "6D", "7P"]
-    occ = {"S": 2, "P": 6, "D": 10, "F": 14, "G": 18}
-
-    # first flatten the minimal_basis
-    flat_basis = [orb for shell in minimal_basis for orb in shell]
-    ind = [seq.index(orb) for orb in flat_basis]
-    core = 0 # then calculate how many electrons are pseudized
-    for i in range(max(ind)): # I must proceed in this way because I am not sure if the pseudization of electrons are in order
-        if seq[i] not in flat_basis: # which means the electron is pseudized
-            core += occ[seq[i][-1]]
-    print(f"Autoset: # of pseudized electrons estimated to be: {core}", flush=True)
-
     # the first and the last element that fills shell of lmax.
     # S: 1, Hydrogen; P: 5, Boron; D: 21, Scandium; F: 58, Cerium;
     # S: 2, Helium;   P: 10, Neon; D: 30, Zinc;     F: 70, Ytterbium
@@ -459,46 +446,22 @@ def cal_nbands_fill_lmax(minimal_basis: list, zval: int, lmax: int, fill_lmax: b
     z_min = [[1, 3, 11, 19, 37, 55, 87, 119], [5, 13, 31, 49, 81, 113],
              [21, 39, 57, 89], [58, 90]]
     z_ref = z_max if fill_lmax else z_min
-    
-    # for long-sp case, the element always explicit has s and p electrons but has been after the first element that can fill the d
-    # orbital, thus the number of electrons needed to fill d is calculated to be negative number in the past, will result in zval/2
-    # band autoset but is not enough when smearing is switched on. Therefore to sample d orbitals, it is the d in the next period 
-    # rather than the d in the current period that is needed to be filled.
     print(f"Autoset: adding orbitals... will add electrons to l = {lmax} orbitals according to Hund's rule", flush=True)
     strategy = "\'fill up to\'" if fill_lmax else "\'reach to\'"
     print(f"Autoset: strategy {strategy} lmax = {lmax} subshell", flush=True)
-    
-    # there are already some orbitals sampled by minimal basis (valence treated electrons in pseudopotential), thus only those
-    # subshells that are not occupied are needed to be sampled by manually adding electrons/ bands
-    l_occ = [True if len(minimal_basis[i]) > 0 else False for i in range(len(minimal_basis))]
-    assert len(l_occ) <= lmax, "lmax smaller than minimal basis"
-    l_occ = l_occ + [False]*(lmax + 1 - len(l_occ))
-    l_tofill = [l for l in range(lmax + 1) if not l_occ[l]]
-
-    print("Autoset: pseudopotential valence treated subshells: ", minimal_basis, flush=True)
-    print("Autoset: angular momentum of subshells needed to sample additionally:", l_tofill, flush=True)
-
-    zval_needed = 0
-    for l in l_tofill:
-        if l > 3: 
-            print(f"Warning: l = {l} > 3, but there is no element with g orbitals", flush=True)
-            continue
-        z_delta = [z - core for z in z_ref[l] if z >= (zval + core)]
-        zval_needed = max(zval_needed, min(z_delta))
-        print(f"Autoset: fill (next/not pseudized) l = {l} orbitals, need {zval_needed - zval} additional electrons", flush=True)
-    nbands = max(ceil(zval/2), ceil(zval_needed/2))
-
-    if zval > zval_needed:
-        print(f"Autoset: zval = {zval} > zval_needed = {zval_needed}. But due to smearing, will add additional 5 nbands", flush=True)
-        nbands += 5
-    
-    # for g-orbital case
-    nbands *= 5 if lmax > 3 else 1 # for cases there are explicitly treated f-electrons. Because there is no element with g orbitals
     if lmax > 3:
-        print("Warning: lmax > 3, to sample as much as possible, multiply nbands by 5", flush=True)
+        print(f"WARNING: lmax > 3, will add g-orbital, which is not possible for all ground state atoms", flush=True)
+    # for all l <= lmax, find the minimal number of electrons that can fill up to lmax orbitals
+    nelec = zval
+    for l in range(min(lmax, 4) + 1):
+        nelec_l = min([z for z in z_ref[l] if z >= zcore]) - zcore
+        nelec = max(nelec, nelec_l)
+    print(f"Autoset: minimal number of electrons to fill up to l = {min(lmax, 3)} is {nelec}", flush=True)
+    nbands = ceil(nelec/2)
+    nbands += 5 if nelec == zval else 0 # for the case low lmax is specified
+    nbands *= 5 if lmax > 3 else 1 # for g-orbital which is definitely not possible for all ground state atoms
     
-    # for hydrogen case, needed?
-    return int(max(nbands, 2)) # for fixing the case of Hydrogen, zval = 1, if lmax = 0, then nbands = 1, which is not enough
+    return int(nbands)
 
 ABACUS_INPUT_TEMPLATE = """INPUT_PARAMETERS
 #Parameters (1.General)
@@ -1166,43 +1129,11 @@ STRU4       trimer      18      2       1      2.6 3.2 3.8
         self.assertEqual(result, 18)
 
     def test_cal_nbands_fill_lmax(self):
-        minimal_basis = [["1S", "2S"]] # Be
-        zval = 4.0
-        result = cal_nbands_fill_lmax(minimal_basis, zval, 2, False) # want d orbital
-        self.assertEqual(result, 11)
-        result = cal_nbands_fill_lmax(minimal_basis, zval, 2, True) # want d orbital to be filled
-        self.assertEqual(result, 15)
-
-        minimal_basis = [["1S", "2S"], ["2P"]] # B
-        zval = 5.0
-        result = cal_nbands_fill_lmax(minimal_basis, zval, 2, False) # want d orbital
-        self.assertEqual(result, 11)
-        result = cal_nbands_fill_lmax(minimal_basis, zval, 2, True) # want d orbital to be filled
-        self.assertEqual(result, 15)
-
-        minimal_basis = [["5S", "6S"], ["5P"], ["5D"], ["4F"]] # 46 electrons pseudized
-        zval = 26.0
-        result = cal_nbands_fill_lmax(minimal_basis, zval, 2, False) # want only up to d
-        self.assertEqual(result, 13)
-        result = cal_nbands_fill_lmax(minimal_basis, zval, 2, True) # want only up to d to be filled
-        self.assertEqual(result, 13) # still, d is effectively sampled
-
-        result = cal_nbands_fill_lmax(minimal_basis, zval, 3, False) # want only up to f
-        self.assertEqual(result, 13) # because already has f electrons
-        # f therefore can be effectively sampled
-        result = cal_nbands_fill_lmax(minimal_basis, zval, 3, True) # want only up to f to be filled
-        self.assertEqual(result, 13) # because already has 14 f electrons!
-
-        result = cal_nbands_fill_lmax(minimal_basis, zval, 4, False) # up to g orbital
-        self.assertEqual(result, 65) # no, not possible to sample g orbital...
-
-        # test the original H case which will throw nbands < occ error by ABACUS
-        minimal_basis = [["1S"]]
-        zval = 1.0
-        result = cal_nbands_fill_lmax(minimal_basis, zval, 1, False) # want up to p, like DZP and TZDP, 2s1p and 3s2p, respecitively
-        self.assertEqual(result, 3) # 5 electrons, ceil(5/2) = 3
-        result = cal_nbands_fill_lmax(minimal_basis, zval, 1, True) # fill up to p
-        self.assertEqual(result, 5) # 10 electrons, ceil(10/2) = 5
+        result = cal_nbands_fill_lmax(1, 0, 1) # Hydrogen, lmax = 1
+        self.assertEqual(result, 5)
+        result = cal_nbands_fill_lmax(10, 46, 3) # Barium, lmax = 3
+        self.assertEqual(result, 12)
+        # what is strange is Barium pseudopotential take reference state as 6s1 5d1 instead of 6s2...
 
 if __name__ == "__main__":
     unittest.main()
