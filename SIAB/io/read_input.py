@@ -453,7 +453,7 @@ def cal_nbands_fill_lmax(zval: int, zcore: int, lmax: int, fill_lmax: bool = Tru
         print(f"WARNING: lmax > 3, will add g-orbital, which is not possible for all ground state atoms", flush=True)
     # for all l <= lmax, find the minimal number of electrons that can fill up to lmax orbitals
     nelec = zval
-    for l in range(min(lmax, 4) + 1):
+    for l in range(min(lmax, 3) + 1):
         nelec_l = min([z for z in z_ref[l] if z >= zcore]) - zcore
         nelec = max(nelec, nelec_l)
     print(f"Autoset: minimal number of electrons to fill up to l = {min(lmax, 3)} is {nelec}", flush=True)
