@@ -1,20 +1,23 @@
 # ABACUS-orbitals
+Welcome to the new version of ABACUS Numerical Atomic Orbital Generation code development repository. We are still working on optimizing the quality of orbital by trying new formulation, new optimization algorithm and strategy. Our goal is to publish orbitals that can be used for not only ground-state involved cases but also for some excitation calculation. Once meet problem, bug in orbital generation, we suggest submit issue on ABACUS Github repository: https://github.com/deepmodeling/abacus-develop.
 ## Configuration
-### Virtual environment
-*WE STRONGLY RECOMMEND TO SETUP A NEW CONDA ENVIRONMENT/VIRTUAL ENVIRONMENT FOR ABACUS-ORBITALS.*
+### Shortcut: for Bohrium(R) users
+We have published a configured Bohrium images for users want to save their time as much as possible. You can register in [Bohrium Platform](https://bohrium.dp.tech/), set-up one new container and use Bohrium image `registry.dp.tech/dptech/prod-16047/apns:orbgen`. Then `conda activate orbgen`.
+### General: Virtual environment
+*WE STRONGLY RECOMMEND TO SETUP A NEW CONDA ENVIRONMENT/VIRTUAL ENVIRONMENT FOR ABACUS-ORBITALS BECAUSE IT CAN AUTOMATTICALLY LINK YOUR Pytorch to MKL, OTHERWISE YOU SHOULD ALWAYS ENSURE THE LINKAGE TO GET THE BEST PERFORMANCE.*
 ```bash
 git clone https://github.com/kirk0830/abacus_orbital_generation.git
 cd abacus_orbital_generation
 ```
-Option1: If you prefer to use conda, then run the following commands to create a new conda environment and activate it.
+Option1 (the most recommended): If you prefer to use conda, then run the following commands to create a new conda environment and activate it.
 ```bash
-conda create -n abacus_orbitals
-conda activate abacus_orbitals
+conda create -n orbgen
+conda activate orbgen
 ```
 Option2: If you prefer to use virtual environment, then run the following commands to create a new virtual environment and activate it.
 ```bash
-python3 -m venv abacus_orbitals
-source abacus_orbitals/bin/activate
+python3 -m venv orbgen
+source orbgen/bin/activate
 ```
 ### Installations
 *PERFORMANCE NOTE: WE RECOMMEND USE CONDA TO INSTALL `pytorch` PACKAGE BY `conda install pytorch` FIRST AND INSTALL ALL OTHERS BY FOLLOWING INSTRUCTION BELOW*
@@ -25,7 +28,7 @@ pip install -e .
 ```
 ## Tutorial (version < 0.2.0)
 Find the tutorial in [Gitbook](https://mcresearch.github.io/abacus-user-guide/abacus-nac3.html) written by [Mohan Chen's Group](https://mcresearch.github.io/).
-## input parameter description (version < 0.2.0)
+## (discouraged) input parameter description (version < 0.2.0)
 An example of input script is shown below:
 ```bash
 # PROGRAM CONFIGURATION
@@ -98,7 +101,7 @@ In this section, user should define the orbitals to save. The parameters are lis
 * `orb_id`: the identifier of the orbital to save.
 * `zeta_notation`: the zeta notation of the orbital to save. The zeta notation is conventionally to be `SZ` (single zeta, the minimal basis), `DZP` (double zeta with one polarization function), `TZDP` (triple zeta with double polarization functions).
 
-## input parameter description (version >= 0.2.0)
+## (encouraged) input parameter description (version >= 0.2.0)
 In version >= 0.2.0, many parameters are removed due to redundancy. The input script is shown below:
 ```json
 {
@@ -154,7 +157,7 @@ In version >= 0.2.0, many parameters are removed due to redundancy. The input sc
     ]
 }
 ```
-or given in plain text:
+or given in plain text (not available yet):
 ```bash
 # PROGRAM CONFIGURATION
 environment         module load intel/2019.5.281 openmpi/3.1.4 intel-mkl/2019.5.281 intel-mpi/2019.5.281
@@ -204,11 +207,11 @@ In this section, user should define the parameters used in the electronic struct
 
 ### SIAB PARAMETERS
 In this section, user should define the parameters of SIAB. The parameters are listed below:
-* `optimizer`: the optimizer to use, can be `pytorch.SWAT`, `SimulatedAnnealing`, and optimizers from `scipy.optimize`. THIS PARAMETER IS REQUIRED.
+* `optimizer`: the optimizer to use, can be `pytorch.SWAT` or `bfgs`, THIS PARAMETER IS REQUIRED. *For devleopement use, it can be set as `none`, then the optmization on orbitals will be skipped, the output orbitals are jY basis, which will be significantly large compared with conventional ABACUS NAO.*
 * `spill_coefs`: the coefficients of 0 and 1 order derivatives of wavefunction to include in Spillage, e.g. `0.5 0.5`. THIS PARAMETER IS REQUIRED.
-* `spill_guess`: the initial guess of Spillage, can be `random`, `identity` or `atomic`. For `atomic`, an additional ABACUS calculation will run to calculate reference wavefunction of isolated atom. THIS PARAMETER IS OPTIONAL and default to be `random`.
-* `max_steps`: the maximum optimization on Spillage function to perform. THIS PARAMETER IS REQUIRED.
-* `nthreads_rcut`: the number of threads to use for optimizing orbital for each rcut, if not set, will run SIAB in serial. THIS PARAMETER IS OPTIONAL.
+* `spill_guess`: the initial guess of Spillage, can be `random`, `identity` or `atomic`. For `atomic`, an additional ABACUS calculation will run to calculate reference wavefunction of isolated atom. THIS PARAMETER IS OPTIONAL.
+* `max_steps`: the maximum optimization on Spillage function to perform. For `optimizer` as `pytorch.SWAT`, a large number is always suggested, for `bfgs`, optimization will stop if convergence or `max_steps` is reached. THIS PARAMETER IS REQUIRED.
+* `nthreads_rcut`: the number of threads to use for optimizing orbital for each rcut, if not set, will run SIAB in serial. This can significantly reduce the time cost when `optimizer` set as `pytorch.SWAT`. THIS PARAMETER IS OPTIONAL.
 
 ### REFERENCE SYSTEMS
 In this section, user should define the reference systems. Reference systems' wavefunctions are training set of numerical atomic orbitals, therefore the quailities of numerical atomic orbitals are determined by the specifications of reference systems and learning configurations. The parameters are listed below:
@@ -218,4 +221,16 @@ In this section, user should define the reference systems. Reference systems' wa
 * `bond_lengths`: the bond lengths of the reference system. The unit is Bohr, e.g. `1.8 2.0 2.3 2.8 3.8`. But if `auto` is defined, then the bond lengths will be tested automatically. THIS PARAMETER IS REQUIRED.
 * `zeta_notation`: the zeta notation of the orbital to save. The zeta notation is conventionally to be `SZ` (single zeta, the minimal basis), `DZP` (double zeta with one polarization function), `TZDP` (triple zeta with double polarization functions).
 * `orb_ref`: for hierarchically generating orbitals. Each orbital is generated based on the previous orbital. If `none` is defined, then the orbital is generated based on the reference system, however if `fix` is defined, then the orbital is generated based on the previous orbital, which means part of coefficients of TSBFs are fixed, whose values would be read from the previous orbital. THIS PARAMETER IS REQUIRED.
-* `nbands_ref`: the number of bands to refer to in the reference system, if set to `auto`, all occupied bands will be referred to.
+* `nbands_ref`: the number of bands to refer to in the reference system. For `optimizer` as `pytorch.SWAT`, if set to `auto`, all occupied bands will be referred to. For `optimizer` as `bfgs`, support flexible options like `occ` which means all occupied bands, `all` means all bands calculated, `occ+4` means `occ` with additional 4 bands.
+
+## Run
+### Common use
+Up to your case of input, either type:  
+```
+python3 path/to/the/file/SIAB_nouvelle.py -i SIAB_INPUT
+```
+if you really like the old version input, or:  
+```
+python3 path/to/the/file/SIAB_nouvelle.py -i SIAB_INPUT.json
+```
+Then you will get orbitals (*.orb) in folders named in the way: \[element\]_xxx. You can also quickly check the quality of orbital by observing the profile of orbitals plot in *.png.
