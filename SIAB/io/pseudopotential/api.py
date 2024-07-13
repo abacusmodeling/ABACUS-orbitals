@@ -1,8 +1,9 @@
 """a simple module for parsing main information from pseudopotential"""
 """With Python-xml parser, provide general parser for UPF format pseudopotential"""
 
-import SIAB.io.pseudopotential.components as sipc
+
 def parse(fname: str):
+    import SIAB.io.pseudopotential.components as sipc
     return sipc.parse(fname=fname)
 
 import SIAB.io.pseudopotential.tools.advanced as sipta
@@ -18,6 +19,12 @@ def extract_ppinfo_forsiab(fname: str):
         ],
     }"""
     parsed = parse(fname=fname)
+    if "val_conf" in parsed["PP_INFO"]["attrib"]:
+        return {
+            "element": parsed["PP_HEADER"]["attrib"]["element"],
+            "val_conf": parsed["PP_INFO"]["attrib"]["val_conf"],
+            "z_val": parsed["PP_HEADER"]["attrib"]["z_valence"]
+        }
     element, val_conf = sipta.val_conf(parsed=parsed)
     z_val = sipta.z_val(parsed=parsed)
     return {

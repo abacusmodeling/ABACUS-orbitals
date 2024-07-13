@@ -51,6 +51,12 @@ def determine_type(parsed: dict):
     if "ATOMPAW" in parsed["PP_HEADER"]["attrib"]["generated"]:
         return "ATOMPAW"
     
+    """vwr
+    vwr is a old-fashioned pseudopotential format, there are codes can convert the vwr to upf format. Then this branch
+    will be called to parse the upf format pseudopotential"""
+    if "vwr" in parsed["PP_INFO"]["data"] or "VWR" in parsed["PP_INFO"]["data"]:
+        return "VWR"
+
     raise ValueError("Pseudopotential type not recognized")
 
 def val_conf(parsed: dict):
@@ -71,6 +77,8 @@ def val_conf(parsed: dict):
         return GBRV_parser(parsed)
     elif pseudo_type == "ATOMPAW":
         return ATOMPAW_parser(parsed)
+    elif pseudo_type == "VWR":
+        return ADC_parser(parsed) # because vwr is similar to ADC
     elif pseudo_type == "GTH":
         raise ValueError("GTH pseudopotential does not have valence electron configuration information")
     else:
@@ -247,7 +255,7 @@ sublayer, be sure if this is physical and expected.
 If not happy with this, please change the code in SIAB/io/pseudopotential/tools/advanced.py""")
                 print("Sublayer defined as valence with 0-occ.:", words[0], "-> skipped")
                 continue
-            result.setdefault(words[0][-1], []).append(words[0])
+            result.setdefault(words[0][-1].upper(), []).append(words[0].upper())
             
     # then convert to list
     sequence = ["S", "P", "D", "F", "G", "H", "I", "K", "L", "M", "N"]
