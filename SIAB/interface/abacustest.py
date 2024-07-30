@@ -132,7 +132,7 @@ def setup_dft(**kwargs):
             return kwargs.get("image", PYTHON_IMAGE)
     # to distinguish between predft/rundft and postdft
     metrics = kwargs.get("metrics", None)
-    postdft = True if metrics else False
+    postdft = bool(metrics)
     # rundft specific
     sub_save_path = kwargs.get("sub_save_path", None)
     rundft = True if sub_save_path else False
