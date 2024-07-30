@@ -143,7 +143,7 @@ def setup_dft(**kwargs):
     image = find_image(command)
     example = kwargs.get("job_folders", [])
     print("Presently the key `outputs` is deprecated due to imcompleted implementation of the feature of abacustest.")
-    machine = bohrium_machine(kwargs.get("ncores", 16), kwargs.get("memory", 32), "cpu", "ali") if "ncores" in kwargs.keys() or "memory" in kwargs.keys() else None
+    machine = bohrium_machine(kwargs.get("ncores", 16), kwargs.get("memory", 32), "cpu", "ali") if "ncores" in kwargs or "memory" in kwargs else None
     # rundft specific
     group_size = kwargs.get("njobs_node", 1) # rundft specific
 
