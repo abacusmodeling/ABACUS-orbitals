@@ -47,42 +47,9 @@ def manual_submit(username, password, project_id, ncores, memory, folders):
     result_folder = submit(param)
     return result_folder
 
-def bohrium_config(**kwargs):
-    """Configure Bohrium account information
-
-    Args:
-        username (str): example: "username@aisi.ac.cn"
-        password (str): your Bohrium password
-        project_id (int): your Bohrium project id, for more information, see https://bohrium.dp.tech/projects -> "Project ID"
-
-    Returns:
-        bohrium settings: dict, involved in abacustest configuration
-    
-    Note:
-        However, this way is highly not recommended, because the password is stored in plain text. For abacustest, 
-        there is an alternative way in which the account and password can be read from two environment variables:
-        ```
-        export BOHRIUM_USERNAME=<bohrium-email>
-        export BOHRIUM_PASSWORD=<bohrium-password>
-        export BOHRIUM_PROJECT_ID=<bohrium-project-id>
-        ```
-    """
-    import os
-    # if kwargs is empty, return an empty dictionary
-    if not kwargs:
-        return {}
-    # if there are already set environment variables, return an empty dictionary
-    if {"BOHRIUM_USERNAME", "BOHRIUM_PASSWORD", "BOHRIUM_PROJECT_ID"}.issubset(os.environ.keys()):
-        return {} # abacustest will read from environment variables, dont worry
-    username = kwargs.get("bohrium.account", None)
-    password = kwargs.get("bohrium.password", None)
-    project_id = kwargs.get("project_id", None)
-    assert username and password and project_id, "Please provide Bohrium username, password, and project id."
-    return {
-        "bohrium_username": username,
-        "bohrium_password": password,
-        "bohrium_project_id": project_id
-    }
+    username = kwargs.get("bohrium.account", os.getenv("BOHRIUM_USERNAME"))
+    password = kwargs.get("bohrium.password", os.getenv("BOHRIUM_PASSWORD"))
+    project_id = kwargs.get("project_id", os.getenv("BOHRIUM_PROJECT_ID"))
 
 def bohrium_machine(ncores: int, memory: float, device: str, supplier: str):
     """Configure Bohrium machine information
