@@ -192,9 +192,9 @@ def nbands_from_str(option: str|float|int, shape: str, z_val: float):
         if option == "auto":
             return "auto"
         if option == "all":
-            return int(natom_from_shape(shape)*z_val)
+            return int(max(natom_from_shape(shape)*z_val, 2))
         if option.startswith("occ"):
-            occ = int(natom_from_shape(shape)*z_val/2)
+            occ = int(max(natom_from_shape(shape)*z_val/2, 1))
             return eval(option.replace("occ", str(occ)))
     return int(option)
 
@@ -229,7 +229,10 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float, z_co
         # auto set nbands if for reference system the nbands is set to "auto"
         nbands = refsys[irs].get("nbands", "auto")
         shape = refsys[irs]["shape"]
-        nbands = nbands if nbands != "auto" else int(natom_from_shape(shape)*z_val)
+        trial = natom_from_shape(shape)*z_val
+        if trial < 1:
+            print(f"WARNING: the number of valence electrons is less than 1, set nbands to 2.")
+        nbands = nbands if nbands != "auto" else int(max(natom_from_shape(shape)*z_val, 2))
         # auto set lmaxmax
         lmaxmax = len(minimal_basis) if (with_polarization[irs] and [] not in minimal_basis) else len(minimal_basis) - 1
         lmax_monomer = max(lmax_monomer, lmaxmax)
