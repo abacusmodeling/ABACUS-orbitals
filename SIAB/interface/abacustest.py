@@ -47,9 +47,6 @@ def manual_submit(username, password, project_id, ncores, memory, folders):
     result_folder = submit(param)
     return result_folder
 
-    username = kwargs.get("bohrium.account", os.getenv("BOHRIUM_USERNAME"))
-    password = kwargs.get("bohrium.password", os.getenv("BOHRIUM_PASSWORD"))
-    project_id = kwargs.get("project_id", os.getenv("BOHRIUM_PROJECT_ID"))
 
 def bohrium_machine(ncores: int, memory: float, device: str, supplier: str):
     """Configure Bohrium machine information
