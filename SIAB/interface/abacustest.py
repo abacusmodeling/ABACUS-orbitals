@@ -83,7 +83,7 @@ def prepare_dft(**kwargs):
     result = {}
     keys, vals = abacus_default()
     for key in keys:
-        if key in kwargs.keys() and not key in ["pseudo_dir", "orbital_dir"]:
+        if key in kwargs and key not in ["pseudo_dir", "orbital_dir"]:
             result.setdefault("mix_input", {})[key] = kwargs[key] if isinstance(kwargs[key], list) else [kwargs[key]]
     result.update({"example_template": kwargs.get("folders", [])})
     result.update(dict(zip(["input_template", "stru_template", "kpt_template"], 
