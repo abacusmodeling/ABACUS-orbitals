@@ -105,7 +105,7 @@ def prepare_dft(**kwargs):
     result["potcar"] = kwargs.get("potcar", [])
     # seperate key-value pairs, for value who has len() attribute, save to _container, otherwise save to _rest
     _container = {key: value for key, value in result.items() if hasattr(value, "__len__")}
-    _rest = {key: value for key, value in result.items() if not key in _container.keys()}
+    _rest = {key: value for key, value in result.items() if key not in _container}
     _container = {key: value for key, value in _container.items() if len(value) > 0}
     _rest = {key: value for key, value in _rest.items() if value}
     return {**_container, **_rest}
