@@ -135,7 +135,7 @@ def setup_dft(**kwargs):
     postdft = bool(metrics)
     # rundft specific
     sub_save_path = kwargs.get("sub_save_path", None)
-    rundft = True if sub_save_path else False
+    rundft = bool(sub_save_path)
     # mutual keys
     switch = kwargs.get("ifrun", False)
     command = kwargs.get("command", "abacus --version")
