@@ -202,8 +202,8 @@ def setup_dft(**kwargs):
         result["metrics"] = metrics
     return result
 
-def write_abacustest_param(jobgroup_name: str, bohrium_login: dict, save_dir: str = "", prepare: dict = {},
-                           predft: dict = {}, rundft: list = [], postdft: dict = {}, export: bool = False):
+def write_abacustest_param(jobgroup_name: str, bohrium_login: dict, save_dir: str = "", prepare: dict = None,
+                           predft: dict = None, rundft: list = None, postdft: dict = None, export: bool = False):
     """Generate abacustest param.json contents
 
     Args:
@@ -218,6 +218,11 @@ def write_abacustest_param(jobgroup_name: str, bohrium_login: dict, save_dir: st
         dict: abacustest param.json contents
     """
     import time
+    prepare = prepare or {}
+    predft = predft or {}
+    rundft = rundft or []
+    postdft = postdft or {}
+    
     save_dir = save_dir if len(save_dir) > 0 else f"abacustest-autosubmit-{time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())}"
     result = {
         "bohrium_group_name": jobgroup_name,
