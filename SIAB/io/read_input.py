@@ -218,12 +218,29 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float, z_co
     result = [template.copy() for _ in range(nsystem)]
     # then parameters cannot share
     shape_index_mapping = [v["shape"] for v in refsys]
+
+    ####################################
+    # polarization causes lmaxmax += 1 #
+    ####################################
     with_polarization = [False]*nsystem
     for iorb in range(len(user_settings["orbitals"])):
         val = user_settings["orbitals"][iorb]["shape"]
-        index_shape = shape_index_mapping.index(val) if not isinstance(val, int) else val
+        """DEVELOPE DETAILS
+        I recognize there may be the need that defining different set of bond-length lists but
+        on the same shape, for example, the dimer with different bond lengths. Also on the other
+        hand it is possible for user to use not only one set of reference structures for generating
+        one set of orbitals. Therefore the `shape` should support both scalar and list value, of
+        both int (the index) and str (the shape name) type.
+        
+        Changed at Aug 6th, 2024"""
+        val = [val] if not isinstance(val, list) else val
+        assert all([isinstance(v, str) or isinstance(v, int) for v in val])
+        # will not support the mixing of str and int in the list...
+        val = [shape_index_mapping.index(v) if isinstance(v, str) else v for v in val]
         if user_settings["orbitals"][iorb]["zeta_notation"][-1] == "P":
-            with_polarization[index_shape] = True
+            for v in val:
+                with_polarization[v] = True
+
     # monomer is special, it is used as initial guess for spillage optimization, therefore it should have all possible
     # lmax values, therefore the maximal one over all reference systems
     lmax_monomer = 0
@@ -297,12 +314,14 @@ def siab_settings(user_settings: dict, minimal_basis: list, z_val: float):
             if orbital["orb_ref"] == "none" \
             else nzetagen(orbital["orb_ref"], minimal_basis)
         # implement "occ", "occ+%d", "occ-%d" and "all" for nbands_ref
-
         # support index to link reference structures
         shape = orbital["shape"]
-        index = shapes.index(shape) if not isinstance(shape, int) else shape
-        shape = shapes[index]
-        result["orbitals"][iorb]["nbands_ref"] = nbands_from_str(orbital["nbands_ref"], shape, z_val)
+        shape = [shape] if not isinstance(shape, list) else shape
+        index = [shapes.index(s) for s in shape if not isinstance(s, int)]
+        nbands_ref = orbital["nbands_ref"]
+        nbands_ref = [nbands_ref] if not isinstance(nbands_ref, list) else nbands_ref
+        assert len(nbands_ref) == len(shape), "nbands_ref should have the same length as shape"
+        result["orbitals"][iorb]["nbands_ref"] = [nbands_from_str(n, s, z_val) for n, s in zip(nbands_ref, shape)]
         result["orbitals"][iorb]["folder"] = index
     return result
 
@@ -335,7 +354,11 @@ def environment_settings(user_settings: dict):
 def structure_settings(user_settings: dict):
     """handle with structures needed to calculate their pw wavefunctions as reference
     for fitting numerical atomic orbitals. Special case is inclusion of monomer, if
-    keyword spill_guess is set to atomic."""
+    keyword spill_guess is set to atomic.
+    
+    Return:
+        list of tuple, each tuple is (shape, bond_lengths)
+    """
     refsys = user_settings.get("reference_systems", [])
     need_monomer = True if user_settings.get("spill_guess", "random") == "atomic" else False
     need_monomer = False if "monomer" in refsys else need_monomer
@@ -343,38 +366,15 @@ def structure_settings(user_settings: dict):
     shapes.append("monomer") if need_monomer else None
     bond_lengths = [rs.get("bond_lengths", "auto") for rs in refsys] # list of list of float
     bond_lengths.append("auto") if need_monomer else None
-    """a bug can occur here if:
-    ```json
-    "reference_systems": [
-        {
-            "shape": "dimer",
-            "nbands": 13,
-            "nspin": 1,
-            "bond_lengths": [2.1, 2.6, 3.1, 3.7, 4.3]
-        },
-        {
-            "shape": "trimer",
-            "nbands": 18,
-            "nspin": 1,
-            "bond_lengths": [2.8, 3.4, 4.1]
-        },
-        {
-            "shape": "trimer",
-            "nbands": 18,
-            "nspin": 1,
-            "bond_lengths": [2.7, 3.0, 3.6]
-        },
-        {
-            "shape": "trimer",
-            "nbands": 18,
-            "nspin": 1,
-            "bond_lengths": [2.6, 3.2, 3.8]
-        }
-    ],
-    ```
-    To solve this, must discard the use of shape by orbital to index reference systems. Instead, use
-    list(zip(...)) instead of dict(zip(...))
-    """
+    unique_shapes = list(set(shapes))
+    _shapemap = [orb["shape"] for orb in user_settings["orbitals"]]
+    error_msg = """ERROR: there are reference systems with identical shape. In this case, should
+specify the `shape` keyword in `orbitals` section with integar as index of reference,
+instead of string like `dimer`.
+Raise ValueError, Quit..."""
+    if len(unique_shapes) != len(shapes) and not all([isinstance(s, int) for s in _shapemap]):
+        print(error_msg, flush=True)
+        raise ValueError("ERROR: see error message above")
     return list(zip(shapes, bond_lengths))
 
 def from_pseudopotential(pseudopotential: dict):
@@ -455,7 +455,10 @@ def unpack_siab_input(user_settings: dict):
     properties = ["element", "minimal_basis", "z_val"]
     symbol, minimal_basis, z_val = map(from_pseudopotential(ppinfo_).get, properties)
     z_core = PERIODIC_TABLE_TOINDEX[symbol] - z_val
+    # the section `reference_systems` in input script clearly defines the structures
+    # to calculate
     structures = structure_settings(user_settings)
+    # the following call is for generating the INPUT setting for each structure
     abacus = abacus_settings(user_settings, minimal_basis, z_val, z_core)
     siab = siab_settings(user_settings, minimal_basis, z_val)
     env = environment_settings(user_settings)

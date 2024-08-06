@@ -23,9 +23,9 @@ def initialize(calculation_settings, siab_settings, folders):
         # and the "abacus_setup" is then expanded to the corresponding folder
         # therefore this setup is to expand the "folder" key to the corresponding folder
         # list
-        i = orbital["folder"] if siab_settings.get("optimizer", "none") not in ["none", "restart"] else 0
-        if i >= len(folders):
-            raise IndexError("Folder index out of range")
-        orbital["folder"] = folders[i]
+        matmaps_ = orbital["folder"] if siab_settings.get("optimizer", "none") not in ["none", "restart"] else 0
+        orbital["folder"] = []
+        for i in matmaps_:
+            orbital["folder"].extend(folders[i])
 
     return siab_settings
