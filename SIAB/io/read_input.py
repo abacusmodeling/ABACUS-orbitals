@@ -198,7 +198,7 @@ def nbands_from_str(option: str|float|int, shape: str, z_val: float):
             return eval(option.replace("occ", str(occ)))
     return int(option)
 
-def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float, z_core: float):
+def abacus_settings(user_settings: dict, minimal_basis: list = None, z_val: float = 0, z_core: float = 0):
 
     # copy all possible shared parameters (shared by all reference systems)
     all_params = abacus_params()
@@ -208,7 +208,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float, z_co
     autoset_monomer = bool(user_settings.get("spill_guess", "random") == "atomic" \
          and len([True for s in refsys if s["shape"] == "monomer"]) == 0)
     # set `autoset_mononer` to True if spill_guess is atomic and monomer is not in reference systems
-    refsys.append({"shape": "monomer"}) if autoset_monomer and "monomer" not in refsys else None
+    refsys.append({"shape": "monomer"}) if autoset_monomer else None
     nsystem = len(refsys)
 
     b1 = (nsystem > 0 and not autoset_monomer)
@@ -230,13 +230,17 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float, z_co
     for irs in range(nsystem):
         # auto set nbands if for reference system the nbands is set to "auto"
         nbands = refsys[irs].get("nbands", "auto")
-        shape = refsys[irs]["shape"]
-        trial = natom_from_shape(shape)*z_val
-        if trial < 1:
-            print("WARNING: program possibly cannot grep reasonable `z_valence` from pseudopotential.")
-        nbands = nbands if nbands != "auto" else int(max(natom_from_shape(shape)*z_val, 2))
+        if nbands == "auto":
+            shape = refsys[irs]["shape"]
+            nelec_tot = natom_from_shape(shape)*z_val
+            if nelec_tot < 1:
+                print("WARNING: program possibly cannot grep reasonable `z_valence` from pseudopotential.")
+            nbands = int(max(nelec_tot, 2))
         # auto set lmaxmax
-        lmaxmax = len(minimal_basis) if (with_polarization[irs] and [] not in minimal_basis) else len(minimal_basis) - 1
+        lmaxmax = refsys[irs].get("lmaxmax", "auto")
+        if lmaxmax == "auto":
+            lmaxmax = len(minimal_basis) \
+            if (with_polarization[irs] and [] not in minimal_basis) else len(minimal_basis) - 1
         lmax_monomer = max(lmax_monomer, lmaxmax)
         # set nspin
         nspin = refsys[irs].get("nspin", 1)
@@ -254,7 +258,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float, z_co
     return result
 
 import SIAB.io.pseudopotential.tools.basic as siptb
-def siab_settings(user_settings: dict, minimal_basis: list, z_val: float):
+def siab_settings(user_settings: dict, minimal_basis: list, z_val: float = 0):
     """convert user_settings to SIAB settings the information needed by spillage optimization
     information is organized as follows:
     
@@ -302,7 +306,11 @@ def siab_settings(user_settings: dict, minimal_basis: list, z_val: float):
         shape = orbital["shape"]
         index = shapes.index(shape) if not isinstance(shape, int) else shape
         shape = shapes[index]
-        result["orbitals"][iorb]["nbands_ref"] = nbands_from_str(orbital["nbands_ref"], shape, z_val)
+        # autoset nbands_ref
+        nbands_ref = result["orbitals"][iorb].get("nbands_ref", "call_nbands_from_str")
+        if nbands_ref == "call_nbands_from_str":
+            nbands_ref = nbands_from_str(orbital["nbands_ref"], shape, z_val)
+        result["orbitals"][iorb]["nbands_ref"] = nbands_ref
         result["orbitals"][iorb]["folder"] = index
     return result
 
@@ -403,9 +411,10 @@ def skip_ppread(user_settings: dict):
     The psesudopotential read-in procedure will be skipped only if:
     1. all `nbands` and `nbands_ref` were specified with specific values, instead of
     strings like `auto`, `occ` or something.
-    2. all `zeta_notation` were specified either with a list of integers or a string
+    2. all `lmaxmax` were specified with a specific value for each reference_system
+    3. all `zeta_notation` were specified either with a list of integers or a string
     like SsPpDdFf, in which the capitalized letter here presents the number of orbitals
-    3. all `orb_ref` were specified with a string like `none` or a zeta_notation (that
+    4. all `orb_ref` were specified with a string like `none` or a zeta_notation (that
     can meet the requirement of 2)
     """
     import re
@@ -414,6 +423,11 @@ def skip_ppread(user_settings: dict):
     for shape in user_settings["reference_systems"]:
         if shape["nbands"] in ["auto", "occ", "all"]:
             skip = False
+            print("HINT: `nbands` is not specified with a specific value => autoset", flush=True)
+            break
+        if "lmaxmax" not in shape:
+            skip = False
+            print("HINT: `lmaxmax` is not specified => autoset", flush=True)
             break
     # case 2
     orbpat = r"(\d+[spdfgh])+" # like 2s2p1d
@@ -421,37 +435,39 @@ def skip_ppread(user_settings: dict):
         z = orbital["zeta_notation"]
         if isinstance(z, list):
             if not all([isinstance(v, int) for v in z]):
+                print("HINT: `zeta_notation` is not specified with a list of integers => autoset", flush=True)
                 skip = False
                 break
         elif isinstance(z, str) and not re.match(orbpat, z):
             skip = False
+            print("HINT: `zeta_notation` is not specified with a string like 2s2p1d => autoset", flush=True)
             break
     # case 3, the value can be "none"
     for orbital in user_settings["orbitals"]:
         z = orbital["orb_ref"]
         if isinstance(z, list):
             if not all([isinstance(v, int) for v in z]):
+                print("HINT: `orb_ref` is not specified with a list of integers => autoset", flush=True)
                 skip = False
                 break
         elif isinstance(z, str) and z != "none" and not re.match(orbpat, z):
+                print("HINT: `orb_ref` is not specified with a string like 2s2p1d => autoset", flush=True)
                 skip = False
                 break
     return skip
 
-def unpack_siab_input(user_settings: dict):
-    """unpack the SIAB input to structure (shape as key and bond lengths are list as value),
-    input setting of abacus, orbital generation settings, environmental settings and general description
-    """
+def direct_unpack(user_settings: dict):
+    structures = structure_settings(user_settings)
+    abacus = abacus_settings(user_settings)
+    raise NotImplementedError("Skipping pseudopotential read-in is not implemented yet")
+    return None, None, None, None, None
+
+def auto_unpack(user_settings: dict):
     # get value from the dict returned by function from_pseudopotential
     from SIAB.data.interface import PERIODIC_TABLE_TOINDEX
     from SIAB.io.pseudopotential.api import ppinfo
-    # move the information fetch from pseudopotential from front.py here...
-    if skip_ppread(user_settings):
-        ppinfo_ = {"element": user_settings["element"], 
-                   "minimal_basis": user_settings["minimal_basis"], 
-                   "z_val": user_settings["z_val"]}
-    else:
-        ppinfo_ = ppinfo(fname=user_settings["pseudo_name"])
+
+    ppinfo_ = ppinfo(fname=user_settings["pseudo_name"])
     properties = ["element", "minimal_basis", "z_val"]
     symbol, minimal_basis, z_val = map(from_pseudopotential(ppinfo_).get, properties)
     z_core = PERIODIC_TABLE_TOINDEX[symbol] - z_val
@@ -461,6 +477,25 @@ def unpack_siab_input(user_settings: dict):
     env = environment_settings(user_settings)
     general = description(symbol, user_settings)
     return structures, abacus, siab, env, general
+
+def unpack_siab_input(user_settings: dict):
+    """unpack the SIAB input to structure (shape as key and bond lengths are list as value),
+    input setting of abacus, orbital generation settings, environmental settings and general description
+    """
+    # move the information fetch from pseudopotential from front.py here...
+    if skip_ppread(user_settings):
+        """the logic here is, because there are pseudopotential can be parsed automatically,
+        but the range of supported are limited. For those pseudopotential that is not with
+        the format expected, user has to specify information manually. In this case there
+        are many steps not needed to proceed, so we skip the pseudopotential read-in here.
+        
+        Also, there are cases even user provides a pseudopotential that can be parsed automatically,
+        user might still want to set all things manually, in this case, the pseudopotential
+        read-in is also uncessary and therefore can be skipped."""
+        return direct_unpack(user_settings)
+    else:
+        return auto_unpack(user_settings)
+
 
 def abacus_params():
     pattern = r"^([\w]+)(\s+)([^#]+)(\s*)(#.*)?"
