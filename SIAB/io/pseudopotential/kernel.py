@@ -50,13 +50,22 @@ def postprocess(parsed: dict):
 
 def upf(fname: str):
     """parse the pseudopotential file, return a dictionary"""
+    error_msg = """ERROR: UPF file with non-XML format. Please contact with either developer
+of pseudopotential you use or the developer of this package. For the latter choice, 
+you can submit issue in Github Repository at:
+https://github.com/kirk0830/abacus_orbital_generation
+, thanks for understanding, raise TypeError and Quit..."""
     preprocess(fname)
-    tree = ET.parse(fname)
+    try:
+        tree = ET.parse(fname)
+    except ET.ParseError as e:
+        print(error_msg, flush=True)
+        raise TypeError("ERROR: Please read the error message above.")
     root = tree.getroot()
     parsed = iter_tree(root)
     postprocess(parsed)
     return parsed
-
+    
 def vwr(fname: str):
     """roughly parse the vwr pseudopotential file, which is used by
     PWmat, ABACUS, siesta(?) etc.
