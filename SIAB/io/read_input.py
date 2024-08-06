@@ -346,7 +346,7 @@ def structure_settings(user_settings: dict):
     keyword spill_guess is set to atomic."""
     refsys = user_settings.get("reference_systems", [])
     need_monomer = True if user_settings.get("spill_guess", "random") == "atomic" else False
-    need_monomer = False if "monomer" in refsys else need_monomer
+    need_monomer = False if any([rs["shape"] == "monomer" for rs in refsys]) else need_monomer
     shapes = [rs["shape"] for rs in refsys] # list of str
     shapes.append("monomer") if need_monomer else None
     bond_lengths = [rs.get("bond_lengths", "auto") for rs in refsys] # list of list of float
@@ -423,11 +423,11 @@ def skip_ppread(user_settings: dict):
     for shape in user_settings["reference_systems"]:
         if shape["nbands"] in ["auto", "occ", "all"]:
             skip = False
-            print("HINT: `nbands` is not specified with a specific value => autoset", flush=True)
+            print("AUTOSET: `nbands` is not specified with a specific value => AUTOSET", flush=True)
             break
         if "lmaxmax" not in shape:
             skip = False
-            print("HINT: `lmaxmax` is not specified => autoset", flush=True)
+            print("AUTOSET: `lmaxmax` is not specified => AUTOSET", flush=True)
             break
     # case 2
     orbpat = r"(\d+[spdfgh])+" # like 2s2p1d
@@ -435,54 +435,36 @@ def skip_ppread(user_settings: dict):
         z = orbital["zeta_notation"]
         if isinstance(z, list):
             if not all([isinstance(v, int) for v in z]):
-                print("HINT: `zeta_notation` is not specified with a list of integers => autoset", flush=True)
+                print("AUTOSET: `zeta_notation` is not specified with a list of integers => AUTOSET", flush=True)
                 skip = False
                 break
         elif isinstance(z, str) and not re.match(orbpat, z):
             skip = False
-            print("HINT: `zeta_notation` is not specified with a string like 2s2p1d => autoset", flush=True)
+            print("AUTOSET: `zeta_notation` is not specified with a string like 2s2p1d => AUTOSET", flush=True)
             break
     # case 3, the value can be "none"
     for orbital in user_settings["orbitals"]:
         z = orbital["orb_ref"]
         if isinstance(z, list):
             if not all([isinstance(v, int) for v in z]):
-                print("HINT: `orb_ref` is not specified with a list of integers => autoset", flush=True)
+                print("AUTOSET: `orb_ref` is not specified with a list of integers => AUTOSET", flush=True)
                 skip = False
                 break
         elif isinstance(z, str) and z != "none" and not re.match(orbpat, z):
-                print("HINT: `orb_ref` is not specified with a string like 2s2p1d => autoset", flush=True)
+                print("AUTOSET: `orb_ref` is not specified with a string like 2s2p1d => AUTOSET", flush=True)
                 skip = False
                 break
     return skip
-
-def direct_unpack(user_settings: dict):
-    structures = structure_settings(user_settings)
-    abacus = abacus_settings(user_settings)
-    raise NotImplementedError("Skipping pseudopotential read-in is not implemented yet")
-    return None, None, None, None, None
-
-def auto_unpack(user_settings: dict):
-    # get value from the dict returned by function from_pseudopotential
-    from SIAB.data.interface import PERIODIC_TABLE_TOINDEX
-    from SIAB.io.pseudopotential.api import ppinfo
-
-    ppinfo_ = ppinfo(fname=user_settings["pseudo_name"])
-    properties = ["element", "minimal_basis", "z_val"]
-    symbol, minimal_basis, z_val = map(from_pseudopotential(ppinfo_).get, properties)
-    z_core = PERIODIC_TABLE_TOINDEX[symbol] - z_val
-    structures = structure_settings(user_settings)
-    abacus = abacus_settings(user_settings, minimal_basis, z_val, z_core)
-    siab = siab_settings(user_settings, minimal_basis, z_val)
-    env = environment_settings(user_settings)
-    general = description(symbol, user_settings)
-    return structures, abacus, siab, env, general
 
 def unpack_siab_input(user_settings: dict):
     """unpack the SIAB input to structure (shape as key and bond lengths are list as value),
     input setting of abacus, orbital generation settings, environmental settings and general description
     """
     # move the information fetch from pseudopotential from front.py here...
+    # get value from the dict returned by function from_pseudopotential
+    from SIAB.data.interface import PERIODIC_TABLE_TOINDEX
+    from SIAB.io.pseudopotential.api import ppinfo
+    import os
     if skip_ppread(user_settings):
         """the logic here is, because there are pseudopotential can be parsed automatically,
         but the range of supported are limited. For those pseudopotential that is not with
@@ -492,9 +474,23 @@ def unpack_siab_input(user_settings: dict):
         Also, there are cases even user provides a pseudopotential that can be parsed automatically,
         user might still want to set all things manually, in this case, the pseudopotential
         read-in is also uncessary and therefore can be skipped."""
-        return direct_unpack(user_settings)
+        symbol = user_settings.get("element", "X")
+        if symbol == "X":
+            print("WARNING: `element` keyword is not specified in input, will use `X` as placeholder", flush=True)
+        minimal_basis = user_settings.get("minimal_basis", [])
+        z_val = user_settings.get("z_val", 0)
     else:
-        return auto_unpack(user_settings)
+        ppinfo_ = ppinfo(os.path.join(user_settings["pseudo_dir"], user_settings["pseudo_name"]))
+        properties = ["element", "minimal_basis", "z_val"]
+        symbol, minimal_basis, z_val = map(from_pseudopotential(ppinfo_).get, properties)
+
+    z_core = PERIODIC_TABLE_TOINDEX.get(symbol, z_val) - z_val
+    structures = structure_settings(user_settings)
+    abacus = abacus_settings(user_settings, minimal_basis, z_val, z_core)
+    siab = siab_settings(user_settings, minimal_basis, z_val)
+    env = environment_settings(user_settings)
+    general = description(symbol, user_settings)
+    return structures, abacus, siab, env, general
 
 
 def abacus_params():
@@ -535,9 +531,9 @@ def cal_nbands_fill_lmax(zval: int, zcore: int, lmax: int, fill_lmax: bool = Tru
     z_min = [[1, 3, 11, 19, 37, 55, 87, 119], [5, 13, 31, 49, 81, 113],
              [21, 39, 57, 89], [58, 90]]
     z_ref = z_max if fill_lmax else z_min
-    print(f"Autoset: adding orbitals... will add electrons to l = {lmax} orbitals according to Hund's rule", flush=True)
+    print(f"AUTOSET: adding orbitals... will add electrons to l = {lmax} orbitals according to Hund's rule", flush=True)
     strategy = "\'fill up to\'" if fill_lmax else "\'reach to\'"
-    print(f"Autoset: strategy {strategy} lmax = {lmax} subshell", flush=True)
+    print(f"AUTOSET: strategy {strategy} lmax = {lmax} subshell", flush=True)
     if lmax > 3:
         print(f"WARNING: lmax > 3, will add g-orbital, which is not possible for all ground state atoms", flush=True)
     # for all l <= lmax, find the minimal number of electrons that can fill up to lmax orbitals
@@ -545,7 +541,7 @@ def cal_nbands_fill_lmax(zval: int, zcore: int, lmax: int, fill_lmax: bool = Tru
     for l in range(min(lmax, 3) + 1):
         nelec_l = min([z for z in z_ref[l] if z >= zcore]) - zcore
         nelec = max(nelec, nelec_l)
-    print(f"Autoset: minimal number of electrons to fill up to l = {min(lmax, 3)} is {nelec}", flush=True)
+    print(f"AUTOSET: minimal number of electrons to fill up to l = {min(lmax, 3)} is {nelec}", flush=True)
     nbands = ceil(nelec/2)
     nbands += 5 if nelec == zval else 0 # for the case low lmax is specified
     nbands *= 5 if lmax > 3 else 1 # for g-orbital which is definitely not possible for all ground state atoms
