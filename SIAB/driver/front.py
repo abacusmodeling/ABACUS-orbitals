@@ -23,7 +23,6 @@ def initialize(version: str = "0.1.0",
     fpseudo = user_settings["pseudo_dir"]+"/"+user_settings["pseudo_name"]
     if not os.path.exists(fpseudo): # check the existence of pseudopotential file
         raise FileNotFoundError("Pseudopotential file %s not found"%fpseudo)
-    user_settings["pseudo_name"] = fpseudo
     unpacked = siri.unpack_siab_input(user_settings)
     return unpacked
 
