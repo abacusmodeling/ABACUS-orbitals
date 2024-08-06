@@ -38,9 +38,17 @@ S    1   1.00
       0.102741               1.000000
 """
 class GTORadials:
+    """
+    A general introduction to the Gaussian Type Orbitals (GTOs) can be found in the Wikipedia:
+    https://en.wikipedia.org/wiki/Gaussian_orbital
+    A specific introduction to the GTOs in the Gaussian format can be found here:
+    http://sobereva.com/60
 
+    In following code will use the typical notation like:
+    c for contraction coefficient, a for exponent, l for angular momentum, r for grid points.
+    """
     NumericalRadials = None # list of the radial for each type. 
-    # indexed by [it][l][ic][ig] to get (c, a), 
+    # indexed by [it][l][ic][ig] to get (a, c) of primitive GTO, 
     # it: _ of type
     # l: angular momentum
     # ic: _ of contracted GTOs of one angular momentum
@@ -64,7 +72,7 @@ class GTORadials:
             data = f.read()
         self.symbols, self.NumericalRadials = GTORadials._cgto_parse(data)
 
-    def register_cgto(self, c, a, l, elem = None, mode = 'a'):
+    def register_cgto(self, a, c, l, elem = None, mode = 'a'):
         """
         add one CGTO to the GTORadials instance, for a given l
         """
@@ -78,10 +86,12 @@ class GTORadials:
             self.symbols.append(elem)
             self.NumericalRadials.append([])
         if len(self.NumericalRadials[it]) <= l:
+            # the case there is not enough l for present type
             self.NumericalRadials[it] += [[] for i in range(l - len(self.NumericalRadials[it]) + 1)]
         if mode == 'w':
             self.NumericalRadials[it][l] = []
-        self.NumericalRadials[it][l].append(list(zip(c, a)))
+        # then append as a new CGTO, convert tuple[list[float], list[float]] to list[tuple[float, float]]
+        self.NumericalRadials[it][l].append([(a_, c_) for a_, c_ in zip(a, c)])
       
     def build(self, rgrid, normalize = True):
         """map all the radial functions for each l and cgto onto grid
@@ -104,8 +114,8 @@ class GTORadials:
                 for i in range(len(self.NumericalRadials[it][l])): # for each CGTO
                     cgto = np.zeros_like(rgrid)
                     # print(self.NumericalRadials[it][l][i])
-                    for c, a in self.NumericalRadials[it][l][i]: # for each primitive GTO
-                        cgto += GTORadials._build_gto(c, a, l, rgrid, normalize)
+                    for a, c in self.NumericalRadials[it][l][i]: # for each primitive GTO
+                        cgto += GTORadials._build_gto(a, c, l, rgrid, normalize)
                     out[it][l].append(cgto)
         return out
 
@@ -132,7 +142,7 @@ class GTORadials:
         ...
         ```
         Return:
-            out[it][l][ic][ig] = (c, a): the coefficients and exponents of the GTOs
+            out[it][l][ic][ig] = (a, c): the exponential and contraction coefficients of the primitive GTO
             it: the index of the type
             l: the angular momentum
             ic: the index of the contracted GTOs
@@ -173,11 +183,12 @@ class GTORadials:
                     lmax = max(lmax, max(l_)) # refresh the maximal angular momentum for this atom type
                     ngto = int(ngto)
                     # then read the coefficients and exponents by ngto lines:
-                    ca_ = np.array([re.split(r"\s+", line) for line in d[i+1:i+1+ngto]])
-                    c_, a_ = ca_[:, :-1].T, ca_[:, -1]
+                    ac_ = np.array([re.split(r"\s+", line) for line in d[i+1:i+1+ngto]])
+                    a_, c_ = ac_[:, 0], ac_[:, 1:]
                     a_ = [float(a.upper().replace("D", "E")) for a in a_]
+                    c_ = [[float(c.upper().replace("D", "E")) for c in ci] for ci in c_] # convert to float
                     for j, l__ in enumerate(l_): # save the GTOs read from the section
-                        out[-1][l__].append([[float(c_[j][k].upper().replace("D", "E")), float(a_[k])] for k in range(ngto)])
+                        out[-1][l__].append([(a_[k], c_[k][j]) for k in range(ngto)])
                     i += ngto
                 else:
                     print("WARNING! IGNORED LINE:", d[i])
@@ -189,7 +200,7 @@ class GTORadials:
 
         return elems, out
 
-    def _build_gto(c, a, l, r, normalize):
+    def _build_gto(a, c, l, r, normalize):
         """build one GTO with coefficients c, exponents a, and grid r"""
         import numpy as np
         g = c * np.exp(-a * r**2) * r**l
@@ -213,10 +224,28 @@ class GTORadials:
                     ngto = len(NumericalRadial[l][ic]) # number of primitive GTOs for this l and ic
                     out += f"{spectra[l]:<2s} {ngto:3d} {1:6.2f}\n"
                     for ig in range(ngto):
-                        c, a = NumericalRadial[l][ic][ig]
+                        a, c = NumericalRadial[l][ic][ig]
                         out += f"{a:22.10e} {c:22.10e}\n"
             out += "****\n" if it < ntype - 1 else ""
         return out + "\n"
+
+    def molden(self) -> str:
+        """print the GTOs in the Molden format. Different CGTO are printed as different section."""
+        spectra = ["s", "p", "d", "f", "g", "h"]
+        out = "[GTO]\n"
+        ntype = len(self.symbols)
+        for it in range(ntype): # for each type
+            out += f"{it:>8d}{'0':>8s}\n"
+            NumericalRadial = self.NumericalRadials[it]
+            for l in range(len(NumericalRadial)):
+                for ic in range(len(NumericalRadial[l])):
+                    ngto = len(NumericalRadial[l][ic])
+                    out += f"{spectra[l]:>25s}{ngto:>8d}{'1.00':>8s}\n"
+                    for ig in range(ngto):
+                        a, c = NumericalRadial[l][ic][ig]
+                        out += f"{a:>62.3f} {c:>12.3f}\n"
+            out += "\n"
+        return out
 
 def fit_radial_with_gto(nao, ngto, l, r):
     """fit one radial function mapped on grid with GTOs
@@ -229,14 +258,14 @@ def fit_radial_with_gto(nao, ngto, l, r):
     """
     from scipy.optimize import basinhopping
     import numpy as np
-    def f(c_and_a, nao=nao, ngto=ngto, l=l, r=r):
+    def f(a_and_c, nao=nao, ngto=ngto, l=l, r=r):
         """calculate the distance between the nao and superposition of GTOs of given
         angular momentum l on user defined grid points r"""
-        c, a = c_and_a[:ngto], c_and_a[ngto:]
+        a, c = a_and_c[:ngto], a_and_c[ngto:]
         assert len(c) == len(a), f"Invalid basis: {c}, {a}"
         gto = np.zeros_like(r)
         for i in range(len(c)):
-            gto += GTORadials._build_gto(c[i], a[i], l, r, False)
+            gto += GTORadials._build_gto(a[i], c[i], l, r, False)
         dorb = gto - nao
         if l == 0:
             return np.sum(dorb**2)
@@ -251,24 +280,25 @@ def fit_radial_with_gto(nao, ngto, l, r):
     # find optimal c and a values
     
     # bounds for c and a
-    bounds = [(-2, 2) for i in range(ngto)] + [(0, 5) for i in range(ngto)]
+    bounds = [(0, 5) for i in range(ngto)] + [(-np.inf, np.inf) for i in range(ngto)]
     res = basinhopping(f, init, niter=100, minimizer_kwargs={"method": "L-BFGS-B", "bounds": bounds}, disp=True)
     #res = minimize(f, init, bounds=bounds, method="L-BFGS-B", options={"maxiter": 1000, "disp": True, "ftol": 1e-10})
-    c, a = res.x[:ngto], res.x[ngto:]
+    a, c = res.x[:ngto], res.x[ngto:]
     err = res.fun
     print(f"""NAO2GTO: Angular momentum {l}, with {ngto} superposition to fit numerical atomic orbitals on given grid, 
 this method refers to H. Shang et al. Summary:\nNonlinear fitting error: {err}\nCoefficients and exponents of primitive
-Gaussian Type Orbitals (GTOs):\n{"c":>10} {"a":>10}\n---------------------""")
+Gaussian Type Orbitals (GTOs):\n{"a":>10} {"c":>10}\n---------------------""")
     for i in range(ngto):
-        print(f"{c[i]:10.6f} {a[i]:10.6f}")
-    return c, a
+        print(f"{a[i]:10.6f} {c[i]:10.6f}")
+    return a, c
 
-def convert_nao_to_gto(fnao, fgto, ngto: int = 7):
+def convert_nao_to_gto(fnao, fgto = None, ngto: int = 7):
     """convert the numerical atomic orbitals to GTOs. Each chi (or say the zeta function)
     corresponds to a CGTO (contracted GTO), and the GTOs are fitted to the radial functions.
     Which also means during the SCF, the coefficient inside each CGTO is unchanged, while the
     coefficients of CGTO will be optimized."""
     from SIAB.spillage.orbio import read_nao
+    import matplotlib.pyplot as plt
     import numpy as np
 
     gto = GTORadials()
@@ -281,40 +311,24 @@ def convert_nao_to_gto(fnao, fgto, ngto: int = 7):
     for l in range(lmax+1):
         nchi = len(nao["chi"][l])
         for i in range(nchi):
-            c, a = fit_radial_with_gto(nao["chi"][l][i], ngto, l, rgrid)
-            gto.register_cgto(c, a, l, symbol, 'a')
+            a, c = fit_radial_with_gto(nao["chi"][l][i], ngto, l, rgrid)
+            gto.register_cgto(a, c, l, symbol, 'a')
     
-    import matplotlib.pyplot as plt
-    gto_r = gto.build(rgrid)[0]
-    for l in range(lmax+1):
-        nchi = len(nao["chi"][l])
-        for i in range(nchi):
-            
-            plt.plot(rgrid, nao["chi"][l][i], label="NAO")
-            plt.plot(rgrid, gto_r[l][i], label="GTO")
-            plt.axhline(0, color="black", linestyle="--")
-            plt.legend()
-            plt.savefig(f"nao2gto_{l}_{i}.png")
+    # draw the fitted GTOs
+    out = gto.build(rgrid)
+    for it in range(len(out)):
+        for l in range(len(out[it])):
+            for ic in range(len(out[it][l])):
+                plt.plot(rgrid, out[it][l][ic], label=f"element {symbol}, l={l}, ic={ic}")
+    plt.legend()
+    plt.savefig(fnao.replace(".orb", ".gto.png"))
+    plt.close()
 
+    fgto = fnao.replace(".orb", ".gto") if fgto is None else fgto
     with open(fgto, "w") as f:
         f.write(str(gto))
-    return gto
 
-def write_molden(labels, coords, labels_kinds_map, kinds):
-    """molden is a format for visualization of molecular orbitals"""
-    from SIAB.data.interface import PERIODIC_TABLE_TOINDEX
-    info = "Writing Molden format...\n"
-    info += "Note: if pseudopotential is used, remember to add a section called [zval]\n"
-    info += "like:\n[zval]\nH 1.0\nO 6.0\n...\n"
-    print(info, flush=True)
-    out = "[Molden Format]\n"
-    out += "[Atoms] (Angstrom)\n"
-    for i, label in enumerate(labels):
-        x, y, z = coords[i]
-        out += f"{label} {i+1} {PERIODIC_TABLE_TOINDEX[kinds[labels_kinds_map[i]]]} "
-        out += f"{x:20.10f}{y:20.10f}{z:20.10f}\n"
-    out += "[GTO]\n"
-    return out
+    return gto
 
 import unittest
 class TestNAO2GTO(unittest.TestCase):
@@ -351,7 +365,7 @@ SP   1   1.00
         self.assertEqual(len(cgtos[0][1][0]), 3) # 3 primitive GTOs for the first CGTO of p
         self.assertEqual(len(cgtos[0][1][1]), 1) # 1 primitive GTOs for the second CGTO of p
         self.assertEqual(len(cgtos[0][1][2]), 1) # 1 primitive GTOs for the third CGTO of p
-    
+
     def test_build(self):
         import numpy as np
         import uuid, os
@@ -486,46 +500,85 @@ D    1   1.00
             f.write(data)
         gto_obj = GTORadials(fgto)
         os.remove(fgto) # remove the temporary file
-        print(gto_obj)
         # will return
-        """
-Ca     0
-S   14   1.00
-      2.2296400000e-04       2.0269900000e+05
-      1.7293200000e-03       3.0382500000e+04
-      9.0022600000e-03       6.9150800000e+03
-      3.6669900000e-02       1.9590200000e+03
-      1.1941000000e-01       6.4093600000e+02
-      2.9182500000e-01       2.3397700000e+02
-      4.0441500000e-01       9.2289200000e+01
-      2.9631300000e-01       3.7254500000e+01
-      1.0000000000e+00       9.1319800000e+00
-      1.0000000000e+00       3.8177900000e+00
-      1.0000000000e+00       1.0493500000e+00
-      1.0000000000e+00       4.2866000000e-01
-      1.0000000000e+00       6.2822600000e-02
-      1.0000000000e+00       2.6016200000e-02
-P   11   1.00
-      2.0598600000e-03       1.0197600000e+03
-      1.6650100000e-02       2.4159600000e+02
-      7.7764600000e-02       7.7637000000e+01
-      2.4180600000e-01       2.9115400000e+01
-      4.3257800000e-01       1.1762600000e+01
-      3.6732500000e-01       4.9228900000e+00
-      1.0000000000e+00       1.9064500000e+00
-      1.0000000000e+00       7.3690000000e-01
-      1.0000000000e+00       2.7642000000e-01
-      1.0000000000e+00       6.0270000000e-02
-      1.0000000000e+00       1.7910000000e-02
-D    4   1.00
-      3.6894700000e-02       1.5080000000e+01
-      1.7782000000e-01       3.9260000000e+00
-      4.2551300000e-01       1.2330000000e+00
-      1.0000000000e+00       2.6000000000e-01
-      """
+        """Ca     0
+S    6   1.00
+      2.0269900000e+05       2.2296400000e-04
+      3.0382500000e+04       1.7293200000e-03
+      6.9150800000e+03       9.0022600000e-03
+      1.9590200000e+03       3.6669900000e-02
+      6.4093600000e+02       1.1941000000e-01
+      2.3397700000e+02       2.9182500000e-01
+S    2   1.00
+      9.2289200000e+01       4.0441500000e-01
+      3.7254500000e+01       2.9631300000e-01
+S    1   1.00
+      9.1319800000e+00       1.0000000000e+00
+S    1   1.00
+      3.8177900000e+00       1.0000000000e+00
+S    1   1.00
+      1.0493500000e+00       1.0000000000e+00
+S    1   1.00
+      4.2866000000e-01       1.0000000000e+00
+S    1   1.00
+      6.2822600000e-02       1.0000000000e+00
+S    1   1.00
+      2.6016200000e-02       1.0000000000e+00
+P    3   1.00
+      1.0197600000e+03       2.0598600000e-03
+      2.4159600000e+02       1.6650100000e-02
+      7.7637000000e+01       7.7764600000e-02
+P    3   1.00
+      2.9115400000e+01       2.4180600000e-01
+      1.1762600000e+01       4.3257800000e-01
+      4.9228900000e+00       3.6732500000e-01
+P    1   1.00
+      1.9064500000e+00       1.0000000000e+00
+P    1   1.00
+      7.3690000000e-01       1.0000000000e+00
+P    1   1.00
+      2.7642000000e-01       1.0000000000e+00
+P    1   1.00
+      6.0270000000e-02       1.0000000000e+00
+P    1   1.00
+      1.7910000000e-02       1.0000000000e+00
+D    3   1.00
+      1.5080000000e+01       3.6894700000e-02
+      3.9260000000e+00       1.7782000000e-01
+      1.2330000000e+00       4.2551300000e-01
+D    1   1.00
+      2.6000000000e-01       1.0000000000e+00
+"""
+        gto_obj.register_cgto([1, 2, 3], [0.1, 0.2, 0.3], 1, 'Arbitrary', 'a')
 
-        gto_obj.register_cgto([1, 2, 3], [0.1, 0.2, 0.3], 1, 'a')
-        print(gto_obj)
+    def test_cgto_molden(self):
+        import numpy as np
+        import uuid, os
+        data = """
+Li     0
+S    6   1.00
+      0.6424189150D+03       0.2142607810D-02
+      0.9679851530D+02       0.1620887150D-01
+      0.2209112120D+02       0.7731557250D-01
+      0.6201070250D+01       0.2457860520D+00
+      0.1935117680D+01       0.4701890040D+00
+      0.6367357890D+00       0.3454708450D+00
+SP   3   1.00
+      0.2324918408D+01      -0.3509174574D-01       0.8941508043D-02
+      0.6324303556D+00      -0.1912328431D+00       0.1410094640D+00
+      0.7905343475D-01       0.1083987795D+01       0.9453636953D+00
+SP   1   1.00
+      0.3596197175D-01       0.1000000000D+01       0.1000000000D+01
+SP   1   1.00
+      0.7400000000D-02       0.1000000000D+01       0.1000000000D+01
+"""
+        fgto = f"test_{uuid.uuid4()}.gto"
+        with open(fgto, "w") as f:
+            f.write(data)
+        gto_obj = GTORadials(fgto)
+        os.remove(fgto) # remove the temporary file
+        out = gto_obj.molden()
+        print(out)
 
     def est_fit_radial_with_gto(self):
         from SIAB.spillage.orbio import read_nao
@@ -534,23 +587,24 @@ D    4   1.00
         # read the numerical atomic orbitals
         nao = read_nao("SIAB/spillage/testfiles/In_gga_10au_100Ry_3s3p3d2f.orb")
         rgrid = np.linspace(0, nao["rcut"], nao["nr"])
-        l = 1
+        l = 0
         ngto = 7
 
-        chi = nao["chi"][l][1]
-        c, a = fit_radial_with_gto(chi, ngto, l, rgrid)
+        chi = nao["chi"][l][2]
+        a, c = fit_radial_with_gto(chi, ngto, l, rgrid)
         # the fitted GTOs
         gto = np.zeros_like(rgrid)
-        for i in range(len(c)):
-            gto += GTORadials._build_gto(c[i], a[i], l, rgrid, False)
-        exit()
+        for a_, c_ in zip(a, c):
+            gto += GTORadials._build_gto(a_, c_, l, rgrid, False)
+        
         import matplotlib.pyplot as plt
         plt.plot(rgrid, chi, label="NAO")
         plt.plot(rgrid, gto, label="GTO")
         plt.axhline(0, color="black", linestyle="--")
         plt.legend()
         plt.savefig("nao2gto.png")
+        plt.close()
 
 if __name__ == "__main__":
-    unittest.main(exit=False)
+    unittest.main(exit=True)
     convert_nao_to_gto("SIAB/spillage/testfiles/In_gga_10au_100Ry_3s3p3d2f.orb", "test.gto", 7)
