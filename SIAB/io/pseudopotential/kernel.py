@@ -58,9 +58,9 @@ https://github.com/kirk0830/abacus_orbital_generation
     preprocess(fname)
     try:
         tree = ET.parse(fname)
-    except ET.ParseError as e:
+    except ET.ParseError:
         print(error_msg, flush=True)
-        raise TypeError("ERROR: Please read the error message above.")
+        raise TypeError("ERROR: Please read the error message above.") from None
     root = tree.getroot()
     parsed = iter_tree(root)
     postprocess(parsed)

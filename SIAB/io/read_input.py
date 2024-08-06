@@ -205,8 +205,8 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float, z_co
     template = {key: value for key, value in user_settings.items() if key in all_params}
     # then create copies for each reference system
     refsys = user_settings.get("reference_systems", [])
-    autoset_monomer = True if user_settings.get("spill_guess", "random") == "atomic" \
-         and len([True for s in refsys if s["shape"] == "monomer"]) == 0 else False
+    autoset_monomer = bool(user_settings.get("spill_guess", "random") == "atomic" \
+         and len([True for s in refsys if s["shape"] == "monomer"]) == 0)
     # set `autoset_mononer` to True if spill_guess is atomic and monomer is not in reference systems
     refsys.append({"shape": "monomer"}) if autoset_monomer and "monomer" not in refsys else None
     nsystem = len(refsys)
@@ -233,7 +233,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float, z_co
         shape = refsys[irs]["shape"]
         trial = natom_from_shape(shape)*z_val
         if trial < 1:
-            print(f"WARNING: program possibly cannot grep reasonable `z_valence` from pseudopotential.")
+            print("WARNING: program possibly cannot grep reasonable `z_valence` from pseudopotential.")
         nbands = nbands if nbands != "auto" else int(max(natom_from_shape(shape)*z_val, 2))
         # auto set lmaxmax
         lmaxmax = len(minimal_basis) if (with_polarization[irs] and [] not in minimal_basis) else len(minimal_basis) - 1
@@ -433,8 +433,7 @@ def skip_ppread(user_settings: dict):
             if not all([isinstance(v, int) for v in z]):
                 skip = False
                 break
-        elif isinstance(z, str):
-            if z != "none" and not re.match(orbpat, z):
+        elif isinstance(z, str) and z != "none" and not re.match(orbpat, z):
                 skip = False
                 break
     return skip
