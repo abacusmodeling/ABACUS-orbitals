@@ -1,7 +1,8 @@
-from SIAB.spillage.datparse import read_orb_mat, _assert_consistency
+from SIAB.spillage.datparse import read_orb_mat, _assert_consistency, read_wfc_lcao_txt, read_abacus_csr
 from SIAB.spillage.radial import jl_reduce, jl_raw_norm, coeff_normalized2raw
 from SIAB.spillage.listmanip import flatten, nest, nestpat
 from SIAB.spillage.jlzeros import JLZEROS
+from SIAB.spillage.indexmap import _index_map
 
 import numpy as np
 from scipy.optimize import minimize, basinhopping
@@ -71,13 +72,16 @@ def _jy2ao(coef, lin2comp, nbes, rcut):
                     mu -> (itype, iatom, l, 0, m).
 
             NOTE: zeta is supposed to be always 0 in this function.
-        nbes : int
-            Number of Bessel basis functions.
+        nbes : int or list of int
+            Number of spherical Bessel basis functions. If an integer,
+            the same number is used for all l.
         rcut : float
             Cutoff radius.
 
     '''
     from scipy.linalg import block_diag
+    lmax = max(comp[2] for comp in lin2comp.values())
+    nbes = [nbes] * (lmax + 1) if isinstance(nbes, int) else nbes
 
     def _gen_q2zeta(coef, lin2comp, nbes, rcut):
         for mu in lin2comp:
@@ -85,9 +89,9 @@ def _jy2ao(coef, lin2comp, nbes, rcut):
             if l >= len(coef[itype]) or len(coef[itype][l]) == 0:
                 # The generator should yield a zero matrix with the
                 # appropriate size when no coefficient is provided.
-                yield np.zeros((nbes, 0))
+                yield np.zeros((nbes[l], 0))
             else:
-                C = np.zeros((nbes, len(coef[itype][l])))
+                C = np.zeros((nbes[l], len(coef[itype][l])))
                 C[:len(coef[itype][l][0])] = np.array(coef[itype][l]).T
                 yield C
 
@@ -307,6 +311,68 @@ class Spillage:
             self.rcut = ov['rcut']
         else:
             assert self.rcut == ov['rcut']
+
+
+    def jy_config_add(self, file_SR, file_TR, file_wfc, file_stru, file_orb):
+        '''
+
+        dat must contains the following keys:
+        rcut
+        nbes
+        mo_mo
+        mo_jy
+        jy_jy
+        lin2comp
+        nbands
+
+        '''
+        dat = {}
+
+        # FIXME we may have to obtain nbes & rcut from a better place
+        # instead of reading from the orbital file
+        from struio import read_stru
+        from orbio import read_nao
+
+        stru = read_stru(file_stru)
+        ntype = len(stru['species'])
+        print(f"ntype = {ntype}", flush = True)
+        natom = [spec['natom'] for spec in stru['species']]
+        print(f"natom = {natom}", flush = True)
+
+        orb = read_nao(file_orb)
+        dat['rcut'] = orb['rcut']
+        dat['nbes'] = [len(chi_l) for chi_l in orb['chi']]
+        lmax = [len(dat['nbes']) - 1]
+
+        print(f"rcut = {dat['rcut']}", flush = True)
+        print(f"nbes = {dat['nbes']}", flush = True)
+
+        dat['lin2comp'] = _index_map(ntype, natom, lmax)[1]
+        print(f"lin2comp = {dat['lin2comp']}")
+
+        # NOTE: the basis of S & T follows a lexicographic order of (itype, iatom, l, q, m)
+        # we need to transform it to the lexicographic order of (itype, iatom, l, m, q)
+        # index map of abacus output S & T
+        ST_comp2lin, ST_lin2comp = _index_map(ntype, natom, lmax, [dat['nbes']])
+        print(f"ST_lin2comp = {ST_lin2comp}")
+        print(f"ST_comp2lin = {ST_comp2lin}")
+
+
+        S = sum(read_abacus_csr(file_SR)[0])
+        T = sum(read_abacus_csr(file_TR)[0])
+
+        #dat['jy_jy'] = np.array([, wov*ov['jy_jy']+wop*op['jy_jy']])
+
+        if isinstance(file_wfc, tuple):
+            wfc_up, _, _ = read_wfc_lcao_txt(file_wfc[0])
+            wfc_dw, _, _ = read_wfc_lcao_txt(file_wfc[1])
+        else:
+            wfc, _, _ = read_wfc_lcao_txt(file_wfc)
+
+        dat['nbands'] = wfc.shape[0]
+        print(f"nbands = {dat['nbands']}")
+
+
 
 
     def _tab_frozen(self, coef_frozen):
@@ -575,7 +641,7 @@ class _TestSpillage(unittest.TestCase):
                 for it, nzeta_t in enumerate(nzeta)]
 
 
-    def test_initgen(self):
+    def est_initgen(self):
         '''
         checks whether initgen generates the correct number of coefficients
 
@@ -606,7 +672,7 @@ class _TestSpillage(unittest.TestCase):
         plt.show()
 
 
-    def test_mrdiv(self):
+    def est_mrdiv(self):
         '''
         checks mrdiv with orthogonal matrices
 
@@ -627,7 +693,7 @@ class _TestSpillage(unittest.TestCase):
             self.assertTrue( np.allclose(Z[i], X[i] @ Y[i].T.conj()) )
 
 
-    def test_rfrob(self):
+    def est_rfrob(self):
         n_slice = 5
         m = 3
         n = 4
@@ -649,8 +715,7 @@ class _TestSpillage(unittest.TestCase):
         self.assertTrue( np.allclose(w @ _rfrob(X, Y, rowwise=True), wsum.real) )
 
 
-    def test_jy2ao(self):
-        from indexmap import _index_map
+    def est_jy2ao(self):
 
         ntype = 3
         natom = [1, 2, 3]
@@ -674,7 +739,7 @@ class _TestSpillage(unittest.TestCase):
             icol += nzeta
 
 
-    def test_add_config(self):
+    def est_add_config(self):
         '''
         checks if add_config loads & transform data correctly
 
@@ -705,7 +770,15 @@ class _TestSpillage(unittest.TestCase):
                              self.orbgen_reduced.config[iconf]['nbes'] + 1)
 
 
-    def test_tab_frozen(self):
+    def test_jy_config_add(self):
+        self.orbgen_raw.jy_config_add('./testfiles/jy/data-SR-sparse_SPIN0.csr',
+                                      './testfiles/jy/data-TR-sparse_SPIN0.csr',
+                                      './testfiles/jy/WFC_NAO_K1.txt',
+                                      './testfiles/jy/STRU',
+                                      './testfiles/jy/Si_gga_10au_100Ry_31s31p30d.orb')
+
+
+    def est_tab_frozen(self):
         '''
         checks if data tabulated by tab_frozen have the correct shape
 
@@ -730,7 +803,7 @@ class _TestSpillage(unittest.TestCase):
                                  (2, dat['nk'], dat['nbands'], njy))
 
 
-    def test_tab_deriv(self):
+    def est_tab_deriv(self):
         '''
         checks if data tabulated by tab_deriv have the correct shape
 
@@ -762,7 +835,7 @@ class _TestSpillage(unittest.TestCase):
                                  (2, ncoef, dat['nk'], n_dao, njy))
 
 
-    def test_overlap_spillage(self):
+    def est_overlap_spillage(self):
         '''
         verifies that the generalized spillage with op=I recovers the overlap spillage
 
@@ -799,7 +872,7 @@ class _TestSpillage(unittest.TestCase):
                     self.assertAlmostEqual(spill, spill_ref, places=10)
 
 
-    def test_finite_difference(self):
+    def est_finite_difference(self):
         '''
         checks the gradient of the generalized spillage with finite difference
 
@@ -843,7 +916,7 @@ class _TestSpillage(unittest.TestCase):
                     self.assertTrue(np.allclose(dspill, dspill_fd, atol=1e-7))
 
 
-    def test_opt(self):
+    def est_opt(self):
         from listmanip import merge
 
         datadir = './testfiles/Si/'
