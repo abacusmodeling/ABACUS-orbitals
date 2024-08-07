@@ -47,6 +47,16 @@ def _coef_opt(rcut: float, siab_settings: dict, folders: list):
 
     print(f"ORBGEN: Optimizing orbitals for rcut = {rcut} au", flush = True)
     # folders will be directly the `configs`
+    ibands = [[] for _ in range(len(siab_settings['orbitals']))]
+    for iorb, orb in enumerate(siab_settings['orbitals']):
+        if isinstance(orb['nbands_ref'], list):
+            ibands[iorb] = [[range(n)]*len(folders[i]) for i, n in enumerate(orb['nbands_ref'])]
+            temp = []
+            for iband in ibands[iorb]:
+                temp += iband
+            ibands[iorb] = temp
+        else:
+            ibands[iorb] = orb['nbands_ref']
     folders = list(set([item for sublist in folders for item in sublist]))
     iconfs = [[] for _ in range(len(siab_settings['orbitals']))]
     for iorb, orb in enumerate(siab_settings['orbitals']):
@@ -91,7 +101,7 @@ def _coef_opt(rcut: float, siab_settings: dict, folders: list):
         print(f"""ORBGEN: optimization on level {iorb + 1} (with # of zeta functions for each l: {orb['nzeta']}), 
         based on orbital ({orb['nzeta_from']})""", flush = True)
         coef_inner = coefs[iorbs_ref[iorb]] if iorbs_ref[iorb] is not None else None
-        coefs_shell = orbgen.opt(_coefs_subset(orb['nzeta'], orb['nzeta_from'], coefs_init), coef_inner, iconfs[iorb], range(orb['nbands_ref']), options, nthreads)
+        coefs_shell = orbgen.opt(_coefs_subset(orb['nzeta'], orb['nzeta_from'], coefs_init), coef_inner, iconfs[iorb], ibands[iorb], options, nthreads)
         coefs[iorb] = merge(coef_inner, coefs_shell, 2) if coef_inner is not None else coefs_shell
         print(f"ORBGEN: End optimization on level {iorb + 1} orbital, merge with previous orbital shell(s).", flush = True)
     return coefs

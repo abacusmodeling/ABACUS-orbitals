@@ -15,7 +15,7 @@ def initialize(calculation_settings, siab_settings, folders):
         # MOVE: copy lmax information from calculation_settings to siab_settings
         # for old version SIAB, but lmax can be read from orb_matrix*.dat for better design
         # in that way, not needed to import lmaxmax information from calculation_settings
-        orbital["lmax"] = calculation_settings[orbital["folder"]]["lmaxmax"]
+        orbital["lmax"] = max([calculation_settings[i]["lmaxmax"] for i in orbital["folder"]])
         # the key "folder" has a more reasonable alternative: "abacus_setup"
 
         # MOVE: let siab_settings know exactly what folders are used for orbital generation
