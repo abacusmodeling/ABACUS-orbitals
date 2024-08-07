@@ -493,7 +493,7 @@ class Spillage:
         nconf = len(iconfs)
 
         ibands = [ibands] * nconf if not isinstance(ibands, list) else ibands
-        assert len(ibands) == nconf
+        assert len(ibands) == nconf, f"len(ibands) = {len(ibands)} != {nconf}"
 
         pat = nestpat(coef_init)
         def f(c): # function to be minimized

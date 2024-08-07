@@ -198,43 +198,66 @@ def nbands_from_str(option: str|float|int, shape: str, z_val: float):
             return eval(option.replace("occ", str(occ)))
     return int(option)
 
-def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float, z_core: float):
+def abacus_settings(user_settings: dict, minimal_basis: list = None, z_val: float = 0, z_core: float = 0):
 
     # copy all possible shared parameters (shared by all reference systems)
     all_params = abacus_params()
     template = {key: value for key, value in user_settings.items() if key in all_params}
     # then create copies for each reference system
-    need_monomer = True if user_settings.get("spill_guess", "random") == "atomic" else False
     refsys = user_settings.get("reference_systems", [])
-    refsys.append({"shape": "monomer"}) if need_monomer and "monomer" not in refsys else None
+    autoset_monomer = bool(user_settings.get("spill_guess", "random") == "atomic" \
+         and len([True for s in refsys if s["shape"] == "monomer"]) == 0)
+    # set `autoset_mononer` to True if spill_guess is atomic and monomer is not in reference systems
+    refsys.append({"shape": "monomer"}) if autoset_monomer else None
     nsystem = len(refsys)
 
-    b1 = (nsystem > 0 and not need_monomer)
-    b2 = (nsystem > 1 and need_monomer)
+    b1 = (nsystem > 0 and not autoset_monomer)
+    b2 = (nsystem > 1 and autoset_monomer)
     assert (b1 or b2), "number of reference systems should be at least 2 if spill_guess is atomic, otherwise at least 1"
 
     result = [template.copy() for _ in range(nsystem)]
     # then parameters cannot share
     shape_index_mapping = [v["shape"] for v in refsys]
+
+    ####################################
+    # polarization causes lmaxmax += 1 #
+    ####################################
     with_polarization = [False]*nsystem
     for iorb in range(len(user_settings["orbitals"])):
         val = user_settings["orbitals"][iorb]["shape"]
-        index_shape = shape_index_mapping.index(val) if not isinstance(val, int) else val
+        """DEVELOPE DETAILS
+        I recognize there may be the need that defining different set of bond-length lists but
+        on the same shape, for example, the dimer with different bond lengths. Also on the other
+        hand it is possible for user to use not only one set of reference structures for generating
+        one set of orbitals. Therefore the `shape` should support both scalar and list value, of
+        both int (the index) and str (the shape name) type.
+        
+        Changed at Aug 6th, 2024"""
+        val = [val] if not isinstance(val, list) else val
+        assert all(isinstance(v, (str, int)) for v in val)
+        # will not support the mixing of str and int in the list...
+        val = [shape_index_mapping.index(v) if isinstance(v, str) else v for v in val]
         if user_settings["orbitals"][iorb]["zeta_notation"][-1] == "P":
-            with_polarization[index_shape] = True
+            for v in val:
+                with_polarization[v] = True
+
     # monomer is special, it is used as initial guess for spillage optimization, therefore it should have all possible
     # lmax values, therefore the maximal one over all reference systems
     lmax_monomer = 0
     for irs in range(nsystem):
         # auto set nbands if for reference system the nbands is set to "auto"
         nbands = refsys[irs].get("nbands", "auto")
-        shape = refsys[irs]["shape"]
-        trial = natom_from_shape(shape)*z_val
-        if trial < 1:
-            print(f"WARNING: the number of valence electrons is less than 1, set nbands to 2.")
-        nbands = nbands if nbands != "auto" else int(max(natom_from_shape(shape)*z_val, 2))
+        if nbands == "auto":
+            shape = refsys[irs]["shape"]
+            nelec_tot = natom_from_shape(shape)*z_val
+            if nelec_tot < 1:
+                print("WARNING: program possibly cannot grep reasonable `z_valence` from pseudopotential.")
+            nbands = int(max(nelec_tot, 2))
         # auto set lmaxmax
-        lmaxmax = len(minimal_basis) if (with_polarization[irs] and [] not in minimal_basis) else len(minimal_basis) - 1
+        lmaxmax = refsys[irs].get("lmaxmax", "auto")
+        if lmaxmax == "auto":
+            lmaxmax = len(minimal_basis) \
+            if (with_polarization[irs] and [] not in minimal_basis) else len(minimal_basis) - 1
         lmax_monomer = max(lmax_monomer, lmaxmax)
         # set nspin
         nspin = refsys[irs].get("nspin", 1)
@@ -245,14 +268,14 @@ def abacus_settings(user_settings: dict, minimal_basis: list, z_val: float, z_co
             if key in all_params and key not in ["shape", "nbands", "nspin"]:
                 result[irs][key] = value
     # set monomer
-    if need_monomer:
+    if autoset_monomer:
         nbands_monomer = cal_nbands_fill_lmax(z_val, z_core, lmax_monomer) # fill the lmax shell
         result[shape_index_mapping.index("monomer")].update(
             {"lmaxmax": lmax_monomer, "nbands": nbands_monomer})
     return result
 
 import SIAB.io.pseudopotential.tools.basic as siptb
-def siab_settings(user_settings: dict, minimal_basis: list, z_val: float):
+def siab_settings(user_settings: dict, minimal_basis: list, z_val: float = 0):
     """convert user_settings to SIAB settings the information needed by spillage optimization
     information is organized as follows:
     
@@ -295,12 +318,14 @@ def siab_settings(user_settings: dict, minimal_basis: list, z_val: float):
             if orbital["orb_ref"] == "none" \
             else nzetagen(orbital["orb_ref"], minimal_basis)
         # implement "occ", "occ+%d", "occ-%d" and "all" for nbands_ref
-
         # support index to link reference structures
         shape = orbital["shape"]
-        index = shapes.index(shape) if not isinstance(shape, int) else shape
-        shape = shapes[index]
-        result["orbitals"][iorb]["nbands_ref"] = nbands_from_str(orbital["nbands_ref"], shape, z_val)
+        shape = [shape] if not isinstance(shape, list) else shape
+        index = [shapes.index(s) for s in shape if not isinstance(s, int)]
+        nbands_ref = orbital["nbands_ref"]
+        nbands_ref = [nbands_ref] if not isinstance(nbands_ref, list) else nbands_ref
+        assert len(nbands_ref) == len(shape), "nbands_ref should have the same length as shape"
+        result["orbitals"][iorb]["nbands_ref"] = [nbands_from_str(n, s, z_val) for n, s in zip(nbands_ref, shape)]
         result["orbitals"][iorb]["folder"] = index
     return result
 
@@ -333,46 +358,26 @@ def environment_settings(user_settings: dict):
 def structure_settings(user_settings: dict):
     """handle with structures needed to calculate their pw wavefunctions as reference
     for fitting numerical atomic orbitals. Special case is inclusion of monomer, if
-    keyword spill_guess is set to atomic."""
+    keyword spill_guess is set to atomic.
+    
+    Return:
+        list of tuple, each tuple is (shape, bond_lengths)
+    """
     refsys = user_settings.get("reference_systems", [])
-    need_monomer = True if user_settings.get("spill_guess", "random") == "atomic" else False
-    need_monomer = False if "monomer" in refsys else need_monomer
+    need_monomer = user_settings.get("spill_guess", "random") == "atomic" and not any(rs["shape"] == "monomer" for rs in refsys)
     shapes = [rs["shape"] for rs in refsys] # list of str
     shapes.append("monomer") if need_monomer else None
     bond_lengths = [rs.get("bond_lengths", "auto") for rs in refsys] # list of list of float
     bond_lengths.append("auto") if need_monomer else None
-    """a bug can occur here if:
-    ```json
-    "reference_systems": [
-        {
-            "shape": "dimer",
-            "nbands": 13,
-            "nspin": 1,
-            "bond_lengths": [2.1, 2.6, 3.1, 3.7, 4.3]
-        },
-        {
-            "shape": "trimer",
-            "nbands": 18,
-            "nspin": 1,
-            "bond_lengths": [2.8, 3.4, 4.1]
-        },
-        {
-            "shape": "trimer",
-            "nbands": 18,
-            "nspin": 1,
-            "bond_lengths": [2.7, 3.0, 3.6]
-        },
-        {
-            "shape": "trimer",
-            "nbands": 18,
-            "nspin": 1,
-            "bond_lengths": [2.6, 3.2, 3.8]
-        }
-    ],
-    ```
-    To solve this, must discard the use of shape by orbital to index reference systems. Instead, use
-    list(zip(...)) instead of dict(zip(...))
-    """
+    unique_shapes = list(set(shapes))
+    _shapemap = [orb["shape"] for orb in user_settings["orbitals"]]
+    error_msg = """ERROR: there are reference systems with identical shape. In this case, should
+specify the `shape` keyword in `orbitals` section with integar as index of reference,
+instead of string like `dimer`.
+Raise ValueError, Quit..."""
+    if len(unique_shapes) != len(shapes) and not all([isinstance(s, int) for s in _shapemap]):
+        print(error_msg, flush=True)
+        raise ValueError("ERROR: see error message above")
     return list(zip(shapes, bond_lengths))
 
 def from_pseudopotential(pseudopotential: dict):
@@ -395,21 +400,94 @@ def description(symbol: str, user_settings: dict):
         "skip_abacus": user_settings.get("optimizer") in ["none", "restart"]
     }
 
-def unpack_siab_input(user_settings: dict, pseudopotential: dict):
+def skip_ppread(user_settings: dict):
+    """subroutine for determining whether to skip the pseudopotential read because
+    it is too-format specific and brings about trouble for general use.
+    The psesudopotential read-in procedure will be skipped only if:
+    1. all `nbands` and `nbands_ref` were specified with specific values, instead of
+    strings like `auto`, `occ` or something.
+    2. all `lmaxmax` were specified with a specific value for each reference_system
+    3. all `zeta_notation` were specified either with a list of integers or a string
+    like SsPpDdFf, in which the capitalized letter here presents the number of orbitals
+    4. all `orb_ref` were specified with a string like `none` or a zeta_notation (that
+    can meet the requirement of 2)
+    """
+    import re
+    skip = True
+    # case 1
+    for shape in user_settings["reference_systems"]:
+        if shape["nbands"] in ["auto", "occ", "all"]:
+            skip = False
+            print("AUTOSET: `nbands` is not specified with a specific value => AUTOSET", flush=True)
+            break
+        if "lmaxmax" not in shape:
+            skip = False
+            print("AUTOSET: `lmaxmax` is not specified => AUTOSET", flush=True)
+            break
+    # case 2
+    orbpat = r"(\d+[spdfgh])+" # like 2s2p1d
+    for orbital in user_settings["orbitals"]:
+        z = orbital["zeta_notation"]
+        if isinstance(z, list):
+            if not all([isinstance(v, int) for v in z]):
+                print("AUTOSET: `zeta_notation` is not specified with a list of integers => AUTOSET", flush=True)
+                skip = False
+                break
+        elif isinstance(z, str) and not re.match(orbpat, z):
+            skip = False
+            print("AUTOSET: `zeta_notation` is not specified with a string like 2s2p1d => AUTOSET", flush=True)
+            break
+    # case 3, the value can be "none"
+    for orbital in user_settings["orbitals"]:
+        z = orbital["orb_ref"]
+        if isinstance(z, list):
+            if not all([isinstance(v, int) for v in z]):
+                print("AUTOSET: `orb_ref` is not specified with a list of integers => AUTOSET", flush=True)
+                skip = False
+                break
+        elif isinstance(z, str) and z != "none" and not re.match(orbpat, z):
+                print("AUTOSET: `orb_ref` is not specified with a string like 2s2p1d => AUTOSET", flush=True)
+                skip = False
+                break
+    return skip
+
+def unpack_siab_input(user_settings: dict):
     """unpack the SIAB input to structure (shape as key and bond lengths are list as value),
     input setting of abacus, orbital generation settings, environmental settings and general description
     """
+    # move the information fetch from pseudopotential from front.py here...
     # get value from the dict returned by function from_pseudopotential
     from SIAB.data.interface import PERIODIC_TABLE_TOINDEX
-    properties = ["element", "minimal_basis", "z_val"]
-    symbol, minimal_basis, z_val = map(from_pseudopotential(pseudopotential).get, properties)
-    z_core = PERIODIC_TABLE_TOINDEX[symbol] - z_val
+    from SIAB.io.pseudopotential.api import ppinfo
+    import os
+    if skip_ppread(user_settings):
+        """the logic here is, because there are pseudopotential can be parsed automatically,
+        but the range of supported are limited. For those pseudopotential that is not with
+        the format expected, user has to specify information manually. In this case there
+        are many steps not needed to proceed, so we skip the pseudopotential read-in here.
+        
+        Also, there are cases even user provides a pseudopotential that can be parsed automatically,
+        user might still want to set all things manually, in this case, the pseudopotential
+        read-in is also uncessary and therefore can be skipped."""
+        symbol = user_settings.get("element", "X")
+        if symbol == "X":
+            print("WARNING: `element` keyword is not specified in input, will use `X` as placeholder", flush=True)
+        minimal_basis = user_settings.get("minimal_basis", [])
+        z_val = user_settings.get("z_val", 0)
+    else:
+        ppinfo_ = ppinfo(os.path.join(user_settings["pseudo_dir"], user_settings["pseudo_name"]))
+        properties = ["element", "minimal_basis", "z_val"]
+        symbol, minimal_basis, z_val = map(from_pseudopotential(ppinfo_).get, properties)
+
+    z_core = PERIODIC_TABLE_TOINDEX.get(symbol, z_val) - z_val
     structures = structure_settings(user_settings)
+    # the following call is for generating the INPUT setting for each structure
     abacus = abacus_settings(user_settings, minimal_basis, z_val, z_core)
     siab = siab_settings(user_settings, minimal_basis, z_val)
     env = environment_settings(user_settings)
     general = description(symbol, user_settings)
     return structures, abacus, siab, env, general
+
 
 def abacus_params():
     pattern = r"^([\w]+)(\s+)([^#]+)(\s*)(#.*)?"
@@ -449,9 +527,9 @@ def cal_nbands_fill_lmax(zval: int, zcore: int, lmax: int, fill_lmax: bool = Tru
     z_min = [[1, 3, 11, 19, 37, 55, 87, 119], [5, 13, 31, 49, 81, 113],
              [21, 39, 57, 89], [58, 90]]
     z_ref = z_max if fill_lmax else z_min
-    print(f"Autoset: adding orbitals... will add electrons to l = {lmax} orbitals according to Hund's rule", flush=True)
+    print(f"AUTOSET: adding orbitals... will add electrons to l = {lmax} orbitals according to Hund's rule", flush=True)
     strategy = "\'fill up to\'" if fill_lmax else "\'reach to\'"
-    print(f"Autoset: strategy {strategy} lmax = {lmax} subshell", flush=True)
+    print(f"AUTOSET: strategy {strategy} lmax = {lmax} subshell", flush=True)
     if lmax > 3:
         print(f"WARNING: lmax > 3, will add g-orbital, which is not possible for all ground state atoms", flush=True)
     # for all l <= lmax, find the minimal number of electrons that can fill up to lmax orbitals
@@ -459,7 +537,7 @@ def cal_nbands_fill_lmax(zval: int, zcore: int, lmax: int, fill_lmax: bool = Tru
     for l in range(min(lmax, 3) + 1):
         nelec_l = min([z for z in z_ref[l] if z >= zcore]) - zcore
         nelec = max(nelec, nelec_l)
-    print(f"Autoset: minimal number of electrons to fill up to l = {min(lmax, 3)} is {nelec}", flush=True)
+    print(f"AUTOSET: minimal number of electrons to fill up to l = {min(lmax, 3)} is {nelec}", flush=True)
     nbands = ceil(nelec/2)
     nbands += 5 if nelec == zval else 0 # for the case low lmax is specified
     nbands *= 5 if lmax > 3 else 1 # for g-orbital which is definitely not possible for all ground state atoms

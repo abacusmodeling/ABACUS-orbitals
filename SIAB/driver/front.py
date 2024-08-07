@@ -19,13 +19,11 @@ def initialize(version: str = "0.1.0",
 
     fname = fname.strip().replace("\\", "/")
     user_settings = siri.read_siab_inp(fname=fname, version=version)
-    # pseudopotential check
+    # pseudopotential existence check
     fpseudo = user_settings["pseudo_dir"]+"/"+user_settings["pseudo_name"]
     if not os.path.exists(fpseudo): # check the existence of pseudopotential file
         raise FileNotFoundError("Pseudopotential file %s not found"%fpseudo)
-    
-    pseudopotential = sipa.extract_ppinfo_forsiab(fname=fpseudo)
-    unpacked = siri.unpack_siab_input(user_settings, pseudopotential)
+    unpacked = siri.unpack_siab_input(user_settings)
     return unpacked
 
 # interface to abacus
