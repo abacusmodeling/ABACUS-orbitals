@@ -234,7 +234,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list = None, z_val: floa
         
         Changed at Aug 6th, 2024"""
         val = [val] if not isinstance(val, list) else val
-        assert all([isinstance(v, str) or isinstance(v, int) for v in val])
+        assert all(isinstance(v, (str, int)) for v in val)
         # will not support the mixing of str and int in the list...
         val = [shape_index_mapping.index(v) if isinstance(v, str) else v for v in val]
         if user_settings["orbitals"][iorb]["zeta_notation"][-1] == "P":
@@ -364,8 +364,7 @@ def structure_settings(user_settings: dict):
         list of tuple, each tuple is (shape, bond_lengths)
     """
     refsys = user_settings.get("reference_systems", [])
-    need_monomer = True if user_settings.get("spill_guess", "random") == "atomic" else False
-    need_monomer = False if any([rs["shape"] == "monomer" for rs in refsys]) else need_monomer
+    need_monomer = user_settings.get("spill_guess", "random") == "atomic" and not any(rs["shape"] == "monomer" for rs in refsys)
     shapes = [rs["shape"] for rs in refsys] # list of str
     shapes.append("monomer") if need_monomer else None
     bond_lengths = [rs.get("bond_lengths", "auto") for rs in refsys] # list of list of float
