@@ -152,6 +152,17 @@ def _nbes(l, rcut, ecut):
     return sum((JLZEROS[l]/rcut)**2 < ecut)
 
 
+def index_perm(comp):
+    '''
+    Given a list of lexicographically ordered composite indices (itype, iatom, l, q, m),
+    this function returns a permutation `p` such that icomp[p] is in the lexicographic
+    order of itype-iatom-l-m-q (i.e., the order of the last two indices is reversed).
+
+    '''
+    comp = [(it, ia, l, m, q) for it, ia, l, q, m in comp]
+    return sorted(range(len(comp)), key=lambda i: comp[i])
+
+
 def initgen(nzeta, ov, reduced=False):
     '''
     Generate an initial guess of the spherical Bessel coefficients from
@@ -313,17 +324,17 @@ class Spillage:
             assert self.rcut == ov['rcut']
 
 
-    def jy_config_add(self, file_SR, file_TR, file_wfc, file_stru, file_orb):
+    def jy_config_add(self, file_SR, file_TR, file_wfc, file_stru, file_orb, weight=(0.0, 1.0)):
         '''
 
         dat must contains the following keys:
-        rcut
-        nbes
+        rcut ...done
+        nbes ...done
         mo_mo
         mo_jy
         jy_jy
-        lin2comp
-        nbands
+        lin2comp ...done
+        nbands ...done
 
         '''
         dat = {}
@@ -348,31 +359,59 @@ class Spillage:
         print(f"nbes = {dat['nbes']}", flush = True)
 
         dat['lin2comp'] = _index_map(ntype, natom, lmax)[1]
-        print(f"lin2comp = {dat['lin2comp']}")
+        #print(f"lin2comp = {dat['lin2comp']}")
 
         # NOTE: the basis of S & T follows a lexicographic order of (itype, iatom, l, q, m)
         # we need to transform it to the lexicographic order of (itype, iatom, l, m, q)
         # index map of abacus output S & T
         ST_comp2lin, ST_lin2comp = _index_map(ntype, natom, lmax, [dat['nbes']])
-        print(f"ST_lin2comp = {ST_lin2comp}")
-        print(f"ST_comp2lin = {ST_comp2lin}")
+        comp = list(ST_lin2comp.values())
+        p = index_perm(comp)
+        nao = len(ST_lin2comp)
 
+        S = sum(read_abacus_csr(file_SR)[0]).toarray() # S(k=0)
+        T = sum(read_abacus_csr(file_TR)[0]).toarray() # T(k=0)
 
-        S = sum(read_abacus_csr(file_SR)[0])
-        T = sum(read_abacus_csr(file_TR)[0])
+        print(f"T.shape = {T.shape}")
 
-        #dat['jy_jy'] = np.array([, wov*ov['jy_jy']+wop*op['jy_jy']])
-
+        # NOTE: wfc here is assumed to correspond to Gamma point
         if isinstance(file_wfc, tuple):
-            wfc_up, _, _ = read_wfc_lcao_txt(file_wfc[0])
-            wfc_dw, _, _ = read_wfc_lcao_txt(file_wfc[1])
+            nk = 2
+            wfc = np.array([read_wfc_lcao_txt(file_wfc[0])[0],
+                            read_wfc_lcao_txt(file_wfc[1])[0]])
+            S = np.array([S, S])
+            T = np.array([T, T])
         else:
-            wfc, _, _ = read_wfc_lcao_txt(file_wfc)
+            nk = 1
+            wfc = np.expand_dims(read_wfc_lcao_txt(file_wfc)[0], axis=0)
+            S = np.expand_dims(S, axis=0)
+            T = np.expand_dims(T, axis=0)
 
-        dat['nbands'] = wfc.shape[0]
+        # wfc has shape (nk, nbands, nao)
+        nbands = wfc.shape[-2]
+
+        # simply set mo_mo_ov = 1 instead of calculating it
+        mo_mo_op = np.real(np.sum((wfc.conj() @ T) * wfc, 2))
+        mo_jy_ov = wfc.conj() @ S
+        mo_jy_op = wfc.conj() @ T
+
+        dat['nbands'] = nbands
+        dat['nk'] = nk
         print(f"nbands = {dat['nbands']}")
 
+        wov, wop = weight
+        mo_mo_ov = np.ones((nk, nbands))
 
+        print(mo_mo_op)
+        print(mo_mo_ov)
+
+        dat['mo_mo'] = np.array([mo_mo_ov, wov*mo_mo_ov + wop*mo_mo_op])
+        dat['mo_jy'] = np.array([mo_jy_ov, wov*mo_jy_ov + wop*mo_jy_op])
+        dat['jy_jy'] = np.array([S, wov*S + wop*T])
+
+        print(f"mo_mo.shape = {dat['mo_mo'].shape}")
+        print(f"mo_jy.shape = {dat['mo_jy'].shape}")
+        print(f"jy_jy.shape = {dat['jy_jy'].shape}")
 
 
     def _tab_frozen(self, coef_frozen):
@@ -768,6 +807,23 @@ class _TestSpillage(unittest.TestCase):
 
             self.assertEqual(self.orbgen_raw.config[iconf]['nbes'],
                              self.orbgen_reduced.config[iconf]['nbes'] + 1)
+
+
+    def test_index_perm(self):
+        # generate some composite indices
+        ntype = 2
+        natom = [3, 2]
+        lmax = [1, 3]
+        nzeta = [[1, 2], [3, 2, 1, 1]]
+        _, lin2comp = _index_map(ntype, natom, lmax, nzeta)
+        comp = list(lin2comp.values())
+
+        p = index_perm(comp)
+
+        # verify that comp[p] is in the lexicographic order of itype-iatom-l-m-q
+        comp2 = [comp[i] for i in p]
+        comp2 = [(it, ia, l, m, q) for it, ia, l, q, m in comp2]
+        self.assertListEqual(comp2, sorted(comp2))
 
 
     def test_jy_config_add(self):
