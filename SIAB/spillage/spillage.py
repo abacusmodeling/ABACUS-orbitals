@@ -1,5 +1,5 @@
-from SIAB.spillage.datparse import read_orb_mat, _assert_consistency,
-from SIAB.spillage.datparse import read_wfc_lcao_txt, read_abacus_csr
+from SIAB.spillage.datparse import read_orb_mat, _assert_consistency, \
+        read_wfc_lcao_txt, read_abacus_csr
 from SIAB.spillage.radial import jl_reduce, jl_raw_norm, coeff_normalized2raw, _nbes
 from SIAB.spillage.listmanip import flatten, nest, nestpat
 from SIAB.spillage.jlzeros import JLZEROS
