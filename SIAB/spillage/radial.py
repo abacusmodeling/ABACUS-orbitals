@@ -334,14 +334,14 @@ def build_raw(coeff, rcut, r, sigma=0.0, orth=False, normalize=False):
 
     for l, coeff_l in enumerate(coeff):
         for zeta, coeff_lz in enumerate(coeff_l):
-            chi[l][zeta] = sum(coeff_lzq * spherical_jn(l, JLZEROS[l][q]*r/rcut) \
-                    for q, coeff_lzq in enumerate(coeff_lz))
+            chi[l][zeta] = sum(coeff_lzq * spherical_jn(l, JLZEROS[l][q]*r/rcut)
+                               for q, coeff_lzq in enumerate(coeff_lz))
 
             chi[l][zeta] *= g # smooth & truncate
 
             if orth: # Gram-Schmidt
-                chi[l][zeta] -= sum(chi[l][y] * _inner_prod(chi[l][y], chi[l][zeta], r) \
-                        for y in range(zeta))
+                chi[l][zeta] -= sum(chi[l][y] * _inner_prod(chi[l][y], chi[l][zeta], r)
+                                    for y in range(zeta))
 
             if normalize:
                 chi[l][zeta] /= _rad_norm(chi[l][zeta], r)
@@ -379,9 +379,29 @@ def build_reduced(coeff, rcut, r, orthonormal=False):
 
     '''
     if orthonormal:
-        coeff = [np.linalg.qr(np.array(coeff_l).T)[0].T.tolist() if coeff_l else [] for coeff_l in coeff]
+        coeff = [np.linalg.qr(np.array(coeff_l).T)[0].T.tolist() if coeff_l else []
+                 for coeff_l in coeff]
 
     return build_raw(coeff_reduced2raw(coeff, rcut), rcut, r, 0.0, False, False)
+
+
+def _nbes(l, rcut, ecut):
+    '''
+    Calculates the number of normalized truncated spherical Bessel functions
+    whose kinetic energy is below the energy cutoff.
+
+    Note
+    ----
+    1. The kinetic energy of a normalized truncated spherical Bessel basis
+       j_l(k*r) * Y_{lm}(r) is k^2
+
+    2. The wavenumbers of truncated spherical Bessel functions are chosen such
+       that the function is zero at rcut, i.e., JLZEROS/rcut
+
+    '''
+    # make sure the tabulated zeros are sufficient
+    assert (JLZEROS[l][-1]/rcut)**2 > ecut
+    return sum((JLZEROS[l]/rcut)**2 < ecut)
 
 
 ############################################################
@@ -393,6 +413,34 @@ from numpy.linalg import norm
 import matplotlib.pyplot as plt
 
 class _TestRadial(unittest.TestCase):
+
+    def test_nbes(self):
+        ecut = 100.0
+        rcut = 6.0
+        dr = 0.001
+        r = np.linspace(0, rcut, int(rcut/dr) + 1)
+
+        for l in range(10):
+            q = _nbes(l, rcut, ecut)
+
+            # verify that kinetic energy of the q-th normalized spherical Bessel function
+            # is above the energy cutoff while that of the (q-1)-th is below the cutoff.
+            inv_raw_norm = 1.0 / jl_raw_norm(l, q, rcut)
+            f = jl_raw(l, q, r, rcut, 0) * inv_raw_norm
+            df = jl_raw(l, q, r, rcut, 1) * inv_raw_norm
+            d2f = jl_raw(l, q, r, rcut, 2) * inv_raw_norm
+
+            kin = simpson((-2 * r * df - r**2 * d2f + l*(l+1) * f) * f, x=r)
+            self.assertGreater(kin, ecut)
+
+            inv_raw_norm = 1.0 / jl_raw_norm(l, q-1, rcut)
+            f = jl_raw(l, q-1, r, rcut, 0) * inv_raw_norm
+            df = jl_raw(l, q-1, r, rcut, 1) * inv_raw_norm
+            d2f = jl_raw(l, q-1, r, rcut, 2) * inv_raw_norm
+
+            kin = simpson((-2 * r * df - r**2 * d2f + l*(l+1) * f) * f, x=r)
+            self.assertLess(kin, ecut)
+
 
     def test_inner_prod(self):
         # checks _inner_prod by verifying the orthogonality
@@ -406,8 +454,9 @@ class _TestRadial(unittest.TestCase):
             k = JLZEROS[l] / rcut
             for q in range(1, nq):
                 for p in range(q):
-                    self.assertLess(abs(_inner_prod(spherical_jn(l, k[q]*r),
-                                                    spherical_jn(l, k[p]*r), r)), 1e-12)
+                    self.assertAlmostEqual(_inner_prod(spherical_jn(l, k[q]*r),
+                                                       spherical_jn(l, k[p]*r), r),
+                                           0, places=12)
 
 
     def test_rad_norm(self):
@@ -415,12 +464,18 @@ class _TestRadial(unittest.TestCase):
         a = 7.0
         dr = 0.001
         r = np.linspace(0, a, int(a/dr)+1)
-        self.assertLess(abs(_rad_norm(np.cos(np.pi * r / a), r) \
-                - np.sqrt((2.0 + 3.0/np.pi**2) * a**3 / 12.0)), 1e-12)
-        self.assertLess(abs(_rad_norm(np.sin(np.pi * r / a), r) \
-                - np.sqrt((2.0 - 3.0/np.pi**2) * a**3 / 12.0)), 1e-12)
-        self.assertLess(abs(_rad_norm(np.sin(2.0 * np.pi * r / a), r) \
-                - np.sqrt((8.0 * np.pi**2 - 3) * a**3 / 48.0) / np.pi), 1e-12)
+
+        self.assertAlmostEqual(_rad_norm(np.cos(np.pi * r / a), r),
+                               np.sqrt((2.0 + 3.0/np.pi**2) * a**3 / 12.0),
+                               places=12)
+
+        self.assertAlmostEqual(_rad_norm(np.sin(np.pi * r / a), r),
+                               np.sqrt((2.0 - 3.0/np.pi**2) * a**3 / 12.0),
+                               places=12)
+
+        self.assertAlmostEqual(_rad_norm(np.sin(2.0 * np.pi * r / a), r),
+                               np.sqrt((8.0 * np.pi**2 - 3) * a**3 / 48.0) / np.pi,
+                               places=12)
 
 
     def test_smooth(self):
@@ -449,7 +504,7 @@ class _TestRadial(unittest.TestCase):
             k = JLZEROS[l] / rcut
             for q in range(nzeros):
                 f = spherical_jn(l, k[q]*r) / jl_raw_norm(l, q, rcut)
-                self.assertLess(abs(_rad_norm(f, r) - 1.0), 1e-12)
+                self.assertAlmostEqual(_rad_norm(f, r), 1.0, places=12)
 
 
     def test_jl_raw(self):
@@ -457,7 +512,8 @@ class _TestRadial(unittest.TestCase):
         dr = 0.001
         r = np.linspace(0, rcut, int(rcut/dr) + 1)
 
-        # checks via spline interpolation and kinetic energies
+        # checks the first and second derivatives via spline interpolation
+        # and kinetic energies
         for l in range(5):
             kin_ref = (JLZEROS[l] / rcut)**2
             for q in range(5):
@@ -476,7 +532,7 @@ class _TestRadial(unittest.TestCase):
                 kin = simpson((-2 * r * df - r**2 * d2f + l*(l+1) * f) * f, x=r)
                 self.assertLess(abs(kin - kin_ref[q]), 1e-8)
 
-    
+
     def test_jl_reduce(self):
         # checks if transformations by jl_reduce indeed zero-out
         # the first and second derivatives.
@@ -542,7 +598,7 @@ class _TestRadial(unittest.TestCase):
         for l in range(len(chi)):
             for zeta in range(len(chi[l])):
                 # check normalization
-                self.assertLess(abs(_rad_norm(chi[l][zeta], r) - 1.0), 1e-12)
+                self.assertAlmostEqual(_rad_norm(chi[l][zeta], r), 1.0, places=12)
 
                 # check orthogonality
                 for y in range(zeta):

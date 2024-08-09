@@ -98,7 +98,8 @@ def bracket(l, nzeros, return_all=False):
     return list(_zerogen()) if return_all else next(_zerogen())
 
 
-JLZEROS = bracket(20, 100, return_all=True)
+# tabulate the first 200 zeros of jl up to l=25
+JLZEROS = bracket(25, 200, return_all=True)
 
 ############################################################
 #                       Test

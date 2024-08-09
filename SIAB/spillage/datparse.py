@@ -5,7 +5,7 @@ from scipy.sparse import csr_matrix
 
 from SIAB.spillage.jlzeros import JLZEROS
 from scipy.special import spherical_jn
-from SIAB.spillage.indexmap import _index_map
+from SIAB.spillage.index import abacus_map
 
 
 def read_orb_mat(fpath):
@@ -119,7 +119,7 @@ def read_orb_mat(fpath):
     ####################################################################
     #   bijective map between the composite and linearized index
     ####################################################################
-    comp2lin, lin2comp = _index_map(ntype, natom, lmax)
+    comp2lin, lin2comp = abacus_map(ntype, natom, lmax)
     nao = len(comp2lin)
 
     ####################################################################

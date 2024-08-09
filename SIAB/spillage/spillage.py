@@ -1,49 +1,14 @@
-from SIAB.spillage.datparse import read_orb_mat, _assert_consistency, read_wfc_lcao_txt, read_abacus_csr
-from SIAB.spillage.radial import jl_reduce, jl_raw_norm, coeff_normalized2raw
+from SIAB.spillage.datparse import read_orb_mat, _assert_consistency,
+from SIAB.spillage.datparse import read_wfc_lcao_txt, read_abacus_csr
+from SIAB.spillage.radial import jl_reduce, jl_raw_norm, coeff_normalized2raw, _nbes
 from SIAB.spillage.listmanip import flatten, nest, nestpat
 from SIAB.spillage.jlzeros import JLZEROS
-from SIAB.spillage.indexmap import _index_map
+from SIAB.spillage.index import abacus_map, perm_zeta_m
+from SIAB.spillage.linalg_helper import _mrdiv, _rfrob
 
 import numpy as np
 from scipy.optimize import minimize, basinhopping
-
 from copy import deepcopy
-
-def _mrdiv(X, Y):
-    '''
-    Right matrix division.
-
-    Given two 3-d arrays X and Y, returns a 3-d array Z such that
-
-        Z[k] = X[k] @ inv(Y[k])
-
-    '''
-    # TODO explore the possibility of using scipy.linalg.solve with assume_a='sym'
-    assert len(X.shape) == 3 and len(Y.shape) == 3
-    return np.array([np.linalg.solve(Yk.T, Xk.T).T for Xk, Yk in zip(X, Y)])
-
-
-def _rfrob(X, Y, rowwise=False):
-    '''
-    Real part of the Frobenius inner product.
-
-    The Frobenius inner product between two matrices or vectors is defined as
-
-        <X, Y> \equiv Tr(X @ Y.T.conj()) = (X * Y.conj()).sum()
-
-    X and Y must have shapes compatible with element-wise multiplication. If
-    their dimensions are 3 or more, the inner product is computed slice-wise,
-    i.e., sum() is taken over the last two axes. If rowwise is True, sum() is
-    taken over the last axis only.
-
-    Notes
-    -----
-    The inner product is assumed to have the Hermitian conjugate on the
-    second argument, not the first.
-
-    '''
-    return (X * Y.conj()).real.sum(-1 if rowwise else (-2,-1))
-
 
 def _jy2ao(coef, lin2comp, nbes, rcut):
     '''
@@ -131,36 +96,6 @@ def _overlap_spillage(ovlp, coef, ibands, coef_frozen=None):
     spill -= ovlp['wk'] @ _rfrob(_mrdiv(V, W), V)
 
     return spill / len(ibands)
-
-
-def _nbes(l, rcut, ecut):
-    '''
-    Calculates the number of normalized truncated spherical Bessel functions
-    whose kinetic energy is below the energy cutoff.
-
-    Note
-    ----
-    1. The kinetic energy of a normalized truncated spherical Bessel basis
-       j_l(k*r) * Y_{lm}(r) is k^2
-    
-    2. The wavenumbers of truncated spherical Bessel functions are chosen such
-       that the function is zero at rcut, i.e., JLZEROS/rcut
-
-    '''
-    # make sure the tabulated JLZEROS is sufficient
-    assert (JLZEROS[l][-1]/rcut)**2 > ecut
-    return sum((JLZEROS[l]/rcut)**2 < ecut)
-
-
-def index_perm(comp):
-    '''
-    Given a list of lexicographically ordered composite indices (itype, iatom, l, q, m),
-    this function returns a permutation `p` such that icomp[p] is in the lexicographic
-    order of itype-iatom-l-m-q (i.e., the order of the last two indices is reversed).
-
-    '''
-    comp = [(it, ia, l, m, q) for it, ia, l, q, m in comp]
-    return sorted(range(len(comp)), key=lambda i: comp[i])
 
 
 def initgen(nzeta, ov, reduced=False):
@@ -358,15 +293,14 @@ class Spillage:
         print(f"rcut = {dat['rcut']}", flush = True)
         print(f"nbes = {dat['nbes']}", flush = True)
 
-        dat['lin2comp'] = _index_map(ntype, natom, lmax)[1]
+        dat['lin2comp'] = abacus_map(ntype, natom, lmax)[1]
         #print(f"lin2comp = {dat['lin2comp']}")
 
         # NOTE: the basis of S & T follows a lexicographic order of (itype, iatom, l, q, m)
         # we need to transform it to the lexicographic order of (itype, iatom, l, m, q)
         # index map of abacus output S & T
-        ST_comp2lin, ST_lin2comp = _index_map(ntype, natom, lmax, [dat['nbes']])
-        comp = list(ST_lin2comp.values())
-        p = index_perm(comp)
+        ST_comp2lin, ST_lin2comp = abacus_map(ntype, natom, lmax, [dat['nbes']])
+        p = perm_zeta_m(ST_lin2comp)
         nao = len(ST_lin2comp)
 
         S = sum(read_abacus_csr(file_SR)[0]).toarray() # S(k=0)
@@ -711,56 +645,13 @@ class _TestSpillage(unittest.TestCase):
         plt.show()
 
 
-    def est_mrdiv(self):
-        '''
-        checks mrdiv with orthogonal matrices
-
-        '''
-        n_slice = 3
-        m = 5
-        n = 6
-
-        # make each slice of S unitary to make it easier to verify
-        Y = np.random.randn(n_slice, n, n) + 1j * np.random.randn(n_slice, n, n)
-        Y = np.linalg.qr(Y)[0]
-
-        X = np.random.randn(n_slice, m, n) + 1j * np.random.randn(n_slice, m, n)
-        Z = _mrdiv(X, Y)
-
-        self.assertEqual(Z.shape, X.shape)
-        for i in range(n_slice):
-            self.assertTrue( np.allclose(Z[i], X[i] @ Y[i].T.conj()) )
-
-
-    def est_rfrob(self):
-        n_slice = 5
-        m = 3
-        n = 4
-        w = np.random.randn(n_slice)
-        X = np.random.randn(n_slice, m, n) + 1j * np.random.randn(n_slice, m, n)
-        Y = np.random.randn(n_slice, m, n) + 1j * np.random.randn(n_slice, m, n)
-
-        wsum = 0.0
-        for wk, Xk, Yk in zip(w, X, Y):
-            wsum += wk * np.trace(Xk @ Yk.T.conj()).sum()
-
-        self.assertAlmostEqual(w @ _rfrob(X, Y), wsum.real)
-
-        wsum = np.zeros(m, dtype=complex)
-        for i in range(m):
-            for k in range(n_slice):
-                wsum[i] += w[k] * (X[k,i] @ Y[k,i].T.conj())
-
-        self.assertTrue( np.allclose(w @ _rfrob(X, Y, rowwise=True), wsum.real) )
-
-
     def est_jy2ao(self):
 
         ntype = 3
         natom = [1, 2, 3]
         lmax = [2, 1, 0]
         nzeta = [[1, 1, 1], [2, 2], [3]]
-        _, lin2comp = _index_map(ntype, natom, lmax, nzeta)
+        _, lin2comp = abacus_map(ntype, natom, lmax, nzeta)
 
         nbes = 5
         rcut = 6.0
@@ -807,23 +698,6 @@ class _TestSpillage(unittest.TestCase):
 
             self.assertEqual(self.orbgen_raw.config[iconf]['nbes'],
                              self.orbgen_reduced.config[iconf]['nbes'] + 1)
-
-
-    def test_index_perm(self):
-        # generate some composite indices
-        ntype = 2
-        natom = [3, 2]
-        lmax = [1, 3]
-        nzeta = [[1, 2], [3, 2, 1, 1]]
-        _, lin2comp = _index_map(ntype, natom, lmax, nzeta)
-        comp = list(lin2comp.values())
-
-        p = index_perm(comp)
-
-        # verify that comp[p] is in the lexicographic order of itype-iatom-l-m-q
-        comp2 = [comp[i] for i in p]
-        comp2 = [(it, ia, l, m, q) for it, ia, l, q, m in comp2]
-        self.assertListEqual(comp2, sorted(comp2))
 
 
     def test_jy_config_add(self):
