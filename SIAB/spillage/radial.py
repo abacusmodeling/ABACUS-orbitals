@@ -6,7 +6,7 @@ from scipy.special import spherical_jn
 from scipy.interpolate import CubicSpline
 from scipy.linalg import rq
 
-def _inner_prod(chi1, chi2, r):
+def inner_prod(chi1, chi2, r):
     '''
     Inner product of two numerical radial functions.
 
@@ -28,7 +28,7 @@ def _inner_prod(chi1, chi2, r):
     return simpson(r**2 * chi1 * chi2, x=r)
 
 
-def _rad_norm(chi, r):
+def rad_norm(chi, r):
     '''
     Norm of a radial function.
 
@@ -45,7 +45,7 @@ def _rad_norm(chi, r):
             Norm of chi.
 
     '''
-    return np.sqrt(_inner_prod(chi, chi, r))
+    return np.sqrt(inner_prod(chi, chi, r))
 
 
 def _smooth(r, rcut, sigma):
@@ -112,7 +112,7 @@ def jl_raw(l, q, r, rcut=None, deriv=0):
     Notes
     -----
     Functions of the same l & rcut but different q are orthogonal in terms of
-    _inner_prod, but they are not normalized.
+    inner_prod, but they are not normalized.
 
     '''
     if rcut is None:
@@ -275,7 +275,7 @@ class _TestRadial(unittest.TestCase):
 
 
     def test_inner_prod(self):
-        # checks _inner_prod by verifying the orthogonality
+        # checks inner_prod by verifying the orthogonality
         # of truncated spherical Bessel functions.
         rcut = 3.0
         dr = 0.001
@@ -286,27 +286,27 @@ class _TestRadial(unittest.TestCase):
             k = JLZEROS[l] / rcut
             for q in range(1, nq):
                 for p in range(q):
-                    self.assertAlmostEqual(_inner_prod(spherical_jn(l, k[q]*r),
-                                                       spherical_jn(l, k[p]*r),
-                                                       r),
+                    self.assertAlmostEqual(inner_prod(spherical_jn(l, k[q]*r),
+                                                      spherical_jn(l, k[p]*r),
+                                                      r),
                                            0, places=12)
 
 
     def test_rad_norm(self):
-        # checks _rad_norm by some simple analytical cases.
+        # checks rad_norm by some simple analytical cases.
         a = 7.0
         dr = 0.001
         r = np.linspace(0, a, int(a/dr)+1)
 
-        self.assertAlmostEqual(_rad_norm(np.cos(np.pi * r / a), r),
+        self.assertAlmostEqual(rad_norm(np.cos(np.pi * r / a), r),
                                np.sqrt((2.0 + 3.0/np.pi**2) * a**3 / 12.0),
                                places=12)
 
-        self.assertAlmostEqual(_rad_norm(np.sin(np.pi * r / a), r),
+        self.assertAlmostEqual(rad_norm(np.sin(np.pi * r / a), r),
                                np.sqrt((2.0 - 3.0/np.pi**2) * a**3 / 12.0),
                                places=12)
 
-        self.assertAlmostEqual(_rad_norm(np.sin(2.0 * np.pi * r / a), r),
+        self.assertAlmostEqual(rad_norm(np.sin(2.0 * np.pi * r / a), r),
                                np.sqrt((8.0 * np.pi**2 - 3) * a**3 / 48.0)
                                / np.pi,
                                places=12)
@@ -330,7 +330,7 @@ class _TestRadial(unittest.TestCase):
 
 
     def test_jl_raw_norm(self):
-        # cross-checks jl_raw_norm with _rad_norm
+        # cross-checks jl_raw_norm with rad_norm
         rcut = 7.0
         dr = 0.001
         r = np.linspace(0, rcut, int(rcut/dr) + 1)
@@ -339,7 +339,7 @@ class _TestRadial(unittest.TestCase):
             k = JLZEROS[l] / rcut
             for q in range(nzeros):
                 f = spherical_jn(l, k[q]*r) / jl_raw_norm(l, q, rcut)
-                self.assertAlmostEqual(_rad_norm(f, r), 1.0, places=12)
+                self.assertAlmostEqual(rad_norm(f, r), 1.0, places=12)
 
 
     def test_jl_raw(self):

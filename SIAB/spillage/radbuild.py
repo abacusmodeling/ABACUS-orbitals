@@ -1,5 +1,5 @@
 from SIAB.spillage.jlzeros import JLZEROS
-from SIAB.spillage.radial import _smooth, _rad_norm, _inner_prod
+from SIAB.spillage.radial import _smooth, rad_norm, inner_prod
 from SIAB.spillage.coeff_trans import coeff_reduced2raw
 
 import numpy as np
@@ -51,9 +51,9 @@ def build_raw(coeff, rcut, r, sigma=0.0, orthonormal=False):
             chi[l][zeta] *= g # smooth & truncate
 
             if orthonormal:
-                chi[l][zeta] -= sum(_inner_prod(chi[l][y], chi[l][zeta], r)
+                chi[l][zeta] -= sum(inner_prod(chi[l][y], chi[l][zeta], r)
                                     * chi[l][y] for y in range(zeta))
-                chi[l][zeta] /= _rad_norm(chi[l][zeta], r)
+                chi[l][zeta] /= rad_norm(chi[l][zeta], r)
 
     return chi
 
@@ -118,13 +118,14 @@ class _TestRadBuild(unittest.TestCase):
         for l in range(len(chi)):
             for zeta in range(len(chi[l])):
                 # check normalization
-                self.assertAlmostEqual(_rad_norm(chi[l][zeta], r),
+                self.assertAlmostEqual(rad_norm(chi[l][zeta], r),
                                        1.0, places=12)
 
                 # check orthogonality
                 for y in range(zeta):
-                    self.assertAlmostEqual(_inner_prod(chi[l][zeta],
-                                                       chi[l][y], r),
+                    self.assertAlmostEqual(inner_prod(chi[l][zeta],
+                                                      chi[l][y],
+                                                      r),
                                            0, places=12)
 
                 # cross check with NAO file
