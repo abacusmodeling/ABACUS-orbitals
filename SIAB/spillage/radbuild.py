@@ -1,6 +1,6 @@
 from SIAB.spillage.jlzeros import JLZEROS
 from SIAB.spillage.radial import _smooth, rad_norm, inner_prod
-from SIAB.spillage.coeff_trans import coeff_reduced2raw
+from SIAB.spillage.coefftrans import coeff_reduced2raw
 
 import numpy as np
 from scipy.special import spherical_jn

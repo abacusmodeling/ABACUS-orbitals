@@ -1,12 +1,12 @@
 from SIAB.spillage.datparse import read_orb_mat, _assert_consistency, \
         read_wfc_lcao_txt, read_abacus_csr
 from SIAB.spillage.radial import _nbes, jl_reduce, jl_raw_norm
-from SIAB.spillage.coeff_trans import coeff_normalized2raw, coeff_reduced2raw
+from SIAB.spillage.coefftrans import coeff_normalized2raw, coeff_reduced2raw
 from SIAB.spillage.listmanip import flatten, nest, nestpat
 from SIAB.spillage.jlzeros import JLZEROS
 from SIAB.spillage.index import index_map, perm_zeta_m
 from SIAB.spillage.linalg_helper import mrdiv, rfrob
-from SIAB.spillage.basis_trans import jy2ao
+from SIAB.spillage.basistrans import jy2ao
 
 import numpy as np
 from scipy.optimize import minimize, basinhopping
