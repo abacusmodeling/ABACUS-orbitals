@@ -58,7 +58,7 @@ def abacus(general: dict,
                        test=test)
 
 # interface to Spillage optimization
-import SIAB.spillage.util as ssu
+
 import SIAB.spillage.pytorch_swat.api as ssps_api  # old version of backend
 import SIAB.spillage.api as ss_api  # new version of backend
 def spillage(folders: list,
@@ -103,30 +103,13 @@ def spillage(folders: list,
     }
     ```
     """
-    siab_settings = ssu.initialize(calculation_settings, siab_settings, folders)
-    """after initialization, siab_settings will have the following structure:
-    ```python
-    {
-        'nthreads_per_rcut': 1,
-        'optimizer': 'pytorch.SWAT', 
-        'max_steps': 200, 
-        'spill_coefs': [2.0, 1.0], 
-        'orbitals': [
-            {'nzeta': [1, 1], 'nzeta_from': None, 'nbands_ref': 4, 
-             'folder': ['Si-dimer-1.0', 'Si-dimer-1.1'], 'lmax': 2}, 
-            {'nzeta': [2, 2, 1], 'nzeta_from': [1, 1], 'nbands_ref': 4, 
-             'folder': ['Si-dimer-1.0', 'Si-dimer-1.1'], 'lmax': 2}, 
-            {'nzeta': [3, 3, 2], 'nzeta_from': [2, 2, 1], 'nbands_ref': 6, 
-             'folder': ['Si-trimer-1.0', 'Si-trimer-1.1', 'Si-trimer-1.2'], 'lmax': 2}
-        ]
-    }
-    ```
-    """
     # iteratively generate numerical atomic orbitals here
     optimizer = siab_settings.get("optimizer", "none").lower()
-    if optimizer in ["pytorch.swat"]:
-        ssps_api.iter(siab_settings, calculation_settings)
-    elif optimizer in ["none", "restart", "bfgs"]:
-        ss_api.iter(siab_settings, calculation_settings, folders)
-    else:
-        raise ValueError(f"Unsupported optimizer setting: {optimizer}")
+    caller_map = {
+        "pytorch.swat": ssps_api.iter,
+        "none": ss_api.iter,
+        "restart": ss_api.iter,
+        "bfgs": ss_api.iter
+    }
+    caller_map[optimizer](siab_settings, calculation_settings, folders)
+

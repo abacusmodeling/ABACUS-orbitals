@@ -50,23 +50,25 @@ def _coef_opt(rcut: float, siab_settings: dict, folders: list):
     ibands = [[] for _ in range(len(siab_settings['orbitals']))]
     for iorb, orb in enumerate(siab_settings['orbitals']):
         if isinstance(orb['nbands_ref'], list):
-            ibands[iorb] = [[range(n)]*len(folders[i]) for i, n in enumerate(orb['nbands_ref'])]
+            ibands[iorb] = [[range(n)]*len(folders[f]) for f, n in zip(orb['folder'], orb['nbands_ref'])]
             temp = []
             for iband in ibands[iorb]:
                 temp += iband
             ibands[iorb] = temp
         else:
             ibands[iorb] = orb['nbands_ref']
-    folders = list(set([item for sublist in folders for item in sublist]))
+    configs = [folders[f] for orb in siab_settings['orbitals'] for f in orb['folder']]
+    configs = list(set([folder for f in configs for folder in f]))
+
     iconfs = [[] for _ in range(len(siab_settings['orbitals']))]
     for iorb, orb in enumerate(siab_settings['orbitals']):
-        iconfs[iorb] = [folders.index(f) for f in orb['folder']]
+        iconfs[iorb] = [configs.index(folder) for f in orb['folder'] for folder in folders[f]]
+            
     reduced = siab_settings.get('jY_type', "reduced")
     orbgen = Spillage(reduced in ["reduced", "nullspace", "svd"])
-
     # load orb_matix with correct rcut
     fov = None
-    for folder in folders:
+    for folder in configs:
         for fov_, fop_ in _orb_matrices(folder):
             ov, op = map(read_orb_mat, [fov_, fop_])
             assert ov['rcut'] == op['rcut'], "Data violation: rcut of ov and op matrices are different"
@@ -74,7 +76,7 @@ def _coef_opt(rcut: float, siab_settings: dict, folders: list):
                 print(f"ORBGEN: jy_jy, mo_jy and mo_mo matrices loaded from {fov_} and {fop_}", flush = True)
                 orbgen.add_config(ov, op, siab_settings.get('spill_coefs', [0.0, 1.0]))
                 fov = fov_ if fov is None else fov
-    symbol = folders[0].split('-')[0]
+    symbol = configs[0].split('-')[0]
     monomer_dir = "-".join([symbol, "monomer"]) # weak binding
     ov = read_orb_mat(os.path.join(monomer_dir, fov.replace('\\', '/').split('/')[-1]))
 
@@ -98,8 +100,10 @@ def _coef_opt(rcut: float, siab_settings: dict, folders: list):
     # optimize orbitals
     coefs = [None for _ in range(len(siab_settings['orbitals']))]
     for iorb, orb in enumerate(siab_settings['orbitals']):
+        _temp = '\n'.join([f'        {configs[iconf]}' for iconf in iconfs[iorb]])
         print(f"""ORBGEN: optimization on level {iorb + 1} (with # of zeta functions for each l: {orb['nzeta']}), 
-        based on orbital ({orb['nzeta_from']})""", flush = True)
+        based on orbital ({orb['nzeta_from']}). 
+ORBGEN: Orbital fit from structures:\n{_temp}""", flush = True)
         coef_inner = coefs[iorbs_ref[iorb]] if iorbs_ref[iorb] is not None else None
         coefs_shell = orbgen.opt(_coefs_subset(orb['nzeta'], orb['nzeta_from'], coefs_init), coef_inner, iconfs[iorb], ibands[iorb], options, nthreads)
         coefs[iorb] = merge(coef_inner, coefs_shell, 2) if coef_inner is not None else coefs_shell
