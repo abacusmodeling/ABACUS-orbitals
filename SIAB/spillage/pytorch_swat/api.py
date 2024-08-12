@@ -58,8 +58,28 @@ def run(params: dict = None, cache_dir: str = "./", ilevel: int = 0, nlevel: int
 
 import SIAB.interface.old_version as siov
 import sys
-def iter(siab_settings, calculation_settings):
+def iter(siab_settings, calculation_settings, folders):
     """iterate on siab_settings, can support parallelization according to user settings"""
+    import SIAB.spillage.util as ssu
+    siab_settings = ssu.initialize(calculation_settings, siab_settings, folders)
+    """after initialization, siab_settings will have the following structure:
+    ```python
+    {
+        'nthreads_per_rcut': 1,
+        'optimizer': 'pytorch.SWAT', 
+        'max_steps': 200, 
+        'spill_coefs': [2.0, 1.0], 
+        'orbitals': [
+            {'nzeta': [1, 1], 'nzeta_from': None, 'nbands_ref': 4, 
+             'folder': ['Si-dimer-1.0', 'Si-dimer-1.1'], 'lmax': 2}, 
+            {'nzeta': [2, 2, 1], 'nzeta_from': [1, 1], 'nbands_ref': 4, 
+             'folder': ['Si-dimer-1.0', 'Si-dimer-1.1'], 'lmax': 2}, 
+            {'nzeta': [3, 3, 2], 'nzeta_from': [2, 2, 1], 'nbands_ref': 6, 
+             'folder': ['Si-trimer-1.0', 'Si-trimer-1.1', 'Si-trimer-1.2'], 'lmax': 2}
+        ]
+    }
+    ```
+    """
     nlevel=len(siab_settings["orbitals"]) # this dimension must be executed in serial
     
     # parallelization setting
