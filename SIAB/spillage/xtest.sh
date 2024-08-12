@@ -10,3 +10,7 @@ python3 listmanip.py -v
 python3 linalg_helper.py -v
 python3 datparse.py -v
 python3 spillage.py -v
+python3 orbscreen.py -v
+python3 basis_trans.py -v
+python3 radbuild.py -v
+python3 coeff_trans.py -v

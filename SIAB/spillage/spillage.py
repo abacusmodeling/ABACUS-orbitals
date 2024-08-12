@@ -1,66 +1,16 @@
 from SIAB.spillage.datparse import read_orb_mat, _assert_consistency, \
         read_wfc_lcao_txt, read_abacus_csr
-from SIAB.spillage.radial import jl_reduce, jl_raw_norm, coeff_normalized2raw, _nbes
+from SIAB.spillage.radial import _nbes, jl_reduce, jl_raw_norm
+from SIAB.spillage.coeff_trans import coeff_normalized2raw, coeff_reduced2raw
 from SIAB.spillage.listmanip import flatten, nest, nestpat
 from SIAB.spillage.jlzeros import JLZEROS
-from SIAB.spillage.index import abacus_map, perm_zeta_m
-from SIAB.spillage.linalg_helper import _mrdiv, _rfrob
+from SIAB.spillage.index import index_map, perm_zeta_m
+from SIAB.spillage.linalg_helper import mrdiv, rfrob
+from SIAB.spillage.basis_trans import jy2ao
 
 import numpy as np
 from scipy.optimize import minimize, basinhopping
 from copy import deepcopy
-
-def _jy2ao(coef, lin2comp, nbes, rcut):
-    '''
-    Basis transformation matrix from a Bessel basis to a pseudo-atomic
-    orbital basis.
-
-    This function constructs the transformation matrix from some Bessel
-    basis ([some Bessel radial] x [spherical harmonics]) arranged in the
-    lexicographic order of (itype, iatom, l, m, q) (q being the index
-    of Bessel radial functions) to some pseudo-atomic orbital basis
-    arranged in the lexicographic order of (itype, iatom, l, m, zeta).
-    The entire transformation matrix is block-diagonal, with each block
-    corresponding to a specific q->zeta.
-
-    Parameters
-    ----------
-        coef : nested list
-            The coefficients of pseudo-atomic orbital basis orbitals
-            in terms of the Bessel basis. coef[itype][l][zeta] gives
-            a list of coefficients that specifies an orbital.
-            Note that the length of this coefficient list is allowed to
-            be smaller than nbes; the list will be padded with zeros.
-        lin2comp : dict
-            linear-to-composite index map (not including q):
-
-                    mu -> (itype, iatom, l, 0, m).
-
-            NOTE: zeta is supposed to be always 0 in this function.
-        nbes : int or list of int
-            Number of spherical Bessel basis functions. If an integer,
-            the same number is used for all l.
-        rcut : float
-            Cutoff radius.
-
-    '''
-    from scipy.linalg import block_diag
-    lmax = max(comp[2] for comp in lin2comp.values())
-    nbes = [nbes] * (lmax + 1) if isinstance(nbes, int) else nbes
-
-    def _gen_q2zeta(coef, lin2comp, nbes, rcut):
-        for mu in lin2comp:
-            itype, _, l, _, _ = lin2comp[mu]
-            if l >= len(coef[itype]) or len(coef[itype][l]) == 0:
-                # The generator should yield a zero matrix with the
-                # appropriate size when no coefficient is provided.
-                yield np.zeros((nbes[l], 0))
-            else:
-                C = np.zeros((nbes[l], len(coef[itype][l])))
-                C[:len(coef[itype][l][0])] = np.array(coef[itype][l]).T
-                yield C
-
-    return block_diag(*_gen_q2zeta(coef, lin2comp, nbes, rcut))
 
 
 def _overlap_spillage(ovlp, coef, ibands, coef_frozen=None):
@@ -77,23 +27,23 @@ def _overlap_spillage(ovlp, coef, ibands, coef_frozen=None):
     spill = (ovlp['wk'] @ ovlp['mo_mo'][:,ibands]).real.sum()
 
     mo_jy = ovlp['mo_jy'][:,ibands,:]
-    jy2ao = _jy2ao(coef, ovlp['lin2comp'], ovlp['nbes'], ovlp['rcut'])
+    jy2ao = jy2ao(coef, ovlp['lin2comp'], ovlp['nbes'], ovlp['rcut'])
 
     V = mo_jy @ jy2ao
     W = jy2ao.T @ ovlp['jy_jy'] @ jy2ao
 
     if coef_frozen is not None:
-        jy2frozen = _jy2ao(coef_frozen, ovlp['lin2comp'], ovlp['nbes'], ovlp['rcut'])
+        jy2frozen = jy2ao(coef_frozen, ovlp['lin2comp'], ovlp['nbes'], ovlp['rcut'])
 
         X = mo_jy @ jy2frozen
         S = jy2frozen.T @ ovlp['jy_jy'] @ jy2frozen
-        X_dual = _mrdiv(X, S)
+        X_dual = mrdiv(X, S)
 
-        spill -= ovlp['wk'] @ _rfrob(X_dual, X)
+        spill -= ovlp['wk'] @ rfrob(X_dual, X)
 
         V -= X_dual @ jy2frozen.T @ ovlp['jy_jy'] @ jy2ao
 
-    spill -= ovlp['wk'] @ _rfrob(_mrdiv(V, W), V)
+    spill -= ovlp['wk'] @ rfrob(mrdiv(V, W), V)
 
     return spill / len(ibands)
 
@@ -104,7 +54,8 @@ def initgen(nzeta, ov, reduced=False):
     the single-atom overlap data (in raw basis) for the spillage optimization.
 
     '''
-    assert ov['ntype'] == 1 and ov['natom'][0] == 1 and ov['ecutwfc'] <= ov['ecutjlq']
+    assert ov['ntype'] == 1 and ov['natom'][0] == 1 and \
+            ov['ecutwfc'] <= ov['ecutjlq']
 
     lmax = len(nzeta) - 1
     assert lmax <= ov['lmax'][0]
@@ -119,15 +70,16 @@ def initgen(nzeta, ov, reduced=False):
     nbes = ov['nbes']
     rcut = ov['rcut']
     if reduced:
-        coef = [[jl_reduce(l, nbes, rcut).T.tolist() for l in range(ov['lmax'][0] + 1)]]
-        mo_jy = mo_jy @ _jy2ao(coef, ov['lin2comp'], nbes, rcut)
+        coef = [[jl_reduce(l, nbes, rcut).T.tolist()
+                 for l in range(ov['lmax'][0] + 1)]]
+        mo_jy = mo_jy @ jy2ao(coef, ov['lin2comp'], nbes, rcut)
         nbes -= 1
     else: # normalized
         uvec = lambda v, k, n: [v if i == k else 0 for i in range(n)]
         coef = [[[uvec(1. / jl_raw_norm(l, q, rcut), q, nbes)
                   for q in range(nbes)]
                  for l in range(ov['lmax'][0] + 1)]]
-        mo_jy = mo_jy @ _jy2ao(coef, ov['lin2comp'], nbes, rcut)
+        mo_jy = mo_jy @ jy2ao(coef, ov['lin2comp'], nbes, rcut)
 
     # reshaped to [nk, nbands, nao, nbes]
     Y = mo_jy.reshape(ov['nk'], ov['nbands'], -1, nbes)
@@ -139,14 +91,15 @@ def initgen(nzeta, ov, reduced=False):
         idx_start = ov['comp2lin'][(0, 0, l, 0, 0)]
         Yl = Y[:, :, idx_start:idx_start+2*l+1, :].reshape(ov['nk'], -1, nbes)
         Yl = Yl[:,:,:nbes_ecut[l]]
-        YdaggerY = (ov['wk'].reshape(-1,1,1) * (Yl.transpose((0, 2, 1)).conj() @ Yl)) \
-                   .sum(0).real
+        YdaggerY = ((Yl.transpose((0, 2, 1)).conj() @ Yl)
+                    * ov['wk'].reshape(-1,1,1)).sum(0).real
         val, vec = np.linalg.eigh(YdaggerY)
 
         # eigenvectors corresponding to the largest nzeta eigenvalues
         coef.append(vec[:,-nzeta[l]:][:,::-1].T.tolist())
-        print(f"ORBGEN: Y*Y (jy_mo*mo_jy) eigval diagnosis:\n        l = {l}: {val[-nzeta[l]:][::-1]}", flush = True)
-    #return coef
+        print( "ORBGEN: Y*Y (jy_mo*mo_jy) eigval diagnosis:")
+        print(f"        l = {l}: {val[-nzeta[l]:][::-1]}", flush = True)
+
     return [np.linalg.qr(np.array(coef_l).T)[0].T.tolist() for coef_l in coef]
 
 
@@ -228,26 +181,27 @@ class Spillage:
         rcut = ov['rcut']
 
         if self.reduced:
-            # truncated spherical Bessel to end-smoothed mixed spherical Bessel
             coef = [[jl_reduce(l, nbes, rcut).T.tolist()
                      for l in range(lmax[itype]+1)]
                     for itype in range(ntype)]
             dat['nbes'] -= 1
         else:
-            # truncated spherical Bessel to normalized truncated spherical Bessel
             uvec = lambda v, k, n: [v if i == k else 0 for i in range(n)]
             coef = [[[uvec(1. / jl_raw_norm(l, q, rcut), q, nbes)
                       for q in range(nbes)]
                      for l in range(lmax[itype]+1)]
                     for itype in range(ntype)]
 
-        C = _jy2ao(coef, ov['lin2comp'], nbes, rcut)
+        C = jy2ao(coef, ov['lin2comp'], nbes, rcut)
 
         wov, wop = weight
 
-        dat['mo_mo'] = np.array([ov['mo_mo'], wov*ov['mo_mo'] + wop*op['mo_mo']])
-        dat['mo_jy'] = np.array([ov['mo_jy'] @ C, (wov*ov['mo_jy'] + wop*op['mo_jy']) @ C])
-        dat['jy_jy'] = np.array([C.T @ ov['jy_jy'] @ C, C.T @ (wov*ov['jy_jy']+wop*op['jy_jy']) @ C])
+        dat['mo_mo'] = np.array([ov['mo_mo'],
+                                 wov*ov['mo_mo'] + wop*op['mo_mo']])
+        dat['mo_jy'] = np.array([ov['mo_jy'] @ C,
+                                 (wov*ov['mo_jy'] + wop*op['mo_jy']) @ C])
+        dat['jy_jy'] = np.array([C.T @ ov['jy_jy'] @ C,
+                                 C.T @ (wov*ov['jy_jy']+wop*op['jy_jy']) @ C])
 
         self.config.append(dat)
 
@@ -259,7 +213,8 @@ class Spillage:
             assert self.rcut == ov['rcut']
 
 
-    def jy_config_add(self, file_SR, file_TR, file_wfc, file_stru, file_orb, weight=(0.0, 1.0)):
+    def jy_config_add(self, file_SR, file_TR, file_wfc, file_stru, file_orb,
+                      weight=(0.0, 1.0)):
         '''
 
         dat must contains the following keys:
@@ -293,13 +248,15 @@ class Spillage:
         print(f"rcut = {dat['rcut']}", flush = True)
         print(f"nbes = {dat['nbes']}", flush = True)
 
-        dat['lin2comp'] = abacus_map(ntype, natom, lmax)[1]
+        dat['lin2comp'] = index_map(natom, lmax)[1]
         #print(f"lin2comp = {dat['lin2comp']}")
 
-        # NOTE: the basis of S & T follows a lexicographic order of (itype, iatom, l, q, m)
-        # we need to transform it to the lexicographic order of (itype, iatom, l, m, q)
+        # NOTE: the basis of S & T follows a lexicographic order of
+        # (itype, iatom, l, q, 2*|m|-(m>0))
+        # we need to transform it to the lexicographic order of
+        # (itype, iatom, l, 2*|m|-(m>0), q)
         # index map of abacus output S & T
-        ST_comp2lin, ST_lin2comp = abacus_map(ntype, natom, lmax, [dat['nbes']])
+        ST_comp2lin, ST_lin2comp = index_map(natom, lmax, [dat['nbes']])
         p = perm_zeta_m(ST_lin2comp)
         nao = len(ST_lin2comp)
 
@@ -367,7 +324,7 @@ class Spillage:
             return
 
         # jy -> frozen orbital transformation matrices
-        jy2frozen = [_jy2ao(coef_frozen, dat['lin2comp'], dat['nbes'], dat['rcut'])
+        jy2frozen = [jy2ao(coef_frozen, dat['lin2comp'], dat['nbes'], dat['rcut'])
                      for dat in self.config]
 
         frozen_frozen = [jy2froz.T @ dat['jy_jy'] @ jy2froz
@@ -377,7 +334,7 @@ class Spillage:
                      for dat, jy2froz in zip(self.config, jy2frozen)]
 
         # <mo|frozen_dual> only; no need to compute <mo|op|frozen_dual>
-        mo_frozen_dual = [_mrdiv(mo_froz[0], froz_froz[0])
+        mo_frozen_dual = [mrdiv(mo_froz[0], froz_froz[0])
                           for mo_froz, froz_froz in zip(mo_frozen, frozen_frozen)]
 
         # for each config, indexed as [0/1][k][mo][jy]
@@ -385,8 +342,8 @@ class Spillage:
                               for mo_froz_dual, dat, jy2froz in
                               zip(mo_frozen_dual, self.config, jy2frozen)]
 
-        self.spill_frozen = [_rfrob(mo_froz_dual @ froz_froz[1], mo_froz_dual, rowwise=True)
-                             - 2.0 * _rfrob(mo_froz_dual, mo_froz[1], rowwise=True)
+        self.spill_frozen = [rfrob(mo_froz_dual @ froz_froz[1], mo_froz_dual, rowwise=True)
+                             - 2.0 * rfrob(mo_froz_dual, mo_froz[1], rowwise=True)
                              for mo_froz_dual, mo_froz, froz_froz in
                              zip(mo_frozen_dual, mo_frozen, frozen_frozen)]
 
@@ -420,7 +377,7 @@ class Spillage:
 
         '''
         # jy -> (d/dcoef)ao transformation matrices
-        jy2dao_all = [[_jy2ao(nest(ci.tolist(), nestpat(coef)),
+        jy2dao_all = [[jy2ao(nest(ci.tolist(), nestpat(coef)),
                               dat['lin2comp'], dat['nbes'], dat['rcut'])
                        for ci in np.eye(len(flatten(coef)))]
                       for dat in self.config]
@@ -459,7 +416,7 @@ class Spillage:
         spill = (dat['wk'] @ dat['mo_mo'][1][:,ibands]).real.sum()
 
         # jy->ao basis transformation matrix
-        jy2ao = _jy2ao(coef, dat['lin2comp'], dat['nbes'], dat['rcut'])
+        jy2ao = jy2ao(coef, dat['lin2comp'], dat['nbes'], dat['rcut'])
 
         # <mo|Q_frozen|ao> and <mo|Q_frozen op|ao>
         V = dat['mo_jy'][:,:,ibands,:] @ jy2ao
@@ -470,10 +427,11 @@ class Spillage:
         # <ao|ao> and <ao|op|ao>
         W = jy2ao.T @ dat['jy_jy'] @ jy2ao
 
-        V_dual = _mrdiv(V[0], W[0]) # overlap only; no need for op
+        V_dual = mrdiv(V[0], W[0]) # overlap only; no need for op
         VdaggerV = V_dual.transpose((0,2,1)).conj() @ V_dual
 
-        spill += dat['wk'] @ (_rfrob(W[1], VdaggerV) - 2.0 * _rfrob(V_dual, V[1]))
+        spill += dat['wk'] @ (rfrob(W[1], VdaggerV)
+                              - 2.0 * rfrob(V_dual, V[1]))
         spill /= len(ibands)
 
         if with_grad:
@@ -484,10 +442,10 @@ class Spillage:
             # (d/dcoef)<mo|Q_frozen|ao> and (d/dcoef)<mo|Q_frozen op|ao>
             dV = self.mo_Qfrozen_dao[iconf][:,:,:,ibands,:]
 
-            grad = (_rfrob(dW[1], VdaggerV)
-                    - 2.0 * _rfrob(V_dual, dV[1])
-                    + 2.0 * _rfrob(dV[0] - V_dual @ dW[0],
-                                   _mrdiv(V_dual @ W[1] - V[1], W[0]))
+            grad = (rfrob(dW[1], VdaggerV)
+                    - 2.0 * rfrob(V_dual, dV[1])
+                    + 2.0 * rfrob(dV[0] - V_dual @ dW[0],
+                                   mrdiv(V_dual @ W[1] - V[1], W[0]))
                     ) @ dat['wk']
 
             grad /= len(ibands)
@@ -566,7 +524,7 @@ class Spillage:
 ############################################################
 import unittest
 
-from SIAB.spillage.radial import build_reduced, build_raw, coeff_reduced2raw
+from SIAB.spillage.radbuild import build_reduced, build_raw
 from SIAB.spillage.plot import plot_chi
 
 import matplotlib.pyplot as plt
@@ -643,30 +601,6 @@ class _TestSpillage(unittest.TestCase):
 
         plot_chi(chi, r)
         plt.show()
-
-
-    def est_jy2ao(self):
-
-        ntype = 3
-        natom = [1, 2, 3]
-        lmax = [2, 1, 0]
-        nzeta = [[1, 1, 1], [2, 2], [3]]
-        _, lin2comp = abacus_map(ntype, natom, lmax, nzeta)
-
-        nbes = 5
-        rcut = 6.0
-
-        coef = self.coefgen(nzeta, nbes)
-        M = _jy2ao(coef, lin2comp, nbes, rcut)
-
-        icol = 0
-        for mu, (itype, iatom, l, _, m) in lin2comp.items():
-            nzeta = len(coef[itype][l])
-            self.assertTrue(np.allclose(
-                M[mu*nbes:(mu+1)*nbes, icol:icol+nzeta],
-                np.array(coef[itype][l]).T
-            ))
-            icol += nzeta
 
 
     def est_add_config(self):

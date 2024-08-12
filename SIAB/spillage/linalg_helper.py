@@ -1,6 +1,6 @@
 import numpy as np
 
-def _mrdiv(X, Y):
+def mrdiv(X, Y):
     '''
     Right matrix division.
 
@@ -9,12 +9,11 @@ def _mrdiv(X, Y):
         Z[k] = X[k] @ inv(Y[k])
 
     '''
-    # TODO explore the possibility of using scipy.linalg.solve with assume_a='sym'
     assert len(X.shape) == 3 and len(Y.shape) == 3
     return np.array([np.linalg.solve(Yk.T, Xk.T).T for Xk, Yk in zip(X, Y)])
 
 
-def _rfrob(X, Y, rowwise=False):
+def rfrob(X, Y, rowwise=False):
     '''
     Real part of the Frobenius inner product.
 
@@ -22,10 +21,10 @@ def _rfrob(X, Y, rowwise=False):
 
         <X, Y> \equiv Tr(X @ Y.T.conj()) = (X * Y.conj()).sum()
 
-    X and Y must have shapes compatible with element-wise multiplication. If
-    their dimensions are 3 or more, the inner product by default is computed
-    slice-wise, i.e., sum() is taken over the last two axes. If rowwise is True,
-    sum() is taken over the last axis only.
+    X and Y must have shapes compatible with element-wise multiplication.
+    By default rowwise=False, in which case the inner product is computed
+    slice-wise, i.e., sum() is taken over the last two axes. If rowwise is
+    True, sum() is taken over the last axis only.
 
     Notes
     -----
@@ -48,42 +47,43 @@ class _TestLinalgHelper(unittest.TestCase):
         checks mrdiv with orthogonal matrices
 
         '''
-        n_slice = 3
+        nk = 3
         m = 5
         n = 6
 
         # make each slice of S unitary to make it easier to verify
-        Y = np.random.randn(n_slice, n, n) + 1j * np.random.randn(n_slice, n, n)
+        Y = np.random.randn(nk, n, n) + 1j * np.random.randn(nk, n, n)
         Y = np.linalg.qr(Y)[0]
 
-        X = np.random.randn(n_slice, m, n) + 1j * np.random.randn(n_slice, m, n)
-        Z = _mrdiv(X, Y)
+        X = np.random.randn(nk, m, n) + 1j * np.random.randn(nk, m, n)
+        Z = mrdiv(X, Y)
 
         self.assertEqual(Z.shape, X.shape)
-        for i in range(n_slice):
+        for i in range(nk):
             self.assertTrue( np.allclose(Z[i], X[i] @ Y[i].T.conj()) )
 
 
     def test_rfrob(self):
-        n_slice = 5
+        nk = 5
         m = 3
         n = 4
-        w = np.random.randn(n_slice)
-        X = np.random.randn(n_slice, m, n) + 1j * np.random.randn(n_slice, m, n)
-        Y = np.random.randn(n_slice, m, n) + 1j * np.random.randn(n_slice, m, n)
+        w = np.random.randn(nk)
+        X = np.random.randn(nk, m, n) + 1j * np.random.randn(nk, m, n)
+        Y = np.random.randn(nk, m, n) + 1j * np.random.randn(nk, m, n)
 
         wsum = 0.0
         for wk, Xk, Yk in zip(w, X, Y):
             wsum += wk * np.trace(Xk @ Yk.T.conj()).sum()
 
-        self.assertAlmostEqual(w @ _rfrob(X, Y), wsum.real)
+        self.assertAlmostEqual(w @ rfrob(X, Y), wsum.real)
 
         wsum = np.zeros(m, dtype=complex)
         for i in range(m):
-            for k in range(n_slice):
+            for k in range(nk):
                 wsum[i] += w[k] * (X[k,i] @ Y[k,i].T.conj())
 
-        self.assertTrue( np.allclose(w @ _rfrob(X, Y, rowwise=True), wsum.real) )
+        self.assertTrue(np.allclose(w @ rfrob(X, Y, rowwise=True),
+                                    wsum.real))
 
 
 if __name__ == '__main__':
