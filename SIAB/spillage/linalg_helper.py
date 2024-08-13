@@ -2,15 +2,29 @@ import numpy as np
 
 def mrdiv(X, Y):
     '''
-    Right matrix division.
+    Right matrix division X @ inv(Y).
 
-    Given two 3-d arrays X and Y, returns a 3-d array Z such that
-
-        Z[k] = X[k] @ inv(Y[k])
+    This function computes the right matrix division X @ inv(Y) slice-wise
+    if X are at least 2-d. In this case the shapes of X and Y must be
+    broadcastable as supported by numpy.linalg.solve. If X is 1-d, Y must
+    be 2-d and the result is a 1-d array.
+    
+    Note
+    ----
+    The documentation of numpy.linalg.solve seems to suggest that it is
+    allowed to call solve(A,b) with A having shape (..., M, M) and b having
+    shape (M,). However, this does not work for A with 3 or more dimensions
+    (at least for v1.24.2). That's why len(Y.shape) is restricted to be 2
+    when len(X.shape) is 1 in the assert statement below. This needs to be
+    investigated further.
 
     '''
-    assert len(X.shape) == 3 and len(Y.shape) == 3
-    return np.array([np.linalg.solve(Yk.T, Xk.T).T for Xk, Yk in zip(X, Y)])
+    assert (len(X.shape) == 1 and len(Y.shape) == 2) \
+            or (len(X.shape) > 1 and len(Y.shape) > 1)
+
+    return np.linalg.solve(Y.swapaxes(-2, -1), X.swapaxes(-2, -1)) \
+            .swapaxes(-2, -1) \
+            if len(X.shape) > 1 else np.linalg.solve(Y.T, X)
 
 
 def rfrob(X, Y, rowwise=False):
@@ -51,39 +65,44 @@ class _TestLinalgHelper(unittest.TestCase):
         m = 5
         n = 6
 
-        # make each slice of S unitary to make it easier to verify
+        X = np.random.randn(nk, m, n) + 1j * np.random.randn(nk, m, n)
+
+        # have each slice of Y unitary to make it easier to verify
         Y = np.random.randn(nk, n, n) + 1j * np.random.randn(nk, n, n)
         Y = np.linalg.qr(Y)[0]
 
-        X = np.random.randn(nk, m, n) + 1j * np.random.randn(nk, m, n)
+        # check that mrdiv works for broadcasted multiple slices
         Z = mrdiv(X, Y)
-
         self.assertEqual(Z.shape, X.shape)
         for i in range(nk):
-            self.assertTrue( np.allclose(Z[i], X[i] @ Y[i].T.conj()) )
+            self.assertTrue(np.allclose(Z[i], X[i] @ Y[i].T.conj()))
+
+        # check that mrdiv works for a single slice
+        for k in range(nk):
+            self.assertTrue(np.allclose(mrdiv(X[k], Y[k]),
+                                        X[k] @ Y[k].T.conj()))
+
+        # check that mrdiv works when X is 1-d and Y is 2-d
+        X = np.random.randn(n) + 1j * np.random.randn(n)
+        for k in range(nk):
+            self.assertTrue(np.allclose(mrdiv(X, Y[k]),
+                                        X @ Y[k].T.conj()))
 
 
     def test_rfrob(self):
         nk = 5
         m = 3
         n = 4
-        w = np.random.randn(nk)
         X = np.random.randn(nk, m, n) + 1j * np.random.randn(nk, m, n)
         Y = np.random.randn(nk, m, n) + 1j * np.random.randn(nk, m, n)
 
-        wsum = 0.0
-        for wk, Xk, Yk in zip(w, X, Y):
-            wsum += wk * np.trace(Xk @ Yk.T.conj()).sum()
+        res = [np.trace(X[k] @ Y[k].T.conj()).real for k in range(nk)]
+        self.assertTrue(np.allclose(rfrob(X, Y), res))
 
-        self.assertAlmostEqual(w @ rfrob(X, Y), wsum.real)
-
-        wsum = np.zeros(m, dtype=complex)
-        for i in range(m):
-            for k in range(nk):
-                wsum[i] += w[k] * (X[k,i] @ Y[k,i].T.conj())
-
-        self.assertTrue(np.allclose(w @ rfrob(X, Y, rowwise=True),
-                                    wsum.real))
+        res = [[(X[k,i] @ Y[k,i].T.conj()).real
+                for i in range(m)]
+               for k in range(nk)]
+        self.assertTrue(np.allclose(rfrob(X, Y, rowwise=True), res))
 
 
 if __name__ == '__main__':

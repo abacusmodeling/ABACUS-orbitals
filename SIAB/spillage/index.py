@@ -9,7 +9,7 @@ def index_map(natom, lmax, nzeta=None):
 
     This function returns a bijective map (dict + list) between composite
     indices (itype, iatom, l[, zeta], m) and linearized indices following
-    the ABACUS convention, in which the composite indices are arranged
+    the ABACUS convention, in which the composite indices are ordered
     lexicographically in term of itype-iatom-l[-zeta]-mm where
     mm = 2*abs(m)-(m>0) (i.e. m is ordered as 0, 1, -1, 2, -2, ..., l, -l)
 
@@ -31,9 +31,9 @@ def index_map(natom, lmax, nzeta=None):
     Returns
     -------
         comp2lin : dict
-            A dict with values being the linearized indices and keys being
-            composite indices (itype, iatom, l, m) if nzeta is None, or
-            (itype, iatom, l, zeta, m) if nzeta is not None.
+            A dict with values being the linearized indices. The keys
+            are (itype, iatom, l, m) if nzeta is None, or (itype, iatom,
+            l, zeta, m) if nzeta is not None.
         lin2comp : list
             lin2comp[i] gives the composite index of the orbital with
             linearized index i.
@@ -69,7 +69,7 @@ def perm_zeta_m(lin2comp):
     '''
     Given a list of composite indices (itype, iatom, l, zeta, m) following
     the ABACUS order, this function returns a permutation `p` such that
-    lin2comp[p] becomes a list with the relative order of zeta and m reversed.
+    lin2comp[p] becomes a list with the relative order of zeta & m reversed.
 
     '''
     # preserve the original intra-m order (0, 1, -1, 2, -2, ..., l, -l),

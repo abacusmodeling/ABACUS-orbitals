@@ -1,5 +1,3 @@
-from SIAB.spillage.datparse import read_orb_mat, _assert_consistency, \
-        read_wfc_lcao_txt, read_abacus_csr
 from SIAB.spillage.radial import _nbes, jl_reduce, jl_raw_norm
 from SIAB.spillage.coefftrans import coeff_normalized2raw, coeff_reduced2raw
 from SIAB.spillage.listmanip import flatten, nest, nestpat
@@ -7,13 +5,17 @@ from SIAB.spillage.jlzeros import JLZEROS
 from SIAB.spillage.index import index_map, perm_zeta_m
 from SIAB.spillage.linalg_helper import mrdiv, rfrob
 from SIAB.spillage.basistrans import jy2ao
+from SIAB.spillage.datparse import read_orb_mat, _assert_consistency, \
+        read_wfc_lcao_txt, read_abacus_csr
 
 import numpy as np
 from scipy.optimize import minimize, basinhopping
 from copy import deepcopy
 
 
-def _overlap_spillage(ovlp, coef, ibands, coef_frozen=None):
+def _overlap_spillage(natom, lmax, rcut, nbes,
+                      jy_jy, mo_jy, mo_mo, wk,
+                      coef, ibands, coef_frozen=None):
     '''
     Standard spillage function (overlap spillage).
 
@@ -24,31 +26,34 @@ def _overlap_spillage(ovlp, coef, ibands, coef_frozen=None):
     as a cross-check for the implementation of the generalized spillage.
 
     '''
-    spill = (ovlp['wk'] @ ovlp['mo_mo'][:,ibands]).real.sum()
+    spill = (wk @ mo_mo[:,ibands]).real.sum()
 
-    mo_jy = ovlp['mo_jy'][:,ibands,:]
-    jy2ao = jy2ao(coef, ovlp['lin2comp'], ovlp['nbes'], ovlp['rcut'])
+    mo_jy = mo_jy[:,ibands,:]
+    jy2ao = jy2ao(coef, natom, lmax, nbes, rcut)
 
     V = mo_jy @ jy2ao
-    W = jy2ao.T @ ovlp['jy_jy'] @ jy2ao
+    W = jy2ao.T @ jy_jy @ jy2ao
 
     if coef_frozen is not None:
-        jy2frozen = jy2ao(coef_frozen, ovlp['lin2comp'], ovlp['nbes'], ovlp['rcut'])
+        jy2frozen = jy2ao(coef_frozen, natom, lmax, nbes, rcut)
 
         X = mo_jy @ jy2frozen
-        S = jy2frozen.T @ ovlp['jy_jy'] @ jy2frozen
+        S = jy2frozen.T @ jy_jy @ jy2frozen
         X_dual = mrdiv(X, S)
 
-        spill -= ovlp['wk'] @ rfrob(X_dual, X)
+        V -= X_dual @ jy2frozen.T @ jy_jy @ jy2ao
+        spill -= wk @ rfrob(X_dual, X)
 
-        V -= X_dual @ jy2frozen.T @ ovlp['jy_jy'] @ jy2ao
-
-    spill -= ovlp['wk'] @ rfrob(mrdiv(V, W), V)
+    spill -= wk @ rfrob(mrdiv(V, W), V)
 
     return spill / len(ibands)
 
 
-def initgen(nzeta, ov, reduced=False):
+# TODO
+# lmax of nzeta & lmax of overlap data
+def initgen(nzeta,
+            lmax_ov, rcut, nbes,
+            ov, reduced=False):
     '''
     Generate an initial guess of the spherical Bessel coefficients from
     the single-atom overlap data (in raw basis) for the spillage optimization.
@@ -335,21 +340,25 @@ class Spillage:
 
         # <mo|frozen_dual> only; no need to compute <mo|op|frozen_dual>
         mo_frozen_dual = [mrdiv(mo_froz[0], froz_froz[0])
-                          for mo_froz, froz_froz in zip(mo_frozen, frozen_frozen)]
+                          for mo_froz, froz_froz in zip(mo_frozen,
+                                                        frozen_frozen)]
 
         # for each config, indexed as [0/1][k][mo][jy]
         self.mo_Pfrozen_jy = [mo_froz_dual @ jy2froz.T @ dat['jy_jy']
                               for mo_froz_dual, dat, jy2froz in
                               zip(mo_frozen_dual, self.config, jy2frozen)]
 
-        self.spill_frozen = [rfrob(mo_froz_dual @ froz_froz[1], mo_froz_dual, rowwise=True)
-                             - 2.0 * rfrob(mo_froz_dual, mo_froz[1], rowwise=True)
+        self.spill_frozen = [rfrob(mo_froz_dual @ froz_froz[1], mo_froz_dual,
+                                   rowwise=True)
+                             - 2.0 * rfrob(mo_froz_dual, mo_froz[1],
+                                           rowwise=True)
                              for mo_froz_dual, mo_froz, froz_froz in
                              zip(mo_frozen_dual, mo_frozen, frozen_frozen)]
 
         # weighted sum over k
         self.spill_frozen = [dat['wk'] @ spill_froz
-                             for dat, spill_froz in zip(self.config, self.spill_frozen)]
+                             for dat, spill_froz in zip(self.config,
+                                                        self.spill_frozen)]
 
 
     def _tab_deriv(self, coef):

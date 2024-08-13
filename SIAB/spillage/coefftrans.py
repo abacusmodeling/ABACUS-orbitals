@@ -99,6 +99,27 @@ class _TestCoeffTrans(unittest.TestCase):
         self.assertTrue(coeff_raw[0] == [] and coeff_raw[2] == [])
 
 
+    def test_coeff_raw_normalize(self):
+        rcut = 9.0
+        nq = 10
+
+        nzeta = [1, 2, 3, 4]
+        lmax = len(nzeta) - 1
+        coeff_raw = [np.random.randn(nzeta[l], nq).tolist()
+                     for l in range(lmax+1)]
+
+        coeff_norm = coeff_raw2normalized(coeff_raw, rcut)
+        coeff_raw2 = coeff_normalized2raw(coeff_norm, rcut)
+        for l in range(lmax+1):
+            self.assertTrue(np.allclose(coeff_raw[l], coeff_raw2[l]))
+            for zeta in range(nzeta[l]):
+                for q in range(nq):
+                    self.assertAlmostEqual(coeff_norm[l][zeta][q],
+                                           coeff_raw[l][zeta][q]
+                                           * jl_raw_norm(l, q, rcut))
+
+
+
 if __name__ == '__main__':
     unittest.main()
 

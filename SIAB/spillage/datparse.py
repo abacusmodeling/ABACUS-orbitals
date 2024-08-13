@@ -130,7 +130,7 @@ def read_orb_mat(fpath):
     mo_jy = np.array(data[mo_jy_start:mo_jy_end], dtype=float) \
             .view(dtype=complex) \
             .reshape((nk, nbands, nao*nbes)) \
-            .conj() # the output of abacus is <jy|mo>; conjugate it to <mo|jy>
+            .conj() # abacus outputs <jy|mo>, so a conjugate is needed
 
 
     ####################################################################
@@ -146,9 +146,11 @@ def read_orb_mat(fpath):
     assert np.linalg.norm(np.imag(jy_jy.reshape(-1)), np.inf) < 1e-12
     jy_jy = np.real(jy_jy)
 
-    # NOTE permute jy_jy from (nk, nao, nao, nbes, nbes) to (nk, nao, nbes, nao, nbes)
-    # which is more convenient for later use.
-    jy_jy = jy_jy.transpose((0, 1, 3, 2, 4)).reshape((nk, nao*nbes, nao*nbes))
+    # permute jy_jy from (nk, nao, nao, nbes, nbes) to
+    # (nk, nao, nbes, nao, nbes) for convenience later.
+    jy_jy = jy_jy \
+            .transpose((0, 1, 3, 2, 4)) \
+            .reshape((nk, nao*nbes, nao*nbes))
 
     ####################################################################
     #                           MO-MO overlap
@@ -160,7 +162,6 @@ def read_orb_mat(fpath):
 
     assert len(mo_mo) == nbands * nk
     mo_mo = mo_mo.reshape((nk, nbands))
-
 
     return {'ntype': ntype, 'natom': natom, 'ecutwfc': ecutwfc,
             'ecutjlq': ecutjlq, 'rcut': rcut, 'lmax': lmax, 'nk': nk,
@@ -206,11 +207,13 @@ def read_wfc_lcao_txt(fname):
     For multiple-k calculations, each file corresponds to the coefficients
     of a k point, with filenames showing their internal k index. In the case
     of spin-2 calculations, all spin-down k points are indexed behind spin-up.
-    For example, suppose there are 8 (spinless) k points, then there will be 16
-    files, with the first 8 corresponding to spin-up. The k point in crystal
-    coordinate is given at the beginning of each file. Coefficients are complex
-    in multi-k calculations; the real and imaginary parts are simply given one
-    by one, e.g., the first coefficient above is (-5.3725e-01, 0.0000e+00).
+    For example, suppose there are 8 (spinless) k points, then there will be
+    16 files, with the first 8 corresponding to spin-up. The k point in
+    crystal coordinate is also given at the beginning of each file.
+
+    Coefficients are complex in multi-k calculations; the real and imaginary
+    parts are simply given one by one, e.g., the first coefficient above is
+    (-5.3725e-01, 0.0000e+00).
 
     For gamma-only calculations, the output files differ in two ways. First,
     there is no k point coordinate at the beginning of the file. Second, the
@@ -310,6 +313,8 @@ class _TestDatParse(unittest.TestCase):
         fpath = './testfiles/Si/Si-dimer-1.8/orb_matrix.0.dat'
         dat = read_orb_mat(fpath)
 
+        nbes0 = int(np.sqrt(dat['ecutjlq']) * dat['rcut'] / np.pi)
+
         self.assertEqual(dat['ntype'], 1)
         self.assertEqual(dat['natom'], [2])
         self.assertEqual(dat['ecutwfc'], 40.0)
@@ -317,20 +322,25 @@ class _TestDatParse(unittest.TestCase):
         self.assertEqual(dat['rcut'], 7.0)
         self.assertEqual(dat['lmax'], [2])
         self.assertEqual(dat['nbands'], 8)
-        self.assertEqual(dat['nbes'], int(np.sqrt(dat['ecutjlq']) * dat['rcut'] / np.pi))
+        self.assertEqual(dat['nbes'], nbes0)
         self.assertEqual(dat['nk'], 1)
         self.assertTrue(np.all( dat['kpt'] == np.array([[0., 0., 0.]]) ))
         self.assertTrue(np.all( dat['wk'] == np.array([1.0]) ))
 
         nao = dat['natom'][0] * (dat['lmax'][0] + 1)**2
 
-        self.assertEqual(dat['mo_jy'].shape, (dat['nk'], dat['nbands'], nao*dat['nbes']))
-        self.assertEqual(dat['jy_jy'].shape, (dat['nk'], nao*dat['nbes'], nao*dat['nbes']))
-        self.assertEqual(dat['mo_mo'].shape, (dat['nk'], dat['nbands']))
+        self.assertEqual(dat['mo_jy'].shape,
+                         (dat['nk'], dat['nbands'], nao*dat['nbes']))
+        self.assertEqual(dat['jy_jy'].shape,
+                         (dat['nk'], nao*dat['nbes'], nao*dat['nbes']))
+        self.assertEqual(dat['mo_mo'].shape,
+                         (dat['nk'], dat['nbands']))
 
 
         fpath = './testfiles/Si/Si-trimer-1.7/orb_matrix.1.dat'
         dat = read_orb_mat(fpath)
+
+        nbes0 = int(np.sqrt(dat['ecutjlq']) * dat['rcut'] / np.pi)
 
         self.assertEqual(dat['ntype'], 1)
         self.assertEqual(dat['natom'], [3])
@@ -339,16 +349,20 @@ class _TestDatParse(unittest.TestCase):
         self.assertEqual(dat['rcut'], 7.0)
         self.assertEqual(dat['lmax'], [2])
         self.assertEqual(dat['nbands'], 12)
-        self.assertEqual(dat['nbes'], int(np.sqrt(dat['ecutjlq']) * dat['rcut'] / np.pi))
+        self.assertEqual(dat['nbes'], nbes0)
         self.assertEqual(dat['nk'], 2)
-        self.assertTrue(np.all( dat['kpt'] == np.array([[0., 0., 0.], [0., 0., 0.]]) ))
+        self.assertTrue(np.all( dat['kpt'] == np.array([[0., 0., 0.],
+                                                        [0., 0., 0.]]) ))
         self.assertTrue(np.all( dat['wk'] == np.array([0.5, 0.5]) ))
 
         nao = dat['natom'][0] * (dat['lmax'][0] + 1)**2
 
-        self.assertEqual(dat['mo_jy'].shape, (dat['nk'], dat['nbands'], nao*dat['nbes']))
-        self.assertEqual(dat['jy_jy'].shape, (dat['nk'], nao*dat['nbes'], nao*dat['nbes']))
-        self.assertEqual(dat['mo_mo'].shape, (dat['nk'], dat['nbands']))
+        self.assertEqual(dat['mo_jy'].shape,
+                         (dat['nk'], dat['nbands'], nao*dat['nbes']))
+        self.assertEqual(dat['jy_jy'].shape,
+                         (dat['nk'], nao*dat['nbes'], nao*dat['nbes']))
+        self.assertEqual(dat['mo_mo'].shape,
+                         (dat['nk'], dat['nbands']))
 
 
     def test_read_abacus_csr(self):

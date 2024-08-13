@@ -1,8 +1,9 @@
 from SIAB.spillage.index import index_map
 
 import numpy as np
+from scipy.linalg import block_diag
 
-def jy2ao(coef, lin2comp, nbes, rcut):
+def jy2ao(coef, natom, lmax, nbes, rcut):
     '''
     Basis transformation matrix from a spherical wave basis to a pseudo-
     atomic orbital basis.
@@ -12,9 +13,9 @@ def jy2ao(coef, lin2comp, nbes, rcut):
     lexicographic order of (itype, iatom, l, mm, q) where mm=2*abs(m)-(m>0)
     and q is the index for radial functions, this function constructs the
     transformation matrix from the spherical wave basis to the pseudo-atomic
-    orbital basis arranged in the lexicographic order of (itype, iatom, l,
-    mm, zeta). The entire transformation matrix is block-diagonal, with
-    each block corresponding to a specific q -> zeta.
+    orbital basis specified by coef and arranged in the lexicographic order
+    of (itype, iatom, l, mm, zeta). The transformation matrix is block-
+    diagonal, with each block corresponding to a specific q -> zeta.
 
     Parameters
     ----------
@@ -23,24 +24,25 @@ def jy2ao(coef, lin2comp, nbes, rcut):
             in terms of the spherical wave basis. coef[itype][l][zeta]
             gives a list of spherical wave coefficients that specifies
             an orbital.
-            Note that the length of this coefficient list must not be
-            larger than its corresponding nbes; it will be padded with
-            zeros if its length is smaller.
-        lin2comp : list
-            linear-to-composite index map without the radial index q.
-
-                    mu -> (itype, iatom, l, m).
-
+            Note that len(coef[itype][l][zeta]) must not be larger than
+            nbes[l]; coef[itype][l][zeta] will be padded with zeros if
+            len(coef[itype][l][zeta]) < nbes[l].
+        natom : list of int
+            Number of atoms for each atom type.
+        lmax : list of int
+            Maximum angular momentum for each atom type.
         nbes : list of int or int
-            nbes[l] specifies the number of radial functions for angular
-            momemtum l. If an integer, the same number is used for all l.
+            nbes[l] specifies the number of spherical wave radial functions
+            of angular momemtum l. If an integer, the same number is assumed
+            for all l.
         rcut : float
             Cutoff radius.
 
     '''
-    from scipy.linalg import block_diag
-    lmax = max(comp[2] for comp in lin2comp)
-    nbes = [nbes] * (lmax + 1) if isinstance(nbes, int) else nbes
+    assert len(natom) == len(lmax) == len(coef)
+    lmaxmax = max(lmax)
+    nbes = [nbes] * (lmaxmax + 1) if isinstance(nbes, int) else nbes
+    lin2comp = index_map(natom, lmax)[1]
 
     def _gen_q2zeta(coef, lin2comp, nbes, rcut):
         for comp in lin2comp:
@@ -94,19 +96,18 @@ class _TestBasisTrans(unittest.TestCase):
     def test_jy2ao(self):
 
         # generate some random coefficients
-        nbes = [5, 6, 7]
+        nbes = [7, 7, 6]
         nzeta = [[2, 1, 3], [2, 2], [3]] # nzeta[itype][l]
         coef = self.coefgen(nzeta, nbes)
 
         natom = [1, 2, 3]
         lmax = [2, 1, 0]
-        lin2comp = index_map(natom, lmax)[1]
         rcut = 6.0
-        M = jy2ao(coef, lin2comp, nbes, rcut)
+        M = jy2ao(coef, natom, lmax, nbes, rcut)
 
         irow = 0
         icol = 0
-        for (itype, iatom, l, m) in lin2comp:
+        for (itype, iatom, l, m) in index_map(natom, lmax)[1]:
             nz = nzeta[itype][l]
             self.assertTrue(np.allclose(
                 M[irow:irow+nbes[l], icol:icol+nz],
