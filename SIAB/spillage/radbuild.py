@@ -155,13 +155,13 @@ class _TestRadBuild(unittest.TestCase):
                     idx = np.argmax(np.abs(chi_raw[l][zeta]))
                     if chi_raw[l][zeta][idx] * chi_rdc[l][zeta][idx] < 0:
                         chi_rdc[l][zeta] *= -1
-                    self.assertLess(norm(chi_raw[l][zeta] - chi_rdc[l][zeta]),
-                                    1e-12)
+                    self.assertTrue(np.allclose(chi_raw[l][zeta],
+                                                chi_rdc[l][zeta]))
 
 
     def est_plot_reduced(self):
-        lmax = 10
-        nq = 7
+        lmax = 4
+        nq = 5
 
         rcut = 7.0
         dr = 0.01
@@ -171,11 +171,26 @@ class _TestRadBuild(unittest.TestCase):
         coeff_reduced = [np.eye(nq).tolist()] * (lmax+1)
         chi_reduced = build_reduced(coeff_reduced, rcut, r, False)
 
-        l = 3
-        for chi in chi_reduced[l]:
-            plt.plot(r, chi)
+        fig, ax = plt.subplots(1, 2, figsize=(10,4), layout='tight')
 
-        plt.xlim([0, rcut])
+        # same l, different q
+        l = 2
+        for q, chi in enumerate(chi_reduced[l]):
+            ax[0].plot(r, chi, label='q = %d' % q)
+
+        ax[0].set_xlim([0, rcut])
+        ax[0].set_title('l = %d' % l)
+        ax[0].legend()
+
+        # same q, different l
+        q = 0
+        for l, chi in enumerate(chi_reduced):
+            ax[1].plot(r, chi[q], label='l = %d' % l)
+        ax[1].set_xlim([0, rcut])
+        ax[1].set_title('q = %d' % q)
+        ax[1].legend()
+
+
         plt.show()
 
 

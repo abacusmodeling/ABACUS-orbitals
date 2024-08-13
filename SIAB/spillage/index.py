@@ -1,3 +1,31 @@
+def _nao(natom, lmax, nzeta=None):
+    '''
+    Total number of orbitals.
+
+    Parameters
+    ----------
+        natom : list of int
+            Number of atoms for each type.
+        lmax : list of int
+            lmax[i] specifies the maximum angular momentum of type i.
+            len(lmax) must be equal to len(natom).
+        nzeta : list of list of int
+            nzeta[i][l] specifies the number of zeta orbitals of the
+            angular momentum l of type i.
+            If None, nzeta is assumed to be 1 in all cases.
+            If not None, len(nzeta) must be equal to len(natom), and
+            len(nzeta[i]) must be equal to lmax[i]+1.
+    '''
+    if nzeta is None:
+        return sum(sum(2*l+1 for l in range(lmax[itype]+1)) * nat
+                   for itype, nat in enumerate(natom))
+    else:
+        assert lmax == [len(nzt)-1 for nzt in nzeta]
+        return sum(sum((2*l+1) * nzeta[itype][l]
+                       for l in range(lmax[itype]+1))
+                   * nat for itype, nat in enumerate(natom))
+
+
 def index_map(natom, lmax, nzeta=None):
     '''
     Bijective map between composite and linearized indices.
@@ -84,6 +112,20 @@ import unittest
 
 class _TestIndexMap(unittest.TestCase):
 
+    def test_nao(self):
+
+        self.assertEqual(_nao([7], [2], [[2,3,4]]), 7*(2*1 + 3*3 + 4*5))
+
+        natom = [2, 1, 3]
+        lmax = [3, 0, 4]
+        self.assertEqual(_nao(natom, lmax), 2*16 + 1*1 + 3*25)
+
+        nzeta = [[2,3,1,1], [4], [1, 2, 2, 1, 3]]
+        self.assertEqual(_nao(natom, lmax, nzeta),
+                         2*(2*1 + 3*3 + 1*5 + 1*7) +
+                         1*(4*1) +
+                         3*(1*1 + 2*3 + 2*5 + 1*7 + 3*9))
+
     def test_index_map(self):
         natom = [2, 1, 3]
         lmax = [1, 2, 4]
@@ -91,9 +133,7 @@ class _TestIndexMap(unittest.TestCase):
         comp2lin, lin2comp = index_map(natom, lmax, nzeta)
 
         # check the total number of orbitals
-        nao = sum(sum((2*l+1) * nzeta[itype][l]
-                      for l in range(lmax[itype]+1))
-                  * nat for itype, nat in enumerate(natom))
+        nao = _nao(natom, lmax, nzeta)
         self.assertEqual( len(lin2comp), nao )
 
         # check the first and the last

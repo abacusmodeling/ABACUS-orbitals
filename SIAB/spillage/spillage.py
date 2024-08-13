@@ -2,7 +2,7 @@ from SIAB.spillage.radial import _nbes, jl_reduce, jl_raw_norm
 from SIAB.spillage.coefftrans import coeff_normalized2raw, coeff_reduced2raw
 from SIAB.spillage.listmanip import flatten, nest, nestpat
 from SIAB.spillage.jlzeros import JLZEROS
-from SIAB.spillage.index import index_map, perm_zeta_m
+from SIAB.spillage.index import index_map, perm_zeta_m, _nao
 from SIAB.spillage.linalg_helper import mrdiv, rfrob
 from SIAB.spillage.basistrans import jy2ao
 from SIAB.spillage.datparse import read_orb_mat, _assert_consistency, \
@@ -29,19 +29,17 @@ def _overlap_spillage(natom, lmax, rcut, nbes,
     spill = (wk @ mo_mo[:,ibands]).real.sum()
 
     mo_jy = mo_jy[:,ibands,:]
-    jy2ao = jy2ao(coef, natom, lmax, nbes, rcut)
-
-    V = mo_jy @ jy2ao
-    W = jy2ao.T @ jy_jy @ jy2ao
+    _jy2ao = jy2ao(coef, natom, lmax, nbes, rcut)
+    V = mo_jy @ _jy2ao
+    W = _jy2ao.T @ jy_jy @ _jy2ao
 
     if coef_frozen is not None:
         jy2frozen = jy2ao(coef_frozen, natom, lmax, nbes, rcut)
-
         X = mo_jy @ jy2frozen
         S = jy2frozen.T @ jy_jy @ jy2frozen
         X_dual = mrdiv(X, S)
 
-        V -= X_dual @ jy2frozen.T @ jy_jy @ jy2ao
+        V -= X_dual @ jy2frozen.T @ jy_jy @ _jy2ao
         spill -= wk @ rfrob(X_dual, X)
 
     spill -= wk @ rfrob(mrdiv(V, W), V)
@@ -49,63 +47,81 @@ def _overlap_spillage(natom, lmax, rcut, nbes,
     return spill / len(ibands)
 
 
-# TODO
-# lmax of nzeta & lmax of overlap data
-def initgen(nzeta,
-            lmax_ov, rcut, nbes,
-            ov, reduced=False):
+def initgen_pw(nzeta, ecut, lmax, rcut, nbes_raw, mo_jy, wk,
+               reduced=False, diagosis=False):
     '''
-    Generate an initial guess of the spherical Bessel coefficients from
-    the single-atom overlap data (in raw basis) for the spillage optimization.
+    Generates an initial guess for the spherical Bessel coefficients from
+    the single-atom overlap data (plane-wave reference state).
+
+    Parameters
+    ----------
+        nzeta : list of int
+            Target number of zeta for each l.
+        ecut : float
+            Kinetic energy cutoff for the target coefficients.
+            Note that the deduced number of spherical Bessel components
+            must not be larger than nbes.
+        lmax : int
+            Maximum l of the single-atom data
+        rcut : float
+            Cutoff radius.
+        nbes : int
+            Number of raw spherical Bessel components for each l of the
+            single-atom data.
+        mo_jy : ndarray, shape (nk, nbands, nao*nbes)
+            Overlap between the single-atom reference states and raw-
+            truncated spherical waves (jy).
+        wk : ndarray, shape (nk,)
+            k-point weights.
+        reduced : bool
+            If true, the initial guess is generated in terms of the
+            reduced spherical Bessel basis; otherwise in the normalized
+            truncated spherical Bessel basis.
 
     '''
-    assert ov['ntype'] == 1 and ov['natom'][0] == 1 and \
-            ov['ecutwfc'] <= ov['ecutjlq']
+    # maximum l of the generated coefficients
+    lmax_gen = len(nzeta) - 1
+    assert lmax_gen <= lmax
 
-    lmax = len(nzeta) - 1
-    assert lmax <= ov['lmax'][0]
+    # number of spherical Bessel components for each l
+    # of the generated coefficients
+    nbes_gen = [_nbes(l, rcut, ecut) for l in range(lmax_gen + 1)]
+    assert all(n > 0 and n <= nbes_raw for n in nbes_gen)
 
-    rcut = ov['rcut']
-    ecut = ov['ecutwfc']
-    nbes_ecut = [_nbes(l, rcut, ecut) for l in range(lmax+1)]
+    # transform <mo|jy(raw)> to <mo|jy(reduced)> or <mo|jy(normalized)>
     if reduced:
-        nbes_ecut = [n - 1 for n in nbes_ecut]
-
-    mo_jy = ov['mo_jy']
-    nbes = ov['nbes']
-    rcut = ov['rcut']
-    if reduced:
-        coef = [[jl_reduce(l, nbes, rcut).T.tolist()
-                 for l in range(ov['lmax'][0] + 1)]]
-        mo_jy = mo_jy @ jy2ao(coef, ov['lin2comp'], nbes, rcut)
-        nbes -= 1
+        coef = [[jl_reduce(l, nbes_raw, rcut).T.tolist()
+                 for l in range(lmax + 1)]]
     else: # normalized
         uvec = lambda v, k, n: [v if i == k else 0 for i in range(n)]
-        coef = [[[uvec(1. / jl_raw_norm(l, q, rcut), q, nbes)
-                  for q in range(nbes)]
-                 for l in range(ov['lmax'][0] + 1)]]
-        mo_jy = mo_jy @ jy2ao(coef, ov['lin2comp'], nbes, rcut)
+        coef = [[[uvec(1. / jl_raw_norm(l, q, rcut), q, nbes_raw)
+                  for q in range(nbes_raw)]
+                 for l in range(lmax + 1)]]
 
-    # reshaped to [nk, nbands, nao, nbes]
-    Y = mo_jy.reshape(ov['nk'], ov['nbands'], -1, nbes)
-
-    assert all(n > 0 and n <= nbes for n in nbes_ecut)
+    nk, nbands, _ = mo_jy.shape
+    nbes_now = nbes_raw - 1 if reduced else nbes_raw
+    Y = (mo_jy @ jy2ao(coef, [1], [lmax], nbes_raw, rcut)) \
+            .reshape(nk, nbands, -1, nbes_now)
 
     coef = []
-    for l in range(lmax+1):
-        idx_start = ov['comp2lin'][(0, 0, l, 0, 0)]
-        Yl = Y[:, :, idx_start:idx_start+2*l+1, :].reshape(ov['nk'], -1, nbes)
-        Yl = Yl[:,:,:nbes_ecut[l]]
+    for l in range(lmax_gen + 1):
+        Yl = Y[:, :, l*l:(l+1)*(l+1), :] \
+                .reshape(nk, -1, nbes_now)[:,:,:nbes_gen[l]]
+
         YdaggerY = ((Yl.transpose((0, 2, 1)).conj() @ Yl)
-                    * ov['wk'].reshape(-1,1,1)).sum(0).real
+                    * wk.reshape(-1, 1, 1)).sum(0).real
+
         val, vec = np.linalg.eigh(YdaggerY)
 
         # eigenvectors corresponding to the largest nzeta eigenvalues
-        coef.append(vec[:,-nzeta[l]:][:,::-1].T.tolist())
-        print( "ORBGEN: Y*Y (jy_mo*mo_jy) eigval diagnosis:")
-        print(f"        l = {l}: {val[-nzeta[l]:][::-1]}", flush = True)
+        coef.append(vec[:,-nzeta[l]:][:,::-1])
+        # NOTE coef is column-wise at this stage; to be transposed later
 
-    return [np.linalg.qr(np.array(coef_l).T)[0].T.tolist() for coef_l in coef]
+        if diagosis:
+            print( "ORBGEN: <jy|mo><mo|jy> eigval diagnosis:")
+            print(f"        l = {l}: {val[-nzeta[l]:][::-1]}")
+
+    return [np.linalg.qr(coef_l)[0].T.tolist() for coef_l in coef]
 
 
 class Spillage:
@@ -150,46 +166,40 @@ class Spillage:
         self.reset()
         self.reduced = reduced
 
+
     def reset(self):
         self.config = []
         self.rcut = None
 
-        self._reset_frozen()
-        self._reset_deriv()
-
-
-    def _reset_frozen(self):
         self.spill_frozen = None
         self.mo_Pfrozen_jy = None
-
-
-    def _reset_deriv(self):
         self.mo_Qfrozen_dao = []
         self.dao_jy = []
 
 
-    def add_config(self, ov, op, weight=(0.0, 1.0)):
+    def config_add_pw(self, file_ov, file_op, weight=(0.0, 1.0)):
         '''
+
         '''
+        ov = read_orb_mat(file_ov)
+        op = read_orb_mat(file_op)
+        wov, wop = weight
+
         # The overlap and operator data must be consistent except
         # for their matrix data (mo_mo, mo_jy and jy_jy).
         _assert_consistency(ov, op)
 
-        # The dict to append to config is a new one consisting of
-        # the common part of ovlp & op data plus their stacked
-        # matrix data.
-        dat = deepcopy(ov)
+        ntype, natom, lmax, nbes, rcut = \
+            [ov[key] for key in ['ntype', 'natom', 'lmax', 'nbes', 'rcut']]
 
-        ntype = ov['ntype']
-        lmax = ov['lmax']
-        nbes = ov['nbes']
-        rcut = ov['rcut']
-
+        # The output of PW calculation is based on raw truncated spherical
+        # Bessel basis, while the optimization will be performed in either
+        # reduced or normalized basis. Here we transform mo_jy & jy_jy to
+        # the basis of the optimization.
         if self.reduced:
             coef = [[jl_reduce(l, nbes, rcut).T.tolist()
                      for l in range(lmax[itype]+1)]
                     for itype in range(ntype)]
-            dat['nbes'] -= 1
         else:
             uvec = lambda v, k, n: [v if i == k else 0 for i in range(n)]
             coef = [[[uvec(1. / jl_raw_norm(l, q, rcut), q, nbes)
@@ -197,28 +207,38 @@ class Spillage:
                      for l in range(lmax[itype]+1)]
                     for itype in range(ntype)]
 
-        C = jy2ao(coef, ov['lin2comp'], nbes, rcut)
+        # basis transformation matrix
+        C = jy2ao(coef, natom, lmax, nbes, rcut)
 
-        wov, wop = weight
-
-        dat['mo_mo'] = np.array([ov['mo_mo'],
-                                 wov*ov['mo_mo'] + wop*op['mo_mo']])
-        dat['mo_jy'] = np.array([ov['mo_jy'] @ C,
-                                 (wov*ov['mo_jy'] + wop*op['mo_jy']) @ C])
-        dat['jy_jy'] = np.array([C.T @ ov['jy_jy'] @ C,
-                                 C.T @ (wov*ov['jy_jy']+wop*op['jy_jy']) @ C])
+        # packed data for a configuration
+        dat = {'ntype': ntype,
+               'natom': natom,
+               'lmax': lmax,
+               'nbes': nbes-1 if self.reduced else nbes,
+               'rcut': rcut,
+               'nbands': ov['nbands'],
+               'nk': ov['nk'],
+               'wk': ov['wk'],
+               'mo_mo': np.array([ov['mo_mo'],
+                                  wov*ov['mo_mo'] + wop*op['mo_mo']]),
+               'mo_jy': np.array([ov['mo_jy'] @ C,
+                                  (wov*ov['mo_jy'] + wop*op['mo_jy']) @ C]),
+               'jy_jy': np.array([C.T @ ov['jy_jy'] @ C,
+                                  C.T @ (wov*ov['jy_jy'] + wop*op['jy_jy'])
+                                  @ C]),
+               }
 
         self.config.append(dat)
 
         # NOTE currently a dataset merely contains one atom type
         # and one rcut. This may change in the future.
         if self.rcut is None:
-            self.rcut = ov['rcut']
+            self.rcut = dat['rcut']
         else:
             assert self.rcut == ov['rcut']
 
 
-    def jy_config_add(self, file_SR, file_TR, file_wfc, file_stru, file_orb,
+    def config_add_jy(self, file_SR, file_TR, file_wfc, file_stru, file_orb,
                       weight=(0.0, 1.0)):
         '''
 
@@ -329,7 +349,8 @@ class Spillage:
             return
 
         # jy -> frozen orbital transformation matrices
-        jy2frozen = [jy2ao(coef_frozen, dat['lin2comp'], dat['nbes'], dat['rcut'])
+        jy2frozen = [jy2ao(coef_frozen, dat['natom'], dat['lmax'],
+                           dat['nbes'], dat['rcut'])
                      for dat in self.config]
 
         frozen_frozen = [jy2froz.T @ dat['jy_jy'] @ jy2froz
@@ -340,25 +361,23 @@ class Spillage:
 
         # <mo|frozen_dual> only; no need to compute <mo|op|frozen_dual>
         mo_frozen_dual = [mrdiv(mo_froz[0], froz_froz[0])
-                          for mo_froz, froz_froz in zip(mo_frozen,
-                                                        frozen_frozen)]
+                          for mo_froz, froz_froz
+                          in zip(mo_frozen, frozen_frozen)]
 
         # for each config, indexed as [0/1][k][mo][jy]
         self.mo_Pfrozen_jy = [mo_froz_dual @ jy2froz.T @ dat['jy_jy']
-                              for mo_froz_dual, dat, jy2froz in
-                              zip(mo_frozen_dual, self.config, jy2frozen)]
+                              for mo_froz_dual, dat, jy2froz
+                              in zip(mo_frozen_dual, self.config, jy2frozen)]
 
-        self.spill_frozen = [rfrob(mo_froz_dual @ froz_froz[1], mo_froz_dual,
-                                   rowwise=True)
-                             - 2.0 * rfrob(mo_froz_dual, mo_froz[1],
-                                           rowwise=True)
-                             for mo_froz_dual, mo_froz, froz_froz in
-                             zip(mo_frozen_dual, mo_frozen, frozen_frozen)]
+        tmp = [rfrob(mo_froz_dual @ froz_froz[1], mo_froz_dual, True)
+               - 2.0 * rfrob(mo_froz_dual, mo_froz[1], True)
+               for mo_froz_dual, mo_froz, froz_froz
+               in zip(mo_frozen_dual, mo_frozen, frozen_frozen)]
 
         # weighted sum over k
         self.spill_frozen = [dat['wk'] @ spill_froz
-                             for dat, spill_froz in zip(self.config,
-                                                        self.spill_frozen)]
+                             for dat, spill_froz
+                             in zip(self.config, tmp)]
 
 
     def _tab_deriv(self, coef):
@@ -371,8 +390,8 @@ class Spillage:
                             <mo|Q_frozen   |ao>
                             <mo|Q_frozen op|ao>
 
-        with respect to the coefficients that specifies |ao>, where Q_frozen
-        is the projection operator onto the complement of the frozen subspace:
+        with respect to each Bessel coefficient of |ao>, where Q_frozen is
+        the projection operator onto the complement of the frozen subspace:
 
                         Q_frozen = 1 - |frozen_dual><frozen|
 
@@ -386,32 +405,39 @@ class Spillage:
 
         '''
         # jy -> (d/dcoef)ao transformation matrices
-        jy2dao_all = [[jy2ao(nest(ci.tolist(), nestpat(coef)),
-                              dat['lin2comp'], dat['nbes'], dat['rcut'])
+        jy2dao_all = [[jy2ao(nest(ci.tolist(), nestpat(coef)), dat['natom'],
+                             dat['lmax'], dat['nbes'], dat['rcut'])
                        for ci in np.eye(len(flatten(coef)))]
                       for dat in self.config]
 
-        # derivatives of <ao|jy>, indexed as [0/1][deriv][k][ao][jy] for each config
-        self.dao_jy = [np.array([jy2dao_i.T @ dat['jy_jy'] for jy2dao_i in jy2dao])
+        # derivatives of <ao|jy>, indexed as [ov/op][icoef][k][ao][jy]
+        # for each config
+        self.dao_jy = [np.array([jy2dao_i.T @ dat['jy_jy']
+                                 for jy2dao_i in jy2dao])
                        .transpose(1,0,2,3,4)
                        for dat, jy2dao in zip(self.config, jy2dao_all)]
 
         # derivatives of <mo|ao> and <mo|op|ao>
-        self.mo_Qfrozen_dao = [np.array([dat['mo_jy'] @ jy2dao_i for jy2dao_i in jy2dao])
+        self.mo_Qfrozen_dao = [np.array([dat['mo_jy'] @ jy2dao_i
+                                         for jy2dao_i in jy2dao])
                                for dat, jy2dao in zip(self.config, jy2dao_all)]
-        # at this stage, the index for each config follows [deriv][0/1][k][mo][ao]
+        # at this stage, the index for each config follows
+        # [icoef][ov/op][k][mo][ao]
         # where 0->overlap; 1->operator
 
         if self.spill_frozen is not None:
-            # if frozen orbitals are present, subtract from the previous results
-            # <mo|P_frozen|ao> and <mo|P_frozen op|ao>
+            # subtract from the previous results <mo|P_frozen|ao>
+            # and <mo|P_frozen op|ao>
             self.mo_Qfrozen_dao = [mo_Qfroz_dao -
-                                   np.array([mo_Pfroz_jy @ jy2dao_i for jy2dao_i in jy2dao])
+                                   np.array([mo_Pfroz_jy @ jy2dao_i
+                                             for jy2dao_i in jy2dao])
                                    for mo_Qfroz_dao, mo_Pfroz_jy, jy2dao in
-                                   zip(self.mo_Qfrozen_dao, self.mo_Pfrozen_jy, jy2dao_all)]
+                                   zip(self.mo_Qfrozen_dao, self.mo_Pfrozen_jy,
+                                       jy2dao_all)]
 
-        # transpose to [0/1][deriv][k][mo][ao]
-        self.mo_Qfrozen_dao = [dV.transpose(1,0,2,3,4) for dV in self.mo_Qfrozen_dao]
+        # transpose to [0/1][icoef][k][mo][ao]
+        self.mo_Qfrozen_dao = [dV.transpose(1,0,2,3,4)
+                               for dV in self.mo_Qfrozen_dao]
 
 
 
@@ -425,16 +451,17 @@ class Spillage:
         spill = (dat['wk'] @ dat['mo_mo'][1][:,ibands]).real.sum()
 
         # jy->ao basis transformation matrix
-        jy2ao = jy2ao(coef, dat['lin2comp'], dat['nbes'], dat['rcut'])
+        _jy2ao = jy2ao(coef, dat['natom'], dat['lmax'],
+                       dat['nbes'], dat['rcut'])
 
         # <mo|Q_frozen|ao> and <mo|Q_frozen op|ao>
-        V = dat['mo_jy'][:,:,ibands,:] @ jy2ao
+        V = dat['mo_jy'][:,:,ibands,:] @ _jy2ao
         if self.spill_frozen is not None:
-            V -= self.mo_Pfrozen_jy[iconf][:,:,ibands,:] @ jy2ao
+            V -= self.mo_Pfrozen_jy[iconf][:,:,ibands,:] @ _jy2ao
             spill += self.spill_frozen[iconf][ibands].sum()
 
         # <ao|ao> and <ao|op|ao>
-        W = jy2ao.T @ dat['jy_jy'] @ jy2ao
+        W = _jy2ao.T @ dat['jy_jy'] @ _jy2ao
 
         V_dual = mrdiv(V[0], W[0]) # overlap only; no need for op
         VdaggerV = V_dual.transpose((0,2,1)).conj() @ V_dual
@@ -445,7 +472,7 @@ class Spillage:
 
         if with_grad:
             # (d/dcoef)<ao|ao> and (d/dcoef)<ao|op|ao>
-            dW = self.dao_jy[iconf] @ jy2ao
+            dW = self.dao_jy[iconf] @ _jy2ao
             dW += dW.transpose((0,1,2,4,3)).conj()
 
             # (d/dcoef)<mo|Q_frozen|ao> and (d/dcoef)<mo|Q_frozen op|ao>
@@ -465,7 +492,8 @@ class Spillage:
 
     def opt(self, coef_init, coef_frozen, iconfs, ibands, options, nthreads=1):
         '''
-        Spillage minimization w.r.t. end-smoothed mixed spherical Bessel coefficients.
+        Spillage minimization w.r.t. (normalized or reduced) spherical
+        Bessel coefficients.
 
         Parameters
         ----------
@@ -474,13 +502,15 @@ class Spillage:
             coef_frozen : nested list
                 Coefficients for the frozen orbitals.
             iconfs : list of int or 'all'
-                List of configuration indices to be included in the optimization.
-                If 'all', all configurations are included.
+                List of configuration indices to be included in the
+                optimization. If 'all', all configurations are included.
             ibands : range/tuple or list of range/tuple
-                Band indices to be included in the spillage calculation. If a range
-                or tuple is given, the same indices are used for all configurations.
-                If a list of range/tuple is given, each range/tuple will be applied
-                to the configuration specified by iconfs respectively.
+                Band indices to be included in the spillage calculation.
+                If a range or tuple is given, the same indices are used
+                for all configurations.
+                If a list of range/tuple is given, each range/tuple will
+                be applied to the configuration specified by iconfs
+                respectively.
             options : dict
                 Options for the optimization.
             nthreads : int
@@ -503,10 +533,13 @@ class Spillage:
 
         pat = nestpat(coef_init)
         def f(c): # function to be minimized
-            s = lambda i: self._generalize_spillage(iconfs[i], nest(c.tolist(), pat),
-                                                    ibands[i], with_grad=True)
+            s = lambda i: self._generalize_spillage(iconfs[i],
+                                                    nest(c.tolist(), pat),
+                                                    ibands[i],
+                                                    with_grad=True)
             spills, grads = zip(*pool.map(s, range(nconf)))
-            return (sum(spills) / nconf, sum(np.array(flatten(g)) for g in grads) / nconf)
+            return (sum(spills) / nconf,
+                    sum(np.array(flatten(g)) for g in grads) / nconf)
 
         c0 = np.array(flatten(coef_init))
 
@@ -518,13 +551,16 @@ class Spillage:
         res = minimize(f, c0, jac=True, method='L-BFGS-B',
                        bounds=bounds, options=options)
 
-        #minimizer_kwargs = {"method": "L-BFGS-B", "jac": True, "bounds": bounds}
-        #res = basinhopping(f, c0, minimizer_kwargs=minimizer_kwargs, niter=20, disp=True)
+        #minimizer_kwargs = {"method": "L-BFGS-B", "jac": True,
+        #                    "bounds": bounds}
+        #res = basinhopping(f, c0, minimizer_kwargs=minimizer_kwargs,
+        #                   niter=20, disp=True)
 
         pool.close()
 
         coef_opt = nest(res.x.tolist(), pat)
-        return [[np.linalg.qr(np.array(coef_tl).T)[0].T.tolist() if coef_tl else []
+        return [[np.linalg.qr(np.array(coef_tl).T)[0].T.tolist()
+                 if coef_tl else []
                  for coef_tl in coef_t] for coef_t in coef_opt]
 
 
@@ -542,29 +578,17 @@ import matplotlib.pyplot as plt
 class _TestSpillage(unittest.TestCase):
 
     def setUp(self):
-        self.orbgen_reduced = Spillage(True)
-        self.orbgen_raw = Spillage(False)
+        self.orbgen_rdc = Spillage(True)
+        self.orbgen_nrm = Spillage(False)
 
-        self.datadir = './testfiles/Si/'
-        self.config = ['Si-dimer-1.8', 'Si-dimer-2.8', 'Si-dimer-3.8',
-                       'Si-trimer-1.7', 'Si-trimer-2.7',
-                       ]
-
-
-    def read_config(self):
-        self.ov = [read_orb_mat(self.datadir + config + '/orb_matrix.0.dat')
-                   for config in self.config]
-        self.op = [read_orb_mat(self.datadir + config + '/orb_matrix.1.dat')
-                   for config in self.config]
+        datadir = './testfiles/Si/'
+        config = ['Si-dimer-1.8', 'Si-dimer-2.8', 'Si-dimer-3.8',
+                  'Si-trimer-1.7', 'Si-trimer-2.7',
+                  ]
+        self.config = [datadir + conf for conf in config]
 
 
-    def add_config(self):
-        for iconf, _ in enumerate(self.config):
-            self.orbgen_reduced.add_config(self.ov[iconf], self.op[iconf])
-            self.orbgen_raw.add_config(self.ov[iconf], self.op[iconf])
-
-
-    def coefgen(self, nzeta, nbes):
+    def randcoef(self, nzeta, nbes):
         '''
         Generates some random coefficients for unit tests.
 
@@ -575,35 +599,41 @@ class _TestSpillage(unittest.TestCase):
             nbes : int
                 Number of spherical Bessel basis functions for each zeta.
 
+        Returns
+        -------
+            A nested list.
+            coef[itype][l][zeta][q] -> float
+
         '''
         return [[np.random.randn(nzeta_tl, nbes).tolist()
                  for l, nzeta_tl in enumerate(nzeta_t)]
                 for it, nzeta_t in enumerate(nzeta)]
 
 
-    def est_initgen(self):
+    def test_initgen_pw(self):
         '''
-        checks whether initgen generates the correct number of coefficients
+        Checks intial guess generation from the plane-wave reference state.
 
         '''
-        reduced = False
+        reduced = True # False: normalized; True: reduced
 
         ov = read_orb_mat('./testfiles/Si/Si-monomer/orb_matrix.0.dat')
         nzeta = [2, 2, 1]
+        rcut = ov['rcut']
+        ecut = ov['ecutjlq']
 
-        coef = initgen(nzeta, ov, reduced)
+        coef = initgen_pw(nzeta, ecut, len(nzeta)-1, rcut, ov['nbes'],
+                          ov['mo_jy'], ov['wk'], reduced)
 
         self.assertEqual(len(coef), len(nzeta))
         self.assertEqual([len(coef[l]) for l in range(len(nzeta))], nzeta)
 
-        return
+        return # suppress the plot
 
-        rcut = ov['rcut']
         dr = 0.01
         r = np.linspace(0, rcut, int(rcut/dr)+1)
 
         if reduced:
-            coef_raw = coeff_reduced2raw(coef, rcut)
             chi = build_reduced(coef, rcut, r, True)
         else:
             chi = build_raw(coeff_normalized2raw(coef, rcut), rcut, r, True)
@@ -612,89 +642,98 @@ class _TestSpillage(unittest.TestCase):
         plt.show()
 
 
-    def est_add_config(self):
+    def test_config_add_pw(self):
         '''
-        checks if add_config loads & transform data correctly
+        Checks if config_add_pw loads & transforms data correctly.
 
         '''
-        self.read_config()
-        self.add_config()
+        for conf in self.config:
+            for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
+                orbgen.config_add_pw(conf + '/orb_matrix.0.dat',
+                                     conf + '/orb_matrix.1.dat')
 
         for iconf, config in enumerate(self.config):
-            for orbgen in [self.orbgen_raw, self.orbgen_reduced]:
-                ov = self.ov[iconf]
-                op = self.op[iconf]
+            for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
 
                 dat = orbgen.config[iconf]
-                nbes = dat['nbes']
-                njy = len(dat['lin2comp']) * nbes
+                njy = _nao(dat['natom'], dat['lmax']) * dat['nbes']
 
-                self.assertEqual(dat['mo_mo'].shape, (2, ov['nk'], ov['nbands']))
-                self.assertEqual(dat['mo_jy'].shape, (2, ov['nk'], ov['nbands'], njy))
-                self.assertEqual(dat['jy_jy'].shape, (2, ov['nk'], njy, njy))
+                self.assertEqual(dat['mo_mo'].shape,
+                                 (2, dat['nk'], dat['nbands']))
+                self.assertEqual(dat['mo_jy'].shape,
+                                 (2, dat['nk'], dat['nbands'], njy))
+                self.assertEqual(dat['jy_jy'].shape,
+                                 (2, dat['nk'], njy, njy))
 
-                # add_config not only load data, but also performs normalization/reduction
-                # here we check them by looking at the overlap matrix on the first atom
-                nao_0 = dat['comp2lin'][(0, 1, 0, 0, 0)]
+                # config_add_pw not only load data, but also performs
+                # normalization/reduction. Here we check them by looking
+                # at the overlap matrix on the first atom. Either way,
+                # the overlap block should be close to the identity matrix.
+                nao_0 = njy // dat['natom'][0]
                 S = dat['jy_jy'][0, 0][:nao_0, :nao_0]
-                self.assertLess(np.linalg.norm(S - np.eye(nao_0), np.inf), 1e-6)
+                self.assertTrue(np.allclose(S, np.eye(nao_0), atol=1e-6))
 
-            self.assertEqual(self.orbgen_raw.config[iconf]['nbes'],
-                             self.orbgen_reduced.config[iconf]['nbes'] + 1)
+            self.assertEqual(self.orbgen_nrm.config[iconf]['nbes'],
+                             self.orbgen_rdc.config[iconf]['nbes'] + 1)
 
 
-    def test_jy_config_add(self):
-        self.orbgen_raw.jy_config_add('./testfiles/jy/data-SR-sparse_SPIN0.csr',
+    def est_config_add_jy(self):
+        self.orbgen_nrm.config_add_jy('./testfiles/jy/data-SR-sparse_SPIN0.csr',
                                       './testfiles/jy/data-TR-sparse_SPIN0.csr',
                                       './testfiles/jy/WFC_NAO_K1.txt',
                                       './testfiles/jy/STRU',
                                       './testfiles/jy/Si_gga_10au_100Ry_31s31p30d.orb')
 
 
-    def est_tab_frozen(self):
+    def test_tab_frozen(self):
         '''
-        checks if data tabulated by tab_frozen have the correct shape
+        Checks if data tabulated by tab_frozen have the correct shape.
 
         '''
-        self.read_config()
-        self.add_config()
+        for conf in self.config:
+            for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
+                orbgen.config_add_pw(conf + '/orb_matrix.0.dat',
+                                     conf + '/orb_matrix.1.dat')
 
-        nbes = min(dat['nbes'] for dat in self.orbgen_reduced.config)
-        coef_frozen = self.coefgen([[2, 1, 0]], nbes)
+        nbes_min = min(dat['nbes'] for dat in self.orbgen_rdc.config)
+        coef_frozen = self.randcoef([[2, 1, 0]], nbes_min)
 
-        for orbgen in [self.orbgen_raw, self.orbgen_reduced]:
+        for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
             orbgen._tab_frozen(coef_frozen)
             self.assertEqual(len(orbgen.mo_Pfrozen_jy), len(self.config))
             self.assertEqual(len(orbgen.spill_frozen), len(self.config))
 
             for iconf, config in enumerate(self.config):
                 dat = orbgen.config[iconf]
-                njy = len(dat['lin2comp']) * dat['nbes']
+                njy = _nao(dat['natom'], dat['lmax']) * dat['nbes']
                 self.assertEqual(orbgen.spill_frozen[iconf].shape,
                                  (dat['nbands'],))
                 self.assertEqual(orbgen.mo_Pfrozen_jy[iconf].shape,
                                  (2, dat['nk'], dat['nbands'], njy))
 
 
-    def est_tab_deriv(self):
+    def test_tab_deriv(self):
         '''
-        checks if data tabulated by tab_deriv have the correct shape
+        Checks if data tabulated by tab_deriv have the correct shape.
 
         '''
-        self.read_config()
-        self.add_config()
+        for conf in self.config:
+            for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
+                orbgen.config_add_pw(conf + '/orb_matrix.0.dat',
+                                     conf + '/orb_matrix.1.dat')
 
-        nbes = min(dat['nbes'] for dat in self.orbgen_reduced.config)
-        coef = self.coefgen([[2, 1, 0]], nbes)
+        nbes_min = min(dat['nbes'] for dat in self.orbgen_rdc.config)
+        coef = self.randcoef([[2, 1, 0]], nbes_min)
 
-        # number of coefficients
+        # total number of coefficients
         ncoef = len(flatten(coef))
 
         # number of spherical Bessel basis related to coef
-        njy_ao = [sum(len(coef_tl) * (2*l+1) for l, coef_tl in enumerate(coef_t))
+        njy_ao = [sum(len(coef_tl) * (2*l+1)
+                      for l, coef_tl in enumerate(coef_t))
                     for coef_t in coef]
 
-        for orbgen in [self.orbgen_raw, self.orbgen_reduced]:
+        for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
             orbgen._tab_deriv(coef)
 
             self.assertEqual(len(orbgen.dao_jy), len(self.config))
@@ -703,45 +742,46 @@ class _TestSpillage(unittest.TestCase):
             for iconf, config in enumerate(self.config):
                 dat = orbgen.config[iconf]
                 n_dao = np.dot(njy_ao, dat['natom'])
-                njy = len(dat['lin2comp']) * dat['nbes']
+                njy = _nao(dat['natom'], dat['lmax']) * dat['nbes']
                 self.assertEqual(orbgen.dao_jy[iconf].shape,
                                  (2, ncoef, dat['nk'], n_dao, njy))
 
 
-    def est_overlap_spillage(self):
+    def test_overlap_spillage(self):
         '''
-        verifies that the generalized spillage with op=I recovers the overlap spillage
+        Verifies that the generalized spillage with op=I recovers
+        the overlap spillage.
 
         '''
-        self.read_config()
-
-        # op=I implies op=ov
-        for iconf, _ in enumerate(self.config):
-            self.orbgen_reduced.add_config(self.ov[iconf], self.ov[iconf])
-            self.orbgen_raw.add_config(self.ov[iconf], self.ov[iconf])
+        for conf in self.config:
+            for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
+                orbgen.config_add_pw(conf + '/orb_matrix.0.dat',
+                                     conf + '/orb_matrix.0.dat')
 
         ibands = range(5)
-        nbes = min(dat['nbes'] for dat in self.orbgen_reduced.config)
+        nbes_min = min(dat['nbes'] for dat in self.orbgen_rdc.config)
 
-        coef = self.coefgen([[2, 2, 1]], nbes)
+        coef = self.randcoef([[2, 2, 1]], nbes_min)
         coef_frozen_list = [
                 None,
-                self.coefgen([[1, 1]], nbes),
-                self.coefgen([[2, 1, 0]], nbes),
-                self.coefgen([[0, 1, 1]], nbes),
+                self.randcoef([[1, 1]], nbes_min),
+                self.randcoef([[2, 1, 0]], nbes_min),
+                self.randcoef([[0, 1, 1]], nbes_min),
                 ]
 
-        for orbgen in [self.orbgen_raw, self.orbgen_reduced]:
+        for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
             for coef_frozen in coef_frozen_list:
                 orbgen._tab_frozen(coef_frozen)
                 for iconf, config in enumerate(self.config):
-                    ov = deepcopy(self.ov[iconf])
-                    ov['nbes'] = orbgen.config[iconf]['nbes']
-                    ov['mo_jy'] = orbgen.config[iconf]['mo_jy'][0]
-                    ov['jy_jy'] = orbgen.config[iconf]['jy_jy'][0]
-
-                    spill_ref = _overlap_spillage(ov, coef, ibands, coef_frozen) 
-                    spill = orbgen._generalize_spillage(iconf, coef, ibands, False)
+                    dat = orbgen.config[iconf]
+                    spill_ref = _overlap_spillage(dat['natom'], dat['lmax'],
+                                                  dat['rcut'], dat['nbes'],
+                                                  dat['jy_jy'][0],
+                                                  dat['mo_jy'][0],
+                                                  dat['mo_mo'][0],
+                                                  dat['wk'],
+                                                  coef, ibands, coef_frozen)
+                    spill = orbgen._generalize_spillage(iconf, coef, ibands)
                     self.assertAlmostEqual(spill, spill_ref, places=10)
 
 
@@ -754,12 +794,12 @@ class _TestSpillage(unittest.TestCase):
         self.add_config()
 
         ibands = range(6)
-        nbes = min(dat['nbes'] for dat in self.orbgen_reduced.config)
+        nbes = min(dat['nbes'] for dat in self.orbgen_rdc.config)
 
-        coef = self.coefgen([[2, 1, 1]], nbes)
-        coef_frozen_list = [None, self.coefgen([[1, 1]], nbes)]
+        coef = self.randcoef([[2, 1, 1]], nbes)
+        coef_frozen_list = [None, self.randcoef([[1, 1]], nbes)]
 
-        for orbgen in [self.orbgen_raw, self.orbgen_reduced]:
+        for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
             for coef_frozen in coef_frozen_list:
                 orbgen._tab_frozen(coef_frozen)
                 orbgen._tab_deriv(coef)
@@ -800,7 +840,7 @@ class _TestSpillage(unittest.TestCase):
                    'Si-trimer-2.7']
 
         reduced = True
-        orbgen = self.orbgen_reduced if reduced else self.orbgen_raw
+        orbgen = self.orbgen_rdc if reduced else self.orbgen_nrm
 
         for iconf, config in enumerate(configs):
             ov = read_orb_mat(datadir + config + '/orb_matrix.0.dat')
