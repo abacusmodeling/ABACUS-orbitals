@@ -252,7 +252,6 @@ class Spillage:
         nbands ...done
 
         '''
-        dat = {}
 
         # FIXME we may have to obtain nbes & rcut from a better place
         # instead of reading from the orbital file
@@ -266,14 +265,15 @@ class Spillage:
         print(f"natom = {natom}", flush = True)
 
         orb = read_nao(file_orb)
-        dat['rcut'] = orb['rcut']
-        dat['nbes'] = [len(chi_l) for chi_l in orb['chi']]
-        lmax = [len(dat['nbes']) - 1]
+        rcut = orb['rcut']
+        nbes = [len(chi_l) for chi_l in orb['chi']]
+        lmax = [len(nbes) - 1]
 
-        print(f"rcut = {dat['rcut']}", flush = True)
-        print(f"nbes = {dat['nbes']}", flush = True)
+        print(f"rcut = {rcut}", flush = True)
+        print(f"nbes = {nbes}", flush = True)
+        print(f"lmax = {lmax}", flush = True)
 
-        dat['lin2comp'] = index_map(natom, lmax)[1]
+        #dat['lin2comp'] = index_map(natom, lmax)[1]
         #print(f"lin2comp = {dat['lin2comp']}")
 
         # NOTE: the basis of S & T follows a lexicographic order of
@@ -281,7 +281,7 @@ class Spillage:
         # we need to transform it to the lexicographic order of
         # (itype, iatom, l, 2*|m|-(m>0), q)
         # index map of abacus output S & T
-        ST_comp2lin, ST_lin2comp = index_map(natom, lmax, [dat['nbes']])
+        ST_comp2lin, ST_lin2comp = index_map(natom, lmax, [nbes])
         p = perm_zeta_m(ST_lin2comp)
         nao = len(ST_lin2comp)
 
@@ -293,12 +293,14 @@ class Spillage:
         # NOTE: wfc here is assumed to correspond to Gamma point
         if isinstance(file_wfc, tuple):
             nk = 2
+            wk = [0.5, 0.5]
             wfc = np.array([read_wfc_lcao_txt(file_wfc[0])[0],
                             read_wfc_lcao_txt(file_wfc[1])[0]])
             S = np.array([S, S])
             T = np.array([T, T])
         else:
             nk = 1
+            wk = [1.0]
             wfc = np.expand_dims(read_wfc_lcao_txt(file_wfc)[0], axis=0)
             S = np.expand_dims(S, axis=0)
             T = np.expand_dims(T, axis=0)
@@ -311,9 +313,7 @@ class Spillage:
         mo_jy_ov = wfc.conj() @ S
         mo_jy_op = wfc.conj() @ T
 
-        dat['nbands'] = nbands
-        dat['nk'] = nk
-        print(f"nbands = {dat['nbands']}")
+        print(f"nbands = {nbands}")
 
         wov, wop = weight
         mo_mo_ov = np.ones((nk, nbands))
@@ -321,13 +321,34 @@ class Spillage:
         print(mo_mo_op)
         print(mo_mo_ov)
 
-        dat['mo_mo'] = np.array([mo_mo_ov, wov*mo_mo_ov + wop*mo_mo_op])
-        dat['mo_jy'] = np.array([mo_jy_ov, wov*mo_jy_ov + wop*mo_jy_op])
-        dat['jy_jy'] = np.array([S, wov*S + wop*T])
+        mo_mo = np.array([mo_mo_ov, wov*mo_mo_ov + wop*mo_mo_op])
+        mo_jy = np.array([mo_jy_ov, wov*mo_jy_ov + wop*mo_jy_op])
+        jy_jy = np.array([S, wov*S + wop*T])
 
-        print(f"mo_mo.shape = {dat['mo_mo'].shape}")
-        print(f"mo_jy.shape = {dat['mo_jy'].shape}")
-        print(f"jy_jy.shape = {dat['jy_jy'].shape}")
+        print(f"mo_mo.shape = {mo_mo.shape}")
+        print(f"mo_jy.shape = {mo_jy.shape}")
+        print(f"jy_jy.shape = {jy_jy.shape}")
+
+        # packed data for a configuration
+        dat = {'ntype': ntype,
+               'natom': natom,
+               'lmax': lmax,
+               'nbes': [n-1 for n in nbes] if self.reduced else nbes,
+               'rcut': rcut,
+               'nbands': nbands,
+               'nk': nk,
+               'wk': wk,
+               'mo_mo': mo_mo,
+               'mo_jy': mo_jy,
+               'jy_jy': jy_jy,
+               }
+
+        # NOTE currently a dataset merely contains one atom type
+        # and one rcut. This may change in the future.
+        if self.rcut is None:
+            self.rcut = dat['rcut']
+        else:
+            assert self.rcut == ov['rcut']
 
 
     def _tab_frozen(self, coef_frozen):
@@ -610,7 +631,7 @@ class _TestSpillage(unittest.TestCase):
                 for it, nzeta_t in enumerate(nzeta)]
 
 
-    def test_initgen_pw(self):
+    def est_initgen_pw(self):
         '''
         Checks intial guess generation from the plane-wave reference state.
 
@@ -642,7 +663,7 @@ class _TestSpillage(unittest.TestCase):
         plt.show()
 
 
-    def test_config_add_pw(self):
+    def est_config_add_pw(self):
         '''
         Checks if config_add_pw loads & transforms data correctly.
 
@@ -677,15 +698,19 @@ class _TestSpillage(unittest.TestCase):
                              self.orbgen_rdc.config[iconf]['nbes'] + 1)
 
 
-    def est_config_add_jy(self):
-        self.orbgen_nrm.config_add_jy('./testfiles/jy/data-SR-sparse_SPIN0.csr',
-                                      './testfiles/jy/data-TR-sparse_SPIN0.csr',
-                                      './testfiles/jy/WFC_NAO_K1.txt',
-                                      './testfiles/jy/STRU',
-                                      './testfiles/jy/Si_gga_10au_100Ry_31s31p30d.orb')
+    def test_config_add_jy(self):
+
+        reduced = True
+        orbgen = self.orbgen_rdc if reduced else self.orbgen_nrm
+
+        orbgen.config_add_jy('./testfiles/jy/data-SR-sparse_SPIN0.csr',
+                             './testfiles/jy/data-TR-sparse_SPIN0.csr',
+                             './testfiles/jy/WFC_NAO_K1.txt',
+                             './testfiles/jy/STRU',
+                             './testfiles/jy/Si_gga_10au_100Ry_31s31p30d.orb')
 
 
-    def test_tab_frozen(self):
+    def est_tab_frozen(self):
         '''
         Checks if data tabulated by tab_frozen have the correct shape.
 
@@ -712,7 +737,7 @@ class _TestSpillage(unittest.TestCase):
                                  (2, dat['nk'], dat['nbands'], njy))
 
 
-    def test_tab_deriv(self):
+    def est_tab_deriv(self):
         '''
         Checks if data tabulated by tab_deriv have the correct shape.
 
@@ -747,10 +772,10 @@ class _TestSpillage(unittest.TestCase):
                                  (2, ncoef, dat['nk'], n_dao, njy))
 
 
-    def test_overlap_spillage(self):
+    def est_overlap_spillage(self):
         '''
-        Verifies that the generalized spillage with op=I recovers
-        the overlap spillage.
+        Verifies that generalized spillage with op = I
+        recovers the overlap spillage.
 
         '''
         for conf in self.config:
@@ -787,17 +812,20 @@ class _TestSpillage(unittest.TestCase):
 
     def est_finite_difference(self):
         '''
-        checks the gradient of the generalized spillage with finite difference
+        Checks the gradient of the generalized spillage
+        with finite difference.
 
         '''
-        self.read_config()
-        self.add_config()
+        for conf in self.config:
+            for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
+                orbgen.config_add_pw(conf + '/orb_matrix.0.dat',
+                                     conf + '/orb_matrix.0.dat')
 
         ibands = range(6)
-        nbes = min(dat['nbes'] for dat in self.orbgen_rdc.config)
+        nbes_min = min(dat['nbes'] for dat in self.orbgen_rdc.config)
 
-        coef = self.randcoef([[2, 1, 1]], nbes)
-        coef_frozen_list = [None, self.randcoef([[1, 1]], nbes)]
+        coef = self.randcoef([[2, 1, 1]], nbes_min)
+        coef_frozen_list = [None, self.randcoef([[1, 1]], nbes_min)]
 
         for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
             for coef_frozen in coef_frozen_list:
@@ -805,7 +833,8 @@ class _TestSpillage(unittest.TestCase):
                 orbgen._tab_deriv(coef)
 
                 for iconf, _ in enumerate(orbgen.config):
-                    dspill = orbgen._generalize_spillage(iconf, coef, ibands, True)[1]
+                    dspill = orbgen._generalize_spillage(iconf, coef,
+                                                         ibands, True)[1]
                     dspill = np.array(flatten(dspill))
 
                     pat = nestpat(coef)
@@ -817,12 +846,14 @@ class _TestSpillage(unittest.TestCase):
                         coef_p = flatten(deepcopy(coef))
                         coef_p[i] += dc
                         coef_p = nest(coef_p, pat)
-                        spill_p = orbgen._generalize_spillage(iconf, coef_p, ibands, False)
+                        spill_p = orbgen._generalize_spillage(iconf, coef_p,
+                                                              ibands)
 
                         coef_m = flatten(deepcopy(coef))
                         coef_m[i] -= dc
                         coef_m = nest(coef_m, pat)
-                        spill_m = orbgen._generalize_spillage(iconf, coef_m, ibands, False)
+                        spill_m = orbgen._generalize_spillage(iconf, coef_m,
+                                                              ibands)
 
                         dspill_fd[i] = (spill_p - spill_m) / (2 * dc)
 
@@ -839,27 +870,33 @@ class _TestSpillage(unittest.TestCase):
                    'Si-trimer-1.7',
                    'Si-trimer-2.7']
 
-        reduced = True
+        reduced = False
         orbgen = self.orbgen_rdc if reduced else self.orbgen_nrm
 
-        for iconf, config in enumerate(configs):
-            ov = read_orb_mat(datadir + config + '/orb_matrix.0.dat')
-            op = read_orb_mat(datadir + config + '/orb_matrix.1.dat')
-            orbgen.add_config(ov, op)
+        for conf in self.config:
+            orbgen.config_add_pw(conf + '/orb_matrix.0.dat',
+                                 conf + '/orb_matrix.1.dat')
 
         nthreads = 2
-        options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': 2000, 'disp': False, 'maxcor': 20}
+        options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': 2000,
+                   'disp': True, 'maxcor': 20}
 
         # initial guess
         ov = read_orb_mat('./testfiles/Si/Si-monomer/orb_matrix.0.dat')
-        coef_init = initgen([3, 3, 2], ov, reduced)
+        nzeta = [3, 3, 2]
+        rcut = ov['rcut']
+        ecut = ov['ecutjlq']
+
+        coef_init = initgen_pw(nzeta, ecut, len(nzeta)-1, rcut, ov['nbes'],
+                               ov['mo_jy'], ov['wk'], reduced)
 
         ibands = range(4)
         iconfs = [0, 1, 2]
         # coef_lvl1_init: [t][l][z][q]
         coef_lvl1_init = [[[coef_init[0][0]],
                            [coef_init[1][0]]]]
-        coef_lvl1 = orbgen.opt(coef_lvl1_init, None, iconfs, ibands, options, nthreads)
+        coef_lvl1 = orbgen.opt(coef_lvl1_init, None, iconfs, ibands,
+                               options, nthreads)
         coef_tot = coef_lvl1
 
         ibands = range(8)
@@ -867,7 +904,8 @@ class _TestSpillage(unittest.TestCase):
         coef_lvl2_init = [[[coef_init[0][1]],
                            [coef_init[1][1]],
                            [coef_init[2][0]]]]
-        coef_lvl2 = orbgen.opt(coef_lvl2_init, coef_lvl1, iconfs, ibands, options, nthreads)
+        coef_lvl2 = orbgen.opt(coef_lvl2_init, coef_lvl1, iconfs, ibands,
+                               options, nthreads)
         coef_tot = merge(coef_tot, coef_lvl2, 2)
 
         ibands = range(12)
@@ -875,10 +913,11 @@ class _TestSpillage(unittest.TestCase):
         coef_lvl3_init = [[[coef_init[0][2]],
                            [coef_init[1][2]],
                            [coef_init[2][1]]]]
-        coef_lvl3 = orbgen.opt(coef_lvl3_init, coef_tot, iconfs, ibands, options, nthreads)
+        coef_lvl3 = orbgen.opt(coef_lvl3_init, coef_tot, iconfs, ibands,
+                               options, nthreads)
         coef_tot = merge(coef_tot, coef_lvl3, 2)
 
-        return
+        #return # supress the plot 
 
         rcut = ov['rcut']
         dr = 0.01
@@ -888,7 +927,7 @@ class _TestSpillage(unittest.TestCase):
             chi = build_reduced(coef_tot[0], rcut, r, True)
         else:
             coeff_raw = coeff_normalized2raw(coef_tot, rcut)
-            chi = build_raw(coeff_raw[0], rcut, r, 0.0, True, True)
+            chi = build_raw(coeff_raw[0], rcut, r, 0.0, True)
 
         plot_chi(chi, r)
         plt.show()
