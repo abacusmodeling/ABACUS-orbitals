@@ -1,3 +1,5 @@
+from SIAB.spillage.radial import _nbes, build_raw, build_reduced
+
 import numpy as np
 import re
 from itertools import accumulate
@@ -275,29 +277,33 @@ def write_param(fpath, coeff, rcut, sigma, elem):
         f.write('</Coefficient>\n')
 
 
-def fname_convention(elem, ecut, rcut, nzeta):
+def jygen(rcut, dr, lmax, ecut, reduced=False):
     '''
-    Generates a filename convention for a SIAB/PTG orbital file.
-    
-    Parameters
-    ----------
-        elem : str
-            Element symbol.
-        ecut : float
-            Energy cutoff.
-        rcut : float
-            Cutoff radius.
-        nzeta : list of int
-            Number of orbitals for each angular momentum.
-    
-    Returns
-    -------
-        A string representing the filename convention.
+    Generates a spherical wave (jy) basis.
 
     '''
-    spec_symbol = 'SPDFGHIKLMNOQRTUVWXYZ'
-    return f"{elem}_gga_{rcut}au_{ecut}Ry_" + \
-              '_'.join([f"{nzeta[l]}{spec_symbol[l].lower()}" for l in range(len(nzeta))]) + '.orb'
+    if reduced:
+        nbes = [_nbes(l, rcut, ecut) - 1 for l in range(lmax + 1)]
+        suffix = 'reduced'
+    else:
+        nbes = [_nbes(l, rcut, ecut) for l in range(lmax + 1)]
+        suffix = 'normalized'
+
+    coef = [np.eye(nbes[l]).tolist() for l in range(lmax+1)]
+
+    r = np.linspace(0.0, rcut, int(rcut / dr) + 1)
+    if reduced:
+        chi = build_reduced(coef, rcut, r, True)
+    else:
+        chi = build_raw(coef, rcut, r, 0.0, True)
+            
+    spec_symbol = 'spdfghiklmnoqrtuvwxyz'
+    fname = f'jy_{suffix}_{rcut}au_{ecut}Ry_' \
+            + ''.join([f"{nbes[l]}{spec_symbol[l]}" for l in range(lmax+1)]) \
+            + '.orb'
+
+    write_nao(fname, f'jy_{suffix}', ecut, rcut, len(r), dr, chi)
+
 
 ############################################################
 #                           Test
@@ -317,7 +323,9 @@ class _TestOrbIO(unittest.TestCase):
         coeff = param['coeff']
         lmax = len(coeff)-1
         nzeta = [len(coeff[l]) for l in range(lmax+1)]
-        nq = [len(coeff[l][zeta]) for l in range(lmax+1) for zeta in range(nzeta[l])]
+        nq = [len(coeff[l][zeta])
+              for l in range(lmax+1)
+              for zeta in range(nzeta[l])]
 
         self.assertEqual(lmax, 3)
         self.assertEqual(nzeta, [3, 3, 3, 2])
@@ -366,11 +374,18 @@ class _TestOrbIO(unittest.TestCase):
         nao2 = read_nao(tmpfile)
         os.remove(tmpfile)
 
-        # numpy array comparisons are element-wise; convert to list to compare them as a whole
-        nao['chi'] = [[chi_lq.tolist() for chi_lq in chi_l ] for chi_l in nao['chi']]
-        nao2['chi'] = [[chi_lq.tolist() for chi_lq in chi_l ] for chi_l in nao2['chi']]
+        # numpy array comparisons are element-wise;
+        # convert to list to compare them as a whole
+        nao['chi'] = [[chi_lq.tolist() for chi_lq in chi_l ]
+                      for chi_l in nao['chi']]
+        nao2['chi'] = [[chi_lq.tolist() for chi_lq in chi_l ]
+                       for chi_l in nao2['chi']]
         self.assertDictEqual(nao, nao2)
 
+
+    def test_jygen(self):
+        jygen(10, 0.01, 2, 10, False)
+        jygen(10, 0.01, 2, 10, True)
 
 if __name__ == '__main__':
     unittest.main()

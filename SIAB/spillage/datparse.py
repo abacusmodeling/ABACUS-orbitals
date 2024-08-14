@@ -310,7 +310,7 @@ import unittest
 class _TestDatParse(unittest.TestCase):
 
     def test_read_orb_mat(self):
-        fpath = './testfiles/Si/Si-dimer-1.8/orb_matrix.0.dat'
+        fpath = './testfiles/Si/pw/Si-dimer-1.8/orb_matrix.0.dat'
         dat = read_orb_mat(fpath)
 
         nbes0 = int(np.sqrt(dat['ecutjlq']) * dat['rcut'] / np.pi)
@@ -337,7 +337,7 @@ class _TestDatParse(unittest.TestCase):
                          (dat['nk'], dat['nbands']))
 
 
-        fpath = './testfiles/Si/Si-trimer-1.7/orb_matrix.1.dat'
+        fpath = './testfiles/Si/pw/Si-trimer-1.7/orb_matrix.1.dat'
         dat = read_orb_mat(fpath)
 
         nbes0 = int(np.sqrt(dat['ecutjlq']) * dat['rcut'] / np.pi)
