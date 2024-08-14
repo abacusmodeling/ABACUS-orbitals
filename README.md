@@ -2,12 +2,12 @@
 Welcome to the new version of ABACUS Numerical Atomic Orbital Generation code development repository. We are still working on optimizing the quality of orbital by trying new formulation, new optimization algorithm and strategy. Our goal is to publish orbitals that can be used for not only ground-state involved cases but also for some excitation calculation. Once meet problem, bug in orbital generation, we suggest submit issue on ABACUS Github repository: https://github.com/deepmodeling/abacus-develop.
 ## Configuration
 ### Shortcut: for Bohrium(R) users
-We have published a configured Bohrium images for users want to save their time as much as possible. You can register in [Bohrium Platform](https://bohrium.dp.tech/), set-up one new container and use Bohrium image `registry.dp.tech/dptech/prod-16047/apns:orbgen`. Then `conda activate orbgen`.
+We have published a configured Bohrium images for users want to save their time as much as possible. You can register in [Bohrium Platform](https://bohrium.dp.tech/), set-up one new container and use Bohrium image `registry.dp.tech/dptech/prod-16047/abacus-orbgen-workshop:20240814`. Then `conda activate orbgen`.
 ### General: Virtual environment
 *WE STRONGLY RECOMMEND TO SETUP A NEW CONDA ENVIRONMENT/VIRTUAL ENVIRONMENT FOR ABACUS-ORBITALS BECAUSE IT CAN AUTOMATTICALLY LINK YOUR Pytorch to MKL, OTHERWISE YOU SHOULD ALWAYS ENSURE THE LINKAGE TO GET THE BEST PERFORMANCE.*
 ```bash
-git clone https://github.com/kirk0830/abacus_orbital_generation.git
-cd abacus_orbital_generation
+git clone git clone https://github.com/kirk0830/ABACUS-ORBGEN.git
+cd ABACUS-ORBGEN
 ```
 Option1 (the most recommended): If you prefer to use conda, then run the following commands to create a new conda environment and activate it.
 ```bash
@@ -24,7 +24,7 @@ source orbgen/bin/activate
 *BE AWARE IF Intel-mkl IS SUCCESSFULLY LINKED TO `pytorch`*  
 Once the virtual environment is activated (and mkl is ready), run the following commands to install ABACUS-orbitals.
 ```bash
-pip install -e .
+pip install .
 ```
 ## Tutorial (version < 0.2.0)
 Find the tutorial in [Gitbook](https://mcresearch.github.io/abacus-user-guide/abacus-nac3.html) written by [Mohan Chen's Group](https://mcresearch.github.io/).
@@ -227,10 +227,10 @@ In this section, user should define the reference systems. Reference systems' wa
 ### Common use
 Up to your case of input, either type:  
 ```
-python3 path/to/the/file/SIAB_nouvelle.py -i SIAB_INPUT
+SIAB_nouvelle -i SIAB_INPUT
 ```
 if you really like the old version input, or:  
 ```
-python3 path/to/the/file/SIAB_nouvelle.py -i SIAB_INPUT.json
+SIAB_nouvelle -i SIAB_INPUT.json
 ```
 Then you will get orbitals (*.orb) in folders named in the way: \[element\]_xxx. You can also quickly check the quality of orbital by observing the profile of orbitals plot in *.png.
