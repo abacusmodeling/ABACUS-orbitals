@@ -12,7 +12,7 @@ authors = [
 ]
 dependencies = [
     "numpy",
-    "scipy",
+    "scipy<1.10",
     "torch",
     "torch_optimizer",
     "torch_complex",
