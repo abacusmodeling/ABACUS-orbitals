@@ -4,7 +4,7 @@ Welcome to the new version of ABACUS Numerical Atomic Orbital Generation code de
 ### Shortcut: for Bohrium(R) users
 We have published a configured Bohrium images for users want to save their time as much as possible. You can register in [Bohrium Platform](https://bohrium.dp.tech/), set-up one new container and use Bohrium image `registry.dp.tech/dptech/prod-16047/abacus-orbgen-workshop:20240814`. Then `conda activate orbgen`.
 ### General: Virtual environment
-*WE STRONGLY RECOMMEND TO SETUP A NEW CONDA ENVIRONMENT/VIRTUAL ENVIRONMENT FOR ABACUS-ORBITALS BECAUSE IT CAN AUTOMATTICALLY LINK YOUR Pytorch to MKL, OTHERWISE YOU SHOULD ALWAYS ENSURE THE LINKAGE TO GET THE BEST PERFORMANCE.*
+*WE STRONGLY RECOMMEND TO SET UP A NEW CONDA ENVIRONMENT/VIRTUAL ENVIRONMENT FOR ABACUS-ORBITALS BECAUSE IT CAN AUTOMATICALLY LINK YOUR Pytorch to MKL. OTHERWISE, YOU SHOULD ALWAYS ENSURE THE LINKAGE TO GET THE BEST PERFORMANCE.*
 ```bash
 git clone git clone https://github.com/kirk0830/ABACUS-ORBGEN.git
 cd ABACUS-ORBGEN
