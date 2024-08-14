@@ -11,7 +11,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         "numpy",
-        "scipy",
+        "scipy<1.10",
         "torch",
         "torch_optimizer",
         "torch_complex",
