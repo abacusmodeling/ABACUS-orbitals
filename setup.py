@@ -17,8 +17,6 @@ setup(
         "torch_complex",
         "addict"
     ],
-    # If you need to add package data
-    # package_data={'your_package_name': ['data/*.data']},
     zip_safe=False,
     classifiers=[
         # Add classifiers to help others find your project
@@ -26,6 +24,9 @@ setup(
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",  # Change as necessary
         "Operating System :: OS Independent",
+    ],
+    scripts=[
+        "SIAB/SIAB_nouvelle.py",
     ],
    # python_requires='>=3.6', # Specify the min version of Python required
 )
