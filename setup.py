@@ -11,6 +11,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         "numpy",
+        "matplotlib",
         "scipy<1.10", # required by some functionalities employing the old version simpson integral
         "torch",
         "torch_optimizer",
