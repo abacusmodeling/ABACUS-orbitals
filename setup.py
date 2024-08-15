@@ -11,7 +11,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         "numpy",
-        "scipy",
+        "scipy<1.10", # required by some functionalities employing the old version simpson integral
         "torch",
         "torch_optimizer",
         "torch_complex",
@@ -28,5 +28,5 @@ setup(
     scripts=[
         "SIAB/SIAB_nouvelle.py",
     ],
-   # python_requires='>=3.6', # Specify the min version of Python required
+   python_requires='<3.11', # required by SciPy 1.10
 )
