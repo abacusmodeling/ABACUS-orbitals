@@ -11,7 +11,7 @@ cd ABACUS-ORBGEN
 ```
 Option1 (the most recommended): If you prefer to use conda, then run the following commands to create a new conda environment and activate it.
 ```bash
-conda create -n orbgen
+conda create -n orbgen python=3.10
 conda activate orbgen
 ```
 Option2: If you prefer to use virtual environment, then run the following commands to create a new virtual environment and activate it.
