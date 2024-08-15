@@ -11,14 +11,13 @@ setup(
     packages=find_packages(),
     install_requires=[
         "numpy",
-        "scipy",
+        "matplotlib",
+        "scipy<1.10", # required by some functionalities employing the old version simpson integral
         "torch",
         "torch_optimizer",
         "torch_complex",
         "addict"
     ],
-    # If you need to add package data
-    # package_data={'your_package_name': ['data/*.data']},
     zip_safe=False,
     classifiers=[
         # Add classifiers to help others find your project
@@ -27,5 +26,8 @@ setup(
         "License :: OSI Approved :: MIT License",  # Change as necessary
         "Operating System :: OS Independent",
     ],
-   # python_requires='>=3.6', # Specify the min version of Python required
+    scripts=[
+        "SIAB/SIAB_nouvelle.py",
+    ],
+   python_requires='<3.11', # required by SciPy 1.10
 )
