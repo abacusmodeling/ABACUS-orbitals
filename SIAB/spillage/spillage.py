@@ -65,7 +65,7 @@ def initgen_pw(nzeta, ecut, lmax, rcut, nbes_raw, mo_jy, wk,
             Maximum l of the single-atom data
         rcut : float
             Cutoff radius.
-        nbes : int
+        nbes_raw : int
             Number of raw spherical Bessel components for each l of the
             single-atom data.
         mo_jy : ndarray, shape (nk, nbands, nao*nbes)
@@ -102,6 +102,95 @@ def initgen_pw(nzeta, ecut, lmax, rcut, nbes_raw, mo_jy, wk,
     nbes_now = nbes_raw - 1 if reduced else nbes_raw
     Y = (mo_jy @ jy2ao(coef, [1], [lmax], nbes_raw, rcut)) \
             .reshape(nk, nbands, -1, nbes_now)
+
+    coef = []
+    for l in range(lmax_gen + 1):
+        Yl = Y[:, :, l*l:(l+1)*(l+1), :] \
+                .reshape(nk, -1, nbes_now)[:,:,:nbes_gen[l]]
+
+        YdaggerY = ((Yl.transpose((0, 2, 1)).conj() @ Yl)
+                    * wk.reshape(-1, 1, 1)).sum(0).real
+
+        val, vec = np.linalg.eigh(YdaggerY)
+
+        # eigenvectors corresponding to the largest nzeta eigenvalues
+        coef.append(vec[:,-nzeta[l]:][:,::-1])
+        # NOTE coef is column-wise at this stage; to be transposed later
+
+        if diagosis:
+            print( "ORBGEN: <jy|mo><mo|jy> eigval diagnosis:")
+            print(f"        l = {l}: {val[-nzeta[l]:][::-1]}")
+
+    return [np.linalg.qr(coef_l)[0].T.tolist() for coef_l in coef]
+
+
+def initgen(nzeta, ecut, rcut, nbes, mo_jy, wk, diagosis=False):
+    '''
+    Generates an initial guess of the spherical Bessel coefficients from
+    single-atom overlap data.
+
+    Parameters
+    ----------
+        nzeta : list of int
+            Target number of zeta for each l.
+        ecut : float
+            Kinetic energy cutoff used to deduce the size of target
+            coefficients. Note that ecut should not yield numbers
+            larger than the counterparts in nbes.
+        rcut : float
+            Cutoff radius.
+        nbes : list of int or a 2-tuple of int 
+            Number of spherical Bessel components for each l of the
+            single-atom data (mo_jy).
+            If a list, nbes[l] is the number corresponding to l.
+            If a 2-tuple, it is taken as (lmax, nbes_each) and the same
+            number of spherical Bessel components is assumed for all l.
+        mo_jy : ndarray, shape (nk, nbands, njy)
+            Overlap between single-atom reference states and spherical
+            waves (jy). The order of jy must be lexicographic in terms
+            of (l, m, q) where l & m are the angular momentum indices
+            and q is the radial index.
+        wk : ndarray, shape (nk,)
+            Weights of k points.
+        diagosis : bool
+            If true, print the eigenvalues of <jy|mo><mo|jy> for each l.
+
+    Returns
+    -------
+        A nested list. coef[l][zeta][q] -> float.
+
+    Note
+    ----
+    This function does not discriminate various types of spherical waves
+    (raw/normalized/reduced). The generated coefficients are in the same
+    as that of the input data (mo_jy).
+
+    '''
+    if isinstance(nbes, tuple):
+        lmax, nbes_each = nbes
+        nbes = [nbes_each] * (lmax + 1)
+    else:
+        lmax = len(nbes) - 1
+
+    # maximum l of the generated coefficients
+    lmax_gen = len(nzeta) - 1
+    assert lmax_gen <= lmax
+
+    # number of spherical Bessel components for each l
+    # of the generated coefficients
+    nbes_gen = [_nbes(l, rcut, ecut) for l in range(lmax_gen + 1)]
+    assert all(nbes_gen[l] > 0 and nbes_gen[l] <= nbes[l]
+               for l in range(lmax_gen+1))
+
+    nk, nbands, _ = mo_jy.shape
+
+    # number of spherical waves per l
+    njy_l = [(2*l+1) * nbes[l] for l in range(lmax+1)]
+
+    # FIXME & TODO
+    index_l_start = [0] + np.cumsum(njy_l).tolist()
+    Y = [mo_jy[:,:,range(index_l_start[l], index_l_start[l+1])]
+         for l in range(lmax+1)]
 
     coef = []
     for l in range(lmax_gen + 1):
@@ -238,27 +327,14 @@ class Spillage:
             assert self.rcut == ov['rcut']
 
 
-    def config_add_jy(self, file_SR, file_TR, file_wfc, file_stru, file_orb,
-                      weight=(0.0, 1.0)):
+    def config_add_jy(self, file_SR, file_TR, file_wfc,
+                      natom, nbes, rcut, weight=(0.0, 1.0)):
         '''
 
 
         '''
-        # FIXME we may have to obtain nbes & rcut from a better place
-        # instead of reading from the orbital file
-        from struio import read_stru
-        from orbio import read_nao
-
-        stru = read_stru(file_stru)
-        ntype = len(stru['species'])
-        print(f"ntype = {ntype}", flush = True)
-        natom = [spec['natom'] for spec in stru['species']]
-        print(f"natom = {natom}", flush = True)
-
-        orb = read_nao(file_orb)
-        rcut = orb['rcut']
-        nbes = [len(chi_l) for chi_l in orb['chi']]
-        lmax = [len(nbes) - 1]
+        ntype = len(natom)
+        lmax = [len(nbes_t) - 1 for nbes_t in nbes]
 
         print(f"rcut = {rcut}", flush = True)
         print(f"nbes = {nbes}", flush = True)
@@ -314,7 +390,7 @@ class Spillage:
         # (itype, iatom, l, 2*|m|-(m>0), q)
 
         # permutation
-        p = perm_zeta_m(index_map(natom, lmax, [nbes])[1])
+        p = perm_zeta_m(index_map(natom, lmax, nbes)[1])
         mo_jy = mo_jy[:,:,:,p]
         jy_jy = jy_jy[:,:,:,p][:,:,p,:]
 
@@ -322,7 +398,7 @@ class Spillage:
         dat = {'ntype': ntype,
                'natom': natom,
                'lmax': lmax,
-               'nbes': [n-1 for n in nbes] if self.reduced else nbes,
+               'nbes': nbes[0],
                'rcut': rcut,
                'nbands': nbands,
                'nk': nk,
@@ -860,10 +936,10 @@ class _TestSpillage(unittest.TestCase):
                     self.assertTrue(np.allclose(dspill, dspill_fd, atol=1e-7))
 
 
-    def est_opt_pw(self):
+    def test_opt_pw(self):
         from listmanip import merge
 
-        reduced = False
+        reduced = True
         orbgen = self.orbgen_rdc if reduced else self.orbgen_nrm
 
         for conf in self.config_pw:
@@ -923,13 +999,13 @@ class _TestSpillage(unittest.TestCase):
             chi = build_raw(coeff_raw[0], rcut, r, 0.0, True)
 
         plot_chi(chi, r)
-        plt.show()
+        plt.show(block=True)
 
 
     def test_opt_jy(self):
         from listmanip import merge
 
-        reduced = False
+        reduced = True 
         orbgen = self.orbgen_rdc if reduced else self.orbgen_nrm
 
         for conf in self.config_jy:
@@ -937,8 +1013,9 @@ class _TestSpillage(unittest.TestCase):
                     conf + '/data-SR-sparse_SPIN0.csr',
                     conf + '/data-TR-sparse_SPIN0.csr',
                     conf + '/WFC_NAO_K1.txt',
-                    conf + '/STRU',
-                    './testfiles/Si/jy/jy_normalized_7au_60Ry_16s15p15d.orb'
+                    [2], # natom
+                    [[16,15,15]], # nbes
+                    7.0 # rcut
                     )
 
         nthreads = 2
@@ -990,7 +1067,7 @@ class _TestSpillage(unittest.TestCase):
             chi = build_raw(coeff_raw[0], rcut, r, 0.0, True)
 
         plot_chi(chi, r)
-        plt.show()
+        plt.show(block=False)
 
 if __name__ == '__main__':
     unittest.main()
