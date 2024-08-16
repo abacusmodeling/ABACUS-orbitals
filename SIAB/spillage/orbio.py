@@ -277,9 +277,9 @@ def write_param(fpath, coeff, rcut, sigma, elem):
         f.write('</Coefficient>\n')
 
 
-def jygen(rcut, dr, lmax, ecut, reduced=False):
+def jygen(fname, rcut, dr, lmax, ecut, elem, reduced=True):
     '''
-    Generates a spherical wave (jy) basis.
+    Generates a normalized/reduced spherical wave (jy) basis.
 
     '''
     if reduced:
@@ -298,11 +298,11 @@ def jygen(rcut, dr, lmax, ecut, reduced=False):
         chi = build_raw(coef, rcut, r, 0.0, True)
             
     spec_symbol = 'spdfghiklmnoqrtuvwxyz'
+
     fname = f'jy_{suffix}_{rcut}au_{ecut}Ry_' \
             + ''.join([f"{nbes[l]}{spec_symbol[l]}" for l in range(lmax+1)]) \
-            + '.orb'
-
-    write_nao(fname, f'jy_{suffix}', ecut, rcut, len(r), dr, chi)
+            + '.orb' if fname is None else fname
+    write_nao(fname, elem, ecut, rcut, len(r), dr, chi)
 
 
 ############################################################
@@ -384,8 +384,19 @@ class _TestOrbIO(unittest.TestCase):
 
 
     def test_jygen(self):
-        jygen(10, 0.01, 2, 10, False)
-        jygen(10, 0.01, 2, 10, True)
+        tmpfile = './testfiles/tmp.orb'
+        jygen(tmpfile, 7, 0.01, 2, 60, 'Si', False)
+
+        nao = read_nao(tmpfile)
+        self.assertEqual(nao['elem'], 'Si')
+        self.assertEqual(nao['rcut'], 7.0)
+        self.assertEqual(nao['ecut'], 60.0)
+        self.assertEqual(nao['dr'], 0.01)
+        self.assertEqual(nao['nr'], 701)
+
+        os.remove(tmpfile)
+
+        jygen(None, 10, 0.01, 2, 100, 'Si', True)
 
 if __name__ == '__main__':
     unittest.main()

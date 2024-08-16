@@ -8,6 +8,7 @@ from SIAB.spillage.basistrans import jy2ao
 from SIAB.spillage.datparse import read_orb_mat, _assert_consistency, \
         read_wfc_lcao_txt, read_abacus_csr
 
+import glob
 import numpy as np
 from scipy.optimize import minimize, basinhopping
 from copy import deepcopy
@@ -163,7 +164,10 @@ def initgen(nzeta, ecut, rcut, nbes, mo_jy, wk, diagosis=False):
     ----
     This function does not discriminate various types of spherical waves
     (raw/normalized/reduced). The generated coefficients are in the same
-    as that of the input data (mo_jy).
+    as that of the input data (mo_jy). Note, however, that the coefficients
+    are always "normalized" in the sense that norm(coef[l][zeta]) = 1 for
+    any l and zeta, which means they yield normalized orbitals in the case
+    of normalized/reduced spherical waves, but not for raw spherical waves.
 
     '''
     if isinstance(nbes, tuple):
@@ -178,39 +182,43 @@ def initgen(nzeta, ecut, rcut, nbes, mo_jy, wk, diagosis=False):
 
     # number of spherical Bessel components for each l
     # of the generated coefficients
-    nbes_gen = [_nbes(l, rcut, ecut) for l in range(lmax_gen + 1)]
+    # TODO & FIXME we need to know whether it's reduced or normalized
+    # to determine the number of Bessel components
+    nbes_gen = [_nbes(l, rcut, ecut) -1 for l in range(lmax_gen + 1)]
     assert all(nbes_gen[l] > 0 and nbes_gen[l] <= nbes[l]
                for l in range(lmax_gen+1))
 
-    nk, nbands, _ = mo_jy.shape
+    nk, nbands, njy = mo_jy.shape
 
     # number of spherical waves per l
     njy_l = [(2*l+1) * nbes[l] for l in range(lmax+1)]
+    assert(sum(njy_l) == njy)
 
-    # FIXME & TODO
     index_l_start = [0] + np.cumsum(njy_l).tolist()
     Y = [mo_jy[:,:,range(index_l_start[l], index_l_start[l+1])]
+         .reshape(nk, -1, nbes[l]) # reshape to (nk, nbands*(2*l+1), nbes[l])
+         [:,:,:nbes_gen[l]]
          for l in range(lmax+1)]
 
     coef = []
     for l in range(lmax_gen + 1):
-        Yl = Y[:, :, l*l:(l+1)*(l+1), :] \
-                .reshape(nk, -1, nbes_now)[:,:,:nbes_gen[l]]
+        if nzeta[l] == 0:
+            coef.append([])
+            continue
 
-        YdaggerY = ((Yl.transpose((0, 2, 1)).conj() @ Yl)
-                    * wk.reshape(-1, 1, 1)).sum(0).real
+        YdaggerY = ((Y[l].swapaxes(-2, -1).conj() @ Y[l])
+                    * np.array(wk).reshape(-1, 1, 1)).sum(0).real
 
         val, vec = np.linalg.eigh(YdaggerY)
 
         # eigenvectors corresponding to the largest nzeta eigenvalues
-        coef.append(vec[:,-nzeta[l]:][:,::-1])
-        # NOTE coef is column-wise at this stage; to be transposed later
+        coef.append(vec[:,-nzeta[l]:][:,::-1].T.tolist())
 
         if diagosis:
             print( "ORBGEN: <jy|mo><mo|jy> eigval diagnosis:")
             print(f"        l = {l}: {val[-nzeta[l]:][::-1]}")
 
-    return [np.linalg.qr(coef_l)[0].T.tolist() for coef_l in coef]
+    return coef
 
 
 class Spillage:
@@ -266,12 +274,28 @@ class Spillage:
         self.dao_jy = []
 
 
-    def config_add_pw(self, file_ov, file_op, weight=(0.0, 1.0)):
+    def config_add_pw(self, config, weight=(0.0, 1.0)):
         '''
+        Parses the plane-wave data and appends it to the configuration list.
+
+        Parameters
+        ----------
+            config : str or 2-tuple of str
+                If a str is given, it is taken as the path to the plane-wave
+                job directory.
+                If 2-tuple of str is given, it is understood as the paths to
+                the data files (orb_matrix.x.dat).
+            weight : tuple of float
+                Weights for the overlap and operator data respectively.
 
         '''
-        ov = read_orb_mat(file_ov)
-        op = read_orb_mat(file_op)
+        if isinstance(config, str):
+            ov = read_orb_mat(config + '/orb_matrix.0.dat')
+            op = read_orb_mat(config + '/orb_matrix.1.dat')
+        else:
+            ov = read_orb_mat(config[0])
+            op = read_orb_mat(config[1])
+
         wov, wop = weight
 
         # The overlap and operator data must be consistent except
@@ -298,6 +322,12 @@ class Spillage:
 
         # basis transformation matrix
         C = jy2ao(coef, natom, lmax, nbes, rcut)
+        #print(f"coef.shape = {C.shape}")
+        #print(f"natom = {natom}")
+        #print(f"lmax = {lmax}")
+        #print(f"nbes = {nbes}")
+        #print(f"rcut = {rcut}")
+
 
         # packed data for a configuration
         dat = {'ntype': ntype,
@@ -317,6 +347,11 @@ class Spillage:
                                   @ C]),
                }
 
+        #print(f"mo_jy.shape = {dat['mo_jy'].shape}")
+        #print(f"jy_jy.shape = {dat['jy_jy'].shape}")
+        #print(f"mo_mo.shape = {dat['mo_mo'].shape}")
+        #print('')
+
         self.config.append(dat)
 
         # NOTE currently a dataset merely contains one atom type
@@ -327,36 +362,43 @@ class Spillage:
             assert self.rcut == ov['rcut']
 
 
-    def config_add_jy(self, file_SR, file_TR, file_wfc,
-                      natom, nbes, rcut, weight=(0.0, 1.0)):
+    def config_add_jy(self, config, nbes, rcut, weight=(0.0, 1.0)):
         '''
 
 
         '''
-        ntype = len(natom)
+        from struio import read_stru
+
+        file_stru = glob.glob(config + '/STRU*')
+        assert len(file_stru) == 1
+
+        stru = read_stru(file_stru[0])
+        ntype = len(stru['species'])
+        natom = [spec['natom'] for spec in stru['species']]
         lmax = [len(nbes_t) - 1 for nbes_t in nbes]
 
-        print(f"rcut = {rcut}", flush = True)
-        print(f"nbes = {nbes}", flush = True)
-        print(f"lmax = {lmax}", flush = True)
+        file_SR = glob.glob(config + '/OUT*/data-SR-sparse_SPIN0.csr')
+        file_TR = glob.glob(config + '/OUT*/data-TR-sparse_SPIN0.csr')
+        assert len(file_SR) == 1 and len(file_TR) == 1
 
-        S = sum(read_abacus_csr(file_SR)[0]).toarray() # S(k=0)
-        T = sum(read_abacus_csr(file_TR)[0]).toarray() # T(k=0)
+        S = sum(read_abacus_csr(file_SR[0])[0]).toarray() # S(k=0)
+        T = sum(read_abacus_csr(file_TR[0])[0]).toarray() # T(k=0)
 
-        print(f"T.shape = {T.shape}")
+        file_wfc = glob.glob(config + '/OUT*/WFC_NAO*')
+        nk = len(file_wfc)
 
-        # NOTE: wfc here is assumed to correspond to Gamma point
-        if isinstance(file_wfc, tuple):
-            nk = 2
+        # currently only supports Gamma point (with possibly nspin=2)
+        assert nk == 1 or nk == 2 
+
+        if nk == 2:
             wk = [0.5, 0.5]
             wfc = np.array([read_wfc_lcao_txt(file_wfc[0])[0],
                             read_wfc_lcao_txt(file_wfc[1])[0]])
             S = np.array([S, S])
             T = np.array([T, T])
         else:
-            nk = 1
             wk = [1.0]
-            wfc = np.expand_dims(read_wfc_lcao_txt(file_wfc)[0], axis=0)
+            wfc = np.expand_dims(read_wfc_lcao_txt(file_wfc[0])[0], axis=0)
             S = np.expand_dims(S, axis=0)
             T = np.expand_dims(T, axis=0)
 
@@ -368,21 +410,12 @@ class Spillage:
         mo_jy_ov = wfc.conj() @ S
         mo_jy_op = wfc.conj() @ T
 
-        print(f"nbands = {nbands}")
-
         wov, wop = weight
         mo_mo_ov = np.ones((nk, nbands))
-
-        print(mo_mo_op)
-        print(mo_mo_ov)
 
         mo_mo = np.array([mo_mo_ov, wov*mo_mo_ov + wop*mo_mo_op])
         mo_jy = np.array([mo_jy_ov, wov*mo_jy_ov + wop*mo_jy_op])
         jy_jy = np.array([S, wov*S + wop*T])
-
-        print(f"mo_mo.shape = {mo_mo.shape}")
-        print(f"mo_jy.shape = {mo_jy.shape}")
-        print(f"jy_jy.shape = {jy_jy.shape}")
 
         # NOTE: The LCAO basis in ABACUS follows a lexicographic order of
         # (itype, iatom, l, q, 2*|m|-(m>0))
@@ -393,6 +426,10 @@ class Spillage:
         p = perm_zeta_m(index_map(natom, lmax, nbes)[1])
         mo_jy = mo_jy[:,:,:,p]
         jy_jy = jy_jy[:,:,:,p][:,:,p,:]
+
+        print(f"mo_jy.shape = {mo_jy.shape}")
+        print(f"jy_jy.shape = {jy_jy.shape}")
+        print(f"mo_mo.shape = {mo_mo.shape}")
 
         # packed data for a configuration
         dat = {'ntype': ntype,
@@ -500,15 +537,20 @@ class Spillage:
 
         # derivatives of <ao|jy>, indexed as [ov/op][icoef][k][ao][jy]
         # for each config
+        print('nestpat: ', nestpat(jy2dao_all))
+        print('shape: ', jy2dao_all[0][0].shape)
+        print('dao_jy...')
         self.dao_jy = [np.array([jy2dao_i.T @ dat['jy_jy']
                                  for jy2dao_i in jy2dao])
                        .transpose(1,0,2,3,4)
                        for dat, jy2dao in zip(self.config, jy2dao_all)]
+        print('...done')
 
         # derivatives of <mo|ao> and <mo|op|ao>
         self.mo_Qfrozen_dao = [np.array([dat['mo_jy'] @ jy2dao_i
                                          for jy2dao_i in jy2dao])
-                               for dat, jy2dao in zip(self.config, jy2dao_all)]
+                               for dat, jy2dao in zip(self.config, jy2dao_all)
+                               ]
         # at this stage, the index for each config follows
         # [icoef][ov/op][k][mo][ao]
         # where 0->overlap; 1->operator
@@ -519,9 +561,11 @@ class Spillage:
             self.mo_Qfrozen_dao = [mo_Qfroz_dao -
                                    np.array([mo_Pfroz_jy @ jy2dao_i
                                              for jy2dao_i in jy2dao])
-                                   for mo_Qfroz_dao, mo_Pfroz_jy, jy2dao in
-                                   zip(self.mo_Qfrozen_dao, self.mo_Pfrozen_jy,
-                                       jy2dao_all)]
+                                   for mo_Qfroz_dao, mo_Pfroz_jy, jy2dao
+                                   in zip(self.mo_Qfrozen_dao,
+                                          self.mo_Pfrozen_jy,
+                                          jy2dao_all)
+                                   ]
 
         # transpose to [0/1][icoef][k][mo][ao]
         self.mo_Qfrozen_dao = [dV.transpose(1,0,2,3,4)
@@ -611,7 +655,12 @@ class Spillage:
         if coef_frozen is not None:
             self._tab_frozen(coef_frozen)
 
+        print('tab deriv...')
+        import time
+        start = time.time()
         self._tab_deriv(coef_init)
+        print('time elapsed = ', time.time()-start)
+        exit()
 
         iconfs = range(len(self.config)) if iconfs == 'all' else iconfs
         nconf = len(iconfs)
@@ -672,17 +721,20 @@ class _TestSpillage(unittest.TestCase):
         #datadir_pw = './testfiles/Si/pw/'
         #config_pw = ['Si-dimer-1.8', 'Si-dimer-2.8', 'Si-dimer-3.8',
         #             'Si-trimer-1.7', 'Si-trimer-2.7']
-        datadir_pw = '../../testfiles/pw/'
+        datadir_pw = '../../testfiles/pw_10au/'
         config_pw = ['Si-dimer-1.80', 'Si-dimer-2.80', 'Si-dimer-3.80',
                      'Si-trimer-1.70', 'Si-trimer-2.70',
                      ]
-        self.config_pw = [datadir_pw + conf for conf in config_pw]
 
-        datadir_jy = './testfiles/Si/jy/'
-        config_jy = ['Si-dimer-1.8', 'Si-dimer-2.8', 'Si-dimer-3.8',
-                     #'Si-trimer-1.70', 'Si-trimer-2.70',
+        self.config_pw = [datadir_pw + conf for conf in config_pw]
+        self.config0_pw = datadir_pw + 'Si-monomer'
+
+        datadir_jy = '../../testfiles/jy_10au/'
+        config_jy = ['Si-dimer-1.80', 'Si-dimer-2.80', 'Si-dimer-3.80',
+                     'Si-trimer-1.70', 'Si-trimer-2.70',
                      ]
         self.config_jy = [datadir_jy + conf for conf in config_jy]
+        self.config0_jy = datadir_jy + 'Si-monomer'
 
 
     def randcoef(self, nzeta, nbes):
@@ -739,6 +791,47 @@ class _TestSpillage(unittest.TestCase):
         plt.show()
 
 
+    def est_initgen(self):
+        '''
+        Checks intial guess generation from spherical-wave reference state.
+
+        '''
+        file_SR = './testfiles/Si/jy/Si-monomer/data-SR-sparse_SPIN0.csr'
+        file_wfc = './testfiles/Si/jy/Si-monomer/WFC_NAO_K1.txt'
+
+        S = sum(read_abacus_csr(file_SR)[0]).toarray() # S(k=0)
+        S = np.expand_dims(S, axis=0) # (nk, nao, nao)
+
+        nk = 1
+        wk = np.array([1.0])
+        wfc = np.expand_dims(read_wfc_lcao_txt(file_wfc)[0], axis=0)
+
+        mo_jy = wfc.conj() @ S
+
+        nzeta = [3, 3, 2]
+        nbes = [16,15,15]
+        p = perm_zeta_m(index_map([1], [2], [nbes])[1])
+        mo_jy = mo_jy[:,:,p]
+
+        coef = initgen(nzeta, 60.0, 7.0, [16,15,15], mo_jy, wk, True)
+
+        self.assertEqual(len(coef), len(nzeta))
+        self.assertEqual([len(coef[l]) for l in range(len(nzeta))], nzeta)
+
+        return # suppress the plot
+
+        dr = 0.01
+        r = np.linspace(0, rcut, int(rcut/dr)+1)
+
+        if reduced:
+            chi = build_reduced(coef, rcut, r, True)
+        else:
+            chi = build_raw(coeff_normalized2raw(coef, rcut), rcut, r, True)
+
+        plot_chi(chi, r)
+        plt.show()
+
+
     def est_config_add_pw(self):
         '''
         Checks if config_add_pw loads & transforms data correctly.
@@ -746,8 +839,7 @@ class _TestSpillage(unittest.TestCase):
         '''
         for conf in self.config_pw:
             for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
-                orbgen.config_add_pw(conf + '/orb_matrix.0.dat',
-                                     conf + '/orb_matrix.1.dat')
+                orbgen.config_add_pw(conf)
 
         for iconf, config in enumerate(self.config_pw):
             for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
@@ -779,11 +871,7 @@ class _TestSpillage(unittest.TestCase):
         reduced = False
         orbgen = self.orbgen_rdc if reduced else self.orbgen_nrm
 
-        orbgen.config_add_jy('./testfiles/Si/jy/data-SR-sparse_SPIN0.csr',
-                             './testfiles/Si/jy/data-TR-sparse_SPIN0.csr',
-                             './testfiles/Si/jy/WFC_NAO_K1.txt',
-                             './testfiles/Si/jy/STRU',
-                             './testfiles/Si/jy/Si_gga_10au_100Ry_31s31p30d.orb')
+        orbgen.config_add_jy(self.config_jy[0], [[30, 30, 29]], 7.0)
 
 
     def est_tab_frozen(self):
@@ -793,8 +881,7 @@ class _TestSpillage(unittest.TestCase):
         '''
         for conf in self.config_pw:
             for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
-                orbgen.config_add_pw(conf + '/orb_matrix.0.dat',
-                                     conf + '/orb_matrix.1.dat')
+                orbgen.config_add_pw(conf)
 
         nbes_min = min(dat['nbes'] for dat in self.orbgen_rdc.config)
         coef_frozen = self.randcoef([[2, 1, 0]], nbes_min)
@@ -820,8 +907,7 @@ class _TestSpillage(unittest.TestCase):
         '''
         for conf in self.config_pw:
             for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
-                orbgen.config_add_pw(conf + '/orb_matrix.0.dat',
-                                     conf + '/orb_matrix.1.dat')
+                orbgen.config_add_pw(conf)
 
         nbes_min = min(dat['nbes'] for dat in self.orbgen_rdc.config)
         coef = self.randcoef([[2, 1, 0]], nbes_min)
@@ -856,8 +942,8 @@ class _TestSpillage(unittest.TestCase):
         '''
         for conf in self.config_pw:
             for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
-                orbgen.config_add_pw(conf + '/orb_matrix.0.dat',
-                                     conf + '/orb_matrix.0.dat')
+                orbgen.config_add_pw((conf + '/orb_matrix.0.dat',
+                                      conf + '/orb_matrix.0.dat'))
 
         ibands = range(5)
         nbes_min = min(dat['nbes'] for dat in self.orbgen_rdc.config)
@@ -894,8 +980,7 @@ class _TestSpillage(unittest.TestCase):
         '''
         for conf in self.config_pw:
             for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
-                orbgen.config_add_pw(conf + '/orb_matrix.0.dat',
-                                     conf + '/orb_matrix.0.dat')
+                orbgen.config_add_pw(conf)
 
         ibands = range(6)
         nbes_min = min(dat['nbes'] for dat in self.orbgen_rdc.config)
@@ -936,22 +1021,21 @@ class _TestSpillage(unittest.TestCase):
                     self.assertTrue(np.allclose(dspill, dspill_fd, atol=1e-7))
 
 
-    def test_opt_pw(self):
+    def est_opt_pw(self):
         from listmanip import merge
 
         reduced = True
         orbgen = self.orbgen_rdc if reduced else self.orbgen_nrm
 
         for conf in self.config_pw:
-            orbgen.config_add_pw(conf + '/orb_matrix.0.dat',
-                                 conf + '/orb_matrix.1.dat')
+            orbgen.config_add_pw(conf)
 
         nthreads = 2
         options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': 2000,
                    'disp': True, 'maxcor': 20}
 
         # initial guess
-        ov = read_orb_mat('./testfiles/Si/pw/Si-monomer/orb_matrix.0.dat')
+        ov = read_orb_mat(self.config0_pw + '/orb_matrix.0.dat')
         nzeta = [3, 3, 2]
         rcut = ov['rcut']
         ecut = ov['ecutjlq']
@@ -959,7 +1043,98 @@ class _TestSpillage(unittest.TestCase):
         coef_init = initgen_pw(nzeta, ecut, len(nzeta)-1, rcut, ov['nbes'],
                                ov['mo_jy'], ov['wk'], reduced)
 
+
+        nbes = [_nbes(l, rcut, ecut) for l in range(len(nzeta))]
+        if reduced:
+            nbes = [n - 1 for n in nbes]
+
+        coef_init = [np.eye(nz, nbes[l]).tolist()
+                     for l, nz in enumerate(nzeta)]
+
         ibands = range(4)
+        iconfs = [0, 1, 2]
+        # coef_lvl1_init: [t][l][z][q]
+        coef_lvl1_init = [[[coef_init[0][0]],
+                           [coef_init[1][0]]]]
+        coef_lvl1 = orbgen.opt(coef_lvl1_init, None, iconfs, ibands,
+                               options, nthreads)
+        coef_tot = coef_lvl1
+
+        ibands = range(4)
+        iconfs = [0, 1, 2]
+        coef_lvl2_init = [[[coef_init[0][1]],
+                           [coef_init[1][1]],
+                           [coef_init[2][0]]]]
+        coef_lvl2 = orbgen.opt(coef_lvl2_init, coef_lvl1, iconfs, ibands,
+                               options, nthreads)
+        coef_tot = merge(coef_tot, coef_lvl2, 2)
+
+        ibands = range(8)
+        iconfs = [3, 4]
+        coef_lvl3_init = [[[coef_init[0][2]],
+                           [coef_init[1][2]],
+                           [coef_init[2][1]]]]
+        coef_lvl3 = orbgen.opt(coef_lvl3_init, coef_tot, iconfs, ibands,
+                               options, nthreads)
+        coef_tot = merge(coef_tot, coef_lvl3, 2)
+
+        #return # supress the plot 
+
+        dr = 0.01
+        r = np.linspace(0, rcut, int(rcut/dr)+1)
+
+        if reduced:
+            chi = build_reduced(coef_tot[0], rcut, r, True)
+        else:
+            coeff_raw = coeff_normalized2raw(coef_tot, rcut)
+            chi = build_raw(coeff_raw[0], rcut, r, 0.0, True)
+
+        plot_chi(chi, r)
+        plt.show()
+
+
+    def test_opt_jy(self):
+        from listmanip import merge
+
+        reduced = True 
+        orbgen = self.orbgen_rdc if reduced else self.orbgen_nrm
+
+        nbes = [30, 30, 29]
+        rcut = 10.0
+        ecut = 100
+
+        for conf in self.config_jy:
+            orbgen.config_add_jy(conf, [nbes], 10.0)
+
+        nthreads = 2
+        options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': 2000,
+                   'disp': True, 'maxcor': 20}
+
+        # initial guess
+        coef_init = [np.eye(3,30).tolist(),
+                     np.eye(3,30).tolist(),
+                     np.eye(2,29).tolist()]
+
+        file_SR = glob.glob(self.config0_jy
+                            + '/OUT*/data-SR-sparse_SPIN0.csr')[0]
+        file_wfc = glob.glob(self.config0_jy
+                             + '/OUT*/WFC_NAO*')[0]
+
+        print(file_SR)
+        print(file_wfc)
+
+        S = sum(read_abacus_csr(file_SR)[0]).toarray() # S(k=0)
+        wfc = np.expand_dims(read_wfc_lcao_txt(file_wfc)[0], axis=0)
+
+        mo_jy = wfc.conj() @ S
+        p = perm_zeta_m(index_map([1], [2], [nbes])[1])
+        mo_jy = mo_jy[:,:,p]
+
+        nzeta = [3, 3, 2]
+        wk = [1.0]
+        #coef_init = initgen(nzeta, ecut, rcut, nbes, mo_jy, wk, True)
+
+        ibands = range(8)
         iconfs = [0, 1, 2]
         # coef_lvl1_init: [t][l][z][q]
         coef_lvl1_init = [[[coef_init[0][0]],
@@ -988,7 +1163,6 @@ class _TestSpillage(unittest.TestCase):
 
         #return # supress the plot 
 
-        rcut = ov['rcut']
         dr = 0.01
         r = np.linspace(0, rcut, int(rcut/dr)+1)
 
@@ -999,75 +1173,7 @@ class _TestSpillage(unittest.TestCase):
             chi = build_raw(coeff_raw[0], rcut, r, 0.0, True)
 
         plot_chi(chi, r)
-        plt.show(block=True)
-
-
-    def test_opt_jy(self):
-        from listmanip import merge
-
-        reduced = True 
-        orbgen = self.orbgen_rdc if reduced else self.orbgen_nrm
-
-        for conf in self.config_jy:
-            orbgen.config_add_jy(
-                    conf + '/data-SR-sparse_SPIN0.csr',
-                    conf + '/data-TR-sparse_SPIN0.csr',
-                    conf + '/WFC_NAO_K1.txt',
-                    [2], # natom
-                    [[16,15,15]], # nbes
-                    7.0 # rcut
-                    )
-
-        nthreads = 2
-        options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': 2000,
-                   'disp': True, 'maxcor': 20}
-
-        # initial guess
-        coef_init = [np.eye(3,15).tolist(),
-                     np.eye(3,15).tolist(),
-                     np.eye(2,15).tolist()]
-
-        ibands = range(4)
-        iconfs = [0]
-        # coef_lvl1_init: [t][l][z][q]
-        coef_lvl1_init = [[[coef_init[0][0]],
-                           [coef_init[1][0]]]]
-        coef_lvl1 = orbgen.opt(coef_lvl1_init, None, iconfs, ibands,
-                               options, nthreads)
-        coef_tot = coef_lvl1
-
-        ibands = range(8)
-        iconfs = [0]
-        coef_lvl2_init = [[[coef_init[0][1]],
-                           [coef_init[1][1]],
-                           [coef_init[2][0]]]]
-        coef_lvl2 = orbgen.opt(coef_lvl2_init, coef_lvl1, iconfs, ibands,
-                               options, nthreads)
-        coef_tot = merge(coef_tot, coef_lvl2, 2)
-
-        #ibands = range(14)
-        #iconfs = [0]
-        #coef_lvl3_init = [[[coef_init[0][2]],
-        #                   [coef_init[1][2]],
-        #                   [coef_init[2][1]]]]
-        #coef_lvl3 = orbgen.opt(coef_lvl3_init, coef_tot, iconfs, ibands,
-        #                       options, nthreads)
-        #coef_tot = merge(coef_tot, coef_lvl3, 2)
-
-        #return # supress the plot 
-
-        rcut = orbgen.rcut
-        dr = 0.01
-        r = np.linspace(0, rcut, int(rcut/dr)+1)
-
-        if reduced:
-            chi = build_reduced(coef_tot[0], rcut, r, True)
-        else:
-            coeff_raw = coeff_normalized2raw(coef_tot, rcut)
-            chi = build_raw(coeff_raw[0], rcut, r, 0.0, True)
-
-        plot_chi(chi, r)
-        plt.show(block=False)
+        plt.show()
 
 if __name__ == '__main__':
     unittest.main()
