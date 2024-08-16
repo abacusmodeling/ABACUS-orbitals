@@ -424,12 +424,14 @@ class Spillage:
 
         # permutation
         p = perm_zeta_m(index_map(natom, lmax, nbes)[1])
-        mo_jy = mo_jy[:,:,:,p]
-        jy_jy = jy_jy[:,:,:,p][:,:,p,:]
+        mo_jy[:,:,:,:] = mo_jy[:,:,:,p]
+        jy_jy[:,:,:,:] = jy_jy[:,:,:,p][:,:,p,:]
+        # NOTE: it's important to have the l.h.s. of the above line
+        # with [:,:,:,:] instead of just letting jy_jy = jy_jy[...][...]
 
-        print(f"mo_jy.shape = {mo_jy.shape}")
-        print(f"jy_jy.shape = {jy_jy.shape}")
-        print(f"mo_mo.shape = {mo_mo.shape}")
+        #print(f"mo_jy.shape = {mo_jy.shape}")
+        #print(f"jy_jy.shape = {jy_jy.shape}")
+        #print(f"mo_mo.shape = {mo_mo.shape}")
 
         # packed data for a configuration
         dat = {'ntype': ntype,
@@ -507,7 +509,8 @@ class Spillage:
 
     def _tab_deriv(self, coef):
         '''
-        Tabulates for each configuration the derivatives of
+        Given coef which specifies a set of atomic orbital basis, this
+        function tabulates for each configuration the derivatives of
 
                                 <ao|jy>
                                 <ao|op|jy>
@@ -535,22 +538,20 @@ class Spillage:
                        for ci in np.eye(len(flatten(coef)))]
                       for dat in self.config]
 
-        # derivatives of <ao|jy>, indexed as [ov/op][icoef][k][ao][jy]
-        # for each config
-        print('nestpat: ', nestpat(jy2dao_all))
-        print('shape: ', jy2dao_all[0][0].shape)
-        print('dao_jy...')
+        # derivatives of <ao|(I/op)|jy> for each config,
+        # index as dao_jy[iconf][0(ov)/1(op)][icoef][k][ao][jy]
+        import time
+        start = time.time()
         self.dao_jy = [np.array([jy2dao_i.T @ dat['jy_jy']
                                  for jy2dao_i in jy2dao])
                        .transpose(1,0,2,3,4)
                        for dat, jy2dao in zip(self.config, jy2dao_all)]
-        print('...done')
 
         # derivatives of <mo|ao> and <mo|op|ao>
         self.mo_Qfrozen_dao = [np.array([dat['mo_jy'] @ jy2dao_i
                                          for jy2dao_i in jy2dao])
-                               for dat, jy2dao in zip(self.config, jy2dao_all)
-                               ]
+                               for dat, jy2dao
+                               in zip(self.config, jy2dao_all)]
         # at this stage, the index for each config follows
         # [icoef][ov/op][k][mo][ao]
         # where 0->overlap; 1->operator
@@ -655,12 +656,7 @@ class Spillage:
         if coef_frozen is not None:
             self._tab_frozen(coef_frozen)
 
-        print('tab deriv...')
-        import time
-        start = time.time()
         self._tab_deriv(coef_init)
-        print('time elapsed = ', time.time()-start)
-        exit()
 
         iconfs = range(len(self.config)) if iconfs == 'all' else iconfs
         nconf = len(iconfs)
@@ -1097,7 +1093,7 @@ class _TestSpillage(unittest.TestCase):
         from listmanip import merge
 
         reduced = True 
-        orbgen = self.orbgen_rdc if reduced else self.orbgen_nrm
+        orbgen = Spillage(reduced)
 
         nbes = [30, 30, 29]
         rcut = 10.0
@@ -1115,26 +1111,23 @@ class _TestSpillage(unittest.TestCase):
                      np.eye(3,30).tolist(),
                      np.eye(2,29).tolist()]
 
-        file_SR = glob.glob(self.config0_jy
-                            + '/OUT*/data-SR-sparse_SPIN0.csr')[0]
-        file_wfc = glob.glob(self.config0_jy
-                             + '/OUT*/WFC_NAO*')[0]
+        #file_SR = glob.glob(self.config0_jy
+        #                    + '/OUT*/data-SR-sparse_SPIN0.csr')[0]
+        #file_wfc = glob.glob(self.config0_jy
+        #                     + '/OUT*/WFC_NAO*')[0]
 
-        print(file_SR)
-        print(file_wfc)
+        #S = sum(read_abacus_csr(file_SR)[0]).toarray() # S(k=0)
+        #wfc = np.expand_dims(read_wfc_lcao_txt(file_wfc)[0], axis=0)
 
-        S = sum(read_abacus_csr(file_SR)[0]).toarray() # S(k=0)
-        wfc = np.expand_dims(read_wfc_lcao_txt(file_wfc)[0], axis=0)
+        #mo_jy = wfc.conj() @ S
+        #p = perm_zeta_m(index_map([1], [2], [nbes])[1])
+        #mo_jy = mo_jy[:,:,p]
 
-        mo_jy = wfc.conj() @ S
-        p = perm_zeta_m(index_map([1], [2], [nbes])[1])
-        mo_jy = mo_jy[:,:,p]
-
-        nzeta = [3, 3, 2]
-        wk = [1.0]
+        #nzeta = [3, 3, 2]
+        #wk = [1.0]
         #coef_init = initgen(nzeta, ecut, rcut, nbes, mo_jy, wk, True)
 
-        ibands = range(8)
+        ibands = range(4)
         iconfs = [0, 1, 2]
         # coef_lvl1_init: [t][l][z][q]
         coef_lvl1_init = [[[coef_init[0][0]],
@@ -1143,7 +1136,7 @@ class _TestSpillage(unittest.TestCase):
                                options, nthreads)
         coef_tot = coef_lvl1
 
-        ibands = range(8)
+        ibands = range(4)
         iconfs = [0, 1, 2]
         coef_lvl2_init = [[[coef_init[0][1]],
                            [coef_init[1][1]],
