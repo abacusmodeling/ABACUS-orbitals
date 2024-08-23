@@ -3,7 +3,7 @@ from SIAB.spillage.index import index_map
 import numpy as np
 from scipy.linalg import block_diag
 
-def jy2ao(coef, natom, lmax, nbes, rcut):
+def jy2ao(coef, natom, lmax, nbes):
     '''
     Basis transformation matrix from a spherical wave basis to a pseudo-
     atomic orbital basis.
@@ -35,16 +35,19 @@ def jy2ao(coef, natom, lmax, nbes, rcut):
             nbes[l] specifies the number of spherical wave radial functions
             of angular momemtum l. If an integer, the same number is assumed
             for all l.
-        rcut : float
-            Cutoff radius.
+            NOTE: it is assumed that different atom types have the same number
+            of radial functions for the same angular momentum, i.e., there is
+            a consistent kinetic energy cutoff for all atom types.
 
     '''
+    #TODO release the constraint on the number of radial functions
+    # for different atom types
     assert len(natom) == len(lmax) == len(coef)
     lmaxmax = max(lmax)
     nbes = [nbes] * (lmaxmax + 1) if isinstance(nbes, int) else nbes
     lin2comp = index_map(natom, lmax)[1]
 
-    def _gen_q2zeta(coef, lin2comp, nbes, rcut):
+    def _gen_q2zeta(coef, lin2comp, nbes):
         for comp in lin2comp:
             itype, _, l, _ = comp
             if l >= len(coef[itype]) or len(coef[itype][l]) == 0:
@@ -57,7 +60,7 @@ def jy2ao(coef, natom, lmax, nbes, rcut):
                 C[:len(coef[itype][l][0])] = np.array(coef[itype][l]).T
                 yield C
 
-    return block_diag(*_gen_q2zeta(coef, lin2comp, nbes, rcut))
+    return block_diag(*_gen_q2zeta(coef, lin2comp, nbes))
 
 
 ############################################################
@@ -103,7 +106,7 @@ class _TestBasisTrans(unittest.TestCase):
         natom = [1, 2, 3]
         lmax = [2, 1, 0]
         rcut = 6.0
-        M = jy2ao(coef, natom, lmax, nbes, rcut)
+        M = jy2ao(coef, natom, lmax, nbes)
 
         irow = 0
         icol = 0

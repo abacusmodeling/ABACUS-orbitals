@@ -30,12 +30,12 @@ def _overlap_spillage(natom, lmax, rcut, nbes,
     spill = (wk @ mo_mo[:,ibands]).real.sum()
 
     mo_jy = mo_jy[:,ibands,:]
-    _jy2ao = jy2ao(coef, natom, lmax, nbes, rcut)
+    _jy2ao = jy2ao(coef, natom, lmax, nbes)
     V = mo_jy @ _jy2ao
     W = _jy2ao.T @ jy_jy @ _jy2ao
 
     if coef_frozen is not None:
-        jy2frozen = jy2ao(coef_frozen, natom, lmax, nbes, rcut)
+        jy2frozen = jy2ao(coef_frozen, natom, lmax, nbes)
         X = mo_jy @ jy2frozen
         S = jy2frozen.T @ jy_jy @ jy2frozen
         X_dual = mrdiv(X, S)
@@ -101,7 +101,7 @@ def initgen_pw(nzeta, ecut, lmax, rcut, nbes_raw, mo_jy, wk,
 
     nk, nbands, _ = mo_jy.shape
     nbes_now = nbes_raw - 1 if reduced else nbes_raw
-    Y = (mo_jy @ jy2ao(coef, [1], [lmax], nbes_raw, rcut)) \
+    Y = (mo_jy @ jy2ao(coef, [1], [lmax], nbes_raw)) \
             .reshape(nk, nbands, -1, nbes_now)
 
     coef = []
@@ -321,7 +321,7 @@ class Spillage:
                     for itype in range(ntype)]
 
         # basis transformation matrix
-        C = jy2ao(coef, natom, lmax, nbes, rcut)
+        C = jy2ao(coef, natom, lmax, nbes)
         #print(f"coef.shape = {C.shape}")
         #print(f"natom = {natom}")
         #print(f"lmax = {lmax}")
@@ -476,8 +476,8 @@ class Spillage:
             return
 
         # jy -> frozen orbital transformation matrices
-        jy2frozen = [jy2ao(coef_frozen, dat['natom'], dat['lmax'],
-                           dat['nbes'], dat['rcut'])
+        jy2frozen = [jy2ao(coef_frozen,
+                           dat['natom'], dat['lmax'], dat['nbes'])
                      for dat in self.config]
 
         frozen_frozen = [jy2froz.T @ dat['jy_jy'] @ jy2froz
@@ -533,8 +533,8 @@ class Spillage:
 
         '''
         # jy -> (d/dcoef)ao transformation matrices
-        jy2dao_all = [[jy2ao(nest(ci.tolist(), nestpat(coef)), dat['natom'],
-                             dat['lmax'], dat['nbes'], dat['rcut'])
+        jy2dao_all = [[jy2ao(nest(ci.tolist(), nestpat(coef)),
+                             dat['natom'], dat['lmax'], dat['nbes'])
                        for ci in np.eye(len(flatten(coef)))]
                       for dat in self.config]
 
@@ -584,8 +584,7 @@ class Spillage:
         spill = (dat['wk'] @ dat['mo_mo'][1][:,ibands]).real.sum()
 
         # jy->ao basis transformation matrix
-        _jy2ao = jy2ao(coef, dat['natom'], dat['lmax'],
-                       dat['nbes'], dat['rcut'])
+        _jy2ao = jy2ao(coef, dat['natom'], dat['lmax'], dat['nbes'])
 
         # <mo|Q_frozen|ao> and <mo|Q_frozen op|ao>
         V = dat['mo_jy'][:,:,ibands,:] @ _jy2ao

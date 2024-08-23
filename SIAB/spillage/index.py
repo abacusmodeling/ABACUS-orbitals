@@ -97,7 +97,8 @@ def perm_zeta_m(lin2comp):
     '''
     Given a list of composite indices (itype, iatom, l, zeta, m) following
     the ABACUS order, this function returns a permutation `p` such that
-    lin2comp[p] becomes a list with the relative order of zeta & m reversed.
+    lin2comp[p] becomes a list with the relative lexicographic order of
+    zeta & m reversed.
 
     '''
     # preserve the original intra-m order (0, 1, -1, 2, -2, ..., l, -l),
