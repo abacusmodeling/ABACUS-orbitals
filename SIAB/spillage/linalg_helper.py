@@ -4,10 +4,10 @@ def mrdiv(X, Y):
     '''
     Right matrix division X @ inv(Y).
 
-    This function computes the right matrix division X @ inv(Y) slice-wise
-    if X are at least 2-d. In this case the shapes of X and Y must be
-    broadcastable as supported by numpy.linalg.solve. If X is 1-d, Y must
-    be 2-d and the result is a 1-d array.
+    The shapes of X and Y must be broadcastable as supported by
+    numpy.linalg.solve. If X is 1-d, Y must be 2-d and the result
+    is a 1-d array. For multi-dimensional arrays (ndim >= 3), the
+    calculation is performed slice-wise.
     
     Note
     ----
@@ -71,7 +71,7 @@ class _TestLinalgHelper(unittest.TestCase):
         Y = np.random.randn(nk, n, n) + 1j * np.random.randn(nk, n, n)
         Y = np.linalg.qr(Y)[0]
 
-        # check that mrdiv works for broadcasted multiple slices
+        # check that mrdiv works for broadcastable multiple slices
         Z = mrdiv(X, Y)
         self.assertEqual(Z.shape, X.shape)
         for i in range(nk):

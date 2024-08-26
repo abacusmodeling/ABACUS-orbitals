@@ -31,21 +31,26 @@ def jy2ao(coef, natom, lmax, nbes):
             Number of atoms for each atom type.
         lmax : list of int
             Maximum angular momentum for each atom type.
-        nbes : list of int or int
-            nbes[l] specifies the number of spherical wave radial functions
-            of angular momemtum l. If an integer, the same number is assumed
-            for all l.
-            NOTE: it is assumed that different atom types have the same number
-            of radial functions for the same angular momentum, i.e., there is
-            a consistent kinetic energy cutoff for all atom types.
+        nbes : int / list of int / list of list of int
+            Number of spherical wave radial functions.
+            If an integer, the same number is assumed in all cases.
+            If a list, nbes[l] specifies the number for angular momentum l,
+            which is assumed to be the same for different atomic types.
+            If a nested list, nbes[itype][l] specifies the number for angular
+            momentum l of atomic type `itype`.
 
     '''
-    #TODO release the constraint on the number of radial functions
-    # for different atom types
     assert len(natom) == len(lmax) == len(coef)
-    lmaxmax = max(lmax)
-    nbes = [nbes] * (lmaxmax + 1) if isinstance(nbes, int) else nbes
     lin2comp = index_map(natom, lmax)[1]
+
+    # whatever nbes is given, it is converted to a list of list of int
+    # such that nbes[itype][l] gives the corresponding number.
+    if isinstance(nbes, int):
+        nbes = [[nbes] * (max(lmax) + 1)] * len(natom)
+    elif isinstance(nbes[0], int):
+        nbes = [nbes] * len(natom)
+    else: # nbes[itype][l] -> int
+        assert len(nbes) == len(natom)
 
     def _gen_q2zeta(coef, lin2comp, nbes):
         for comp in lin2comp:
@@ -53,10 +58,10 @@ def jy2ao(coef, natom, lmax, nbes):
             if l >= len(coef[itype]) or len(coef[itype][l]) == 0:
                 # The generator should yield a zero matrix with the
                 # appropriate size when no coefficient is provided.
-                yield np.zeros((nbes[l], 0))
+                yield np.zeros((nbes[itype][l], 0))
             else:
                 # zero-padding to the appropriate size
-                C = np.zeros((nbes[l], len(coef[itype][l])))
+                C = np.zeros((nbes[itype][l], len(coef[itype][l])))
                 C[:len(coef[itype][l][0])] = np.array(coef[itype][l]).T
                 yield C
 
@@ -70,42 +75,48 @@ import unittest
 
 class _TestBasisTrans(unittest.TestCase):
 
-    def coefgen(self, nzeta, nbes):
+    def test_jy2ao_nbes0(self):
         '''
-        Generates some random pseudo-atomic orbital coefficients.
-
-        Parameters
-        ----------
-            nzeta : nested list of int
-                nzeta[itype][l] gives the number of zeta.
-            nbes : list of int or int
-                nbes[l] specifies the number of radial functions for angular
-                momemtum l. If an integer, the same number is used for all l.
-
-        Returns
-        -------
-            A nested list of float.
-            coef[itype][l][zeta] gives a list of spherical wave coefficients
-            that specifies an orbital.
+        Test the case where nbes is an int.
 
         '''
-        nbes = [nbes] * (max(len(nzt) for nzt in nzeta) + 1) \
-                if isinstance(nbes, int) else nbes
-        return [[np.random.randn(nzeta_tl, nbes[l]).tolist()
-                 for l, nzeta_tl in enumerate(nzeta_t)]
-                for it, nzeta_t in enumerate(nzeta)]
+        nbes = 7
+
+        nzeta = [[3, 2, 0], [0, 1], [4]] # nzeta[itype][l]
+        lmax = [len(nzt) - 1 for nzt in nzeta]
+        coef = [[np.random.randn(nzeta_tl, nbes).tolist()
+                 for nzeta_tl in nzeta_t]
+                for nzeta_t in nzeta]
+
+        natom = [2, 3, 5]
+        M = jy2ao(coef, natom, lmax, nbes)
+
+        irow = 0
+        icol = 0
+        for (itype, iatom, l, m) in index_map(natom, lmax)[1]:
+            nz = nzeta[itype][l]
+            self.assertTrue(np.allclose(
+                M[irow:irow+nbes, icol:icol+nz],
+                np.array(coef[itype][l]).T
+            ))
+            irow += nbes
+            icol += nz
 
 
-    def test_jy2ao(self):
+    def test_jy2ao_nbes1(self):
+        '''
+        Test the case where nbes is a list of int.
 
-        # generate some random coefficients
+        '''
         nbes = [7, 7, 6]
-        nzeta = [[2, 1, 3], [2, 2], [3]] # nzeta[itype][l]
-        coef = self.coefgen(nzeta, nbes)
+
+        nzeta = [[3, 1, 4], [0, 5], [9]] # nzeta[itype][l]
+        lmax = [len(nzt) - 1 for nzt in nzeta]
+        coef = [[np.random.randn(nzeta_tl, nbes[l]).tolist()
+                 for l, nzeta_tl in enumerate(nzeta_t)]
+                for nzeta_t in nzeta]
 
         natom = [1, 2, 3]
-        lmax = [2, 1, 0]
-        rcut = 6.0
         M = jy2ao(coef, natom, lmax, nbes)
 
         irow = 0
@@ -117,6 +128,34 @@ class _TestBasisTrans(unittest.TestCase):
                 np.array(coef[itype][l]).T
             ))
             irow += nbes[l]
+            icol += nz
+
+
+    def test_jy2ao_nbes2(self):
+        '''
+        Test the case where nbes is a list of list of int.
+
+        '''
+        nbes = [[10, 9, 8], [7, 6], [10]]
+
+        nzeta = [[3, 1, 4], [0, 5], [9]] # nzeta[itype][l]
+        lmax = [len(nzt) - 1 for nzt in nzeta]
+        coef = [[np.random.randn(nzeta_tl, nbes[it][l]).tolist()
+                 for l, nzeta_tl in enumerate(nzeta_t)]
+                for it, nzeta_t in enumerate(nzeta)]
+
+        natom = [1, 2, 3]
+        M = jy2ao(coef, natom, lmax, nbes)
+
+        irow = 0
+        icol = 0
+        for (itype, iatom, l, m) in index_map(natom, lmax)[1]:
+            nz = nzeta[itype][l]
+            self.assertTrue(np.allclose(
+                M[irow:irow+nbes[itype][l], icol:icol+nz],
+                np.array(coef[itype][l]).T
+            ))
+            irow += nbes[itype][l]
             icol += nz
 
 

@@ -8,13 +8,13 @@ def _nao(natom, lmax, nzeta=None):
             Number of atoms for each type.
         lmax : list of int
             lmax[i] specifies the maximum angular momentum of type i.
-            len(lmax) must be equal to len(natom).
+            len(lmax) must equal len(natom).
         nzeta : list of list of int
             nzeta[i][l] specifies the number of zeta orbitals of the
             angular momentum l of type i.
             If None, nzeta is assumed to be 1 in all cases.
-            If not None, len(nzeta) must be equal to len(natom), and
-            len(nzeta[i]) must be equal to lmax[i]+1.
+            If not None, len(nzeta) must equal len(natom), and
+            len(nzeta[i]) must equal lmax[i]+1.
     '''
     if nzeta is None:
         return sum(sum(2*l+1 for l in range(lmax[itype]+1)) * nat
