@@ -46,7 +46,7 @@ def jy2ao(coef, natom, lmax, nbes):
     # whatever nbes is given, it is converted to a list of list of int
     # such that nbes[itype][l] gives the corresponding number.
     if isinstance(nbes, int):
-        nbes = [[nbes] * (max(lmax) + 1)] * len(natom)
+        nbes = [[nbes] * (lmax_t + 1) for lmax_t in lmax]
     elif isinstance(nbes[0], int):
         nbes = [nbes] * len(natom)
     else: # nbes[itype][l] -> int
@@ -60,7 +60,7 @@ def jy2ao(coef, natom, lmax, nbes):
                 # appropriate size when no coefficient is provided.
                 yield np.zeros((nbes[itype][l], 0))
             else:
-                # zero-padding to the appropriate size
+                # zero-padding coef[itype][l] to the specified size
                 C = np.zeros((nbes[itype][l], len(coef[itype][l])))
                 C[:len(coef[itype][l][0])] = np.array(coef[itype][l]).T
                 yield C
