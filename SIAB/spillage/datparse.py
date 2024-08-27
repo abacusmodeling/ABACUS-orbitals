@@ -423,12 +423,20 @@ class _TestDatParse(unittest.TestCase):
         self.assertAlmostEqual(wfc[-1,-1], -7.0718e-02+6.4397e-04j)
 
 
-    def test_read_abacus_tri(self):
+    def test_read_abacus_tri_gamma(self):
+        Tk = read_abacus_tri('./testfiles/data-0-T')
+        self.assertEqual(Tk.shape, (34, 34))
+        self.assertTrue(np.all(Tk == Tk.T))
+        self.assertEqual(Tk[0,0], 0.243234968741)
+        self.assertEqual(Tk[0,1], 0.137088191847)
+        self.assertEqual(Tk[-1,-1], 2.20537992217)
+
+
+    def test_read_abacus_tri_multik(self):
         k = np.array([0.4, 0.4, 0.4]) # direct coordinates
         Tk = read_abacus_tri('./testfiles/data-2-T')
 
         TR, R_all = read_abacus_csr('./testfiles/data-TR-sparse_SPIN0.csr')
-
         Tk_ = np.zeros_like(Tk, dtype=complex)
         for i, R in enumerate(R_all):
             Tk_ += TR[i] * np.exp(2j * np.pi * np.dot(k, R))
