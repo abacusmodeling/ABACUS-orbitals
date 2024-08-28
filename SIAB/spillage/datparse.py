@@ -461,6 +461,15 @@ class _TestDatParse(unittest.TestCase):
     def test_read_abacus_kpoints(self):
         k, wk = read_abacus_kpoints('./testfiles/kpoints')
 
+        self.assertEqual(len(k), 10)
+        self.assertEqual(len(wk), 10)
+
+        self.assertTrue(np.allclose(k[0], [0.0, 0.0, 0.0]))
+        self.assertEqual(wk[0], 0.008)
+
+        self.assertTrue(np.allclose(k[-1], [0.4, -0.4, 0.2]))
+        self.assertEqual(wk[-1], 0.192)
+
 
 
 if __name__ == '__main__':

@@ -11,7 +11,7 @@ def _write_header(f, elem, ecut, rcut, nzeta, nr, dr):
     A typical header looks like
     
     <<<<<<< starts here (taken from C_gga_8au_100Ry_2s2p1d.orb)
-    ---------------------------------------------------------------------------
+    --------------------------------------------------------------------------
     Element                     C
     Energy Cutoff(Ry)          100
     Radius Cutoff(a.u.)         8
@@ -19,7 +19,7 @@ def _write_header(f, elem, ecut, rcut, nzeta, nr, dr):
     Number of Sorbital-->       2
     Number of Porbital-->       2
     Number of Dorbital-->       1
-    ---------------------------------------------------------------------------
+    --------------------------------------------------------------------------
     SUMMARY  END
     
     Mesh                        801
@@ -49,19 +49,19 @@ def _write_header(f, elem, ecut, rcut, nzeta, nr, dr):
     lmax = len(nzeta)-1
     spec_symbol = 'SPDFGHIKLMNOQRTUVWXYZ'
 
-    f.write('---------------------------------------------------------------------------\n')
-    f.write('Element                     {0}\n'.format(elem))
-    f.write('Energy Cutoff(Ry)           {0}\n'.format(ecut))
-    f.write('Radius Cutoff(a.u.)         {0}\n'.format(rcut))
-    f.write('Lmax                        {0}\n'.format(lmax))
+    f.write('-' * 75 + '\n')
+    f.write(f'Element                     {elem}\n')
+    f.write(f'Energy Cutoff(Ry)           {ecut}\n')
+    f.write(f'Radius Cutoff(a.u.)         {rcut}\n')
+    f.write(f'Lmax                        {lmax}\n')
 
     for l in range(lmax+1):
-        f.write("Number of {0}orbital-->       {1}\n".format(spec_symbol[l], nzeta[l]))
+        f.write(f"Number of {spec_symbol[l]}orbital-->       {nzeta[l]}\n")
 
-    f.write('---------------------------------------------------------------------------\n')
+    f.write('-' * 75 + '\n')
     f.write('SUMMARY  END\n\n')
-    f.write('Mesh                        {0}\n'.format(nr))
-    f.write('dr                          {0}\n'.format(dr))
+    f.write(f'Mesh                        {nr}\n')
+    f.write(f'dr                          {dr}\n')
 
 
 def _write_chi(f, l, zeta, chi):
@@ -80,12 +80,12 @@ def _write_chi(f, l, zeta, chi):
             A radial function on a grid.
 
     '''
-    f.write('                Type                   L                   N\n')
-    f.write('                   0                   {0}                   {1}\n'
-            .format(l, zeta))
+    space = ' ' * 16
+    f.write(f'{space}Type{space}L{space}N\n')
+    f.write(f'{space}   0{space}{l}{space}{zeta}\n')
 
     for ir, chi_of_r in enumerate(chi):
-        f.write('{: 23.14e}'.format(chi_of_r))
+        f.write(f'{chi_of_r: 23.14e}')
         if ir % 4 == 3 and ir != len(chi)-1:
             f.write('\n')
     f.write('\n')
@@ -110,7 +110,8 @@ def write_nao(fpath, elem, ecut, rcut, nr, dr, chi):
         dr : float
             Grid spacing.
         chi : list of list of array of float
-            A nested list of numerical radial functions organized as chi[l][zeta][ir].
+            A nested list of numerical radial functions,
+            chi[l][zeta][ir] -> float
 
     '''
     lmax = len(chi)-1
@@ -147,7 +148,8 @@ def read_nao(fpath):
         'dr' : float
             Grid spacing.
         'chi' : list of list of array of float
-            A nested list of numerical radial functions organized as chi[l][zeta][ir].
+            A nested list of numerical radial functions,
+            chi[l][zeta][ir] -> float.
 
     '''
     with open(fpath, 'r') as f:
@@ -159,7 +161,8 @@ def read_nao(fpath):
     lmax = int(data[data.index('Lmax')+1])
 
     spec_symbol = 'SPDFGHIKLMNOQRTUVWXYZ'
-    nzeta = [int(data[data.index(spec_symbol[l] + 'orbital-->') + 1]) for l in range(lmax+1)]
+    nzeta = [int(data[data.index(spec_symbol[l] + 'orbital-->') + 1])
+             for l in range(lmax+1)]
 
     nr = int(data[data.index('Mesh')+1])
     dr = float(data[data.index('dr')+1])
@@ -167,10 +170,12 @@ def read_nao(fpath):
     delim = [i for i, x in enumerate(data) if x == 'Type'] + [len(data)]
     nzeta_cumu = [0] + list(accumulate(nzeta))
     iorb = lambda l, zeta : nzeta_cumu[l] + zeta
-    chi = [[np.array(data[delim[iorb(l,zeta)]+6:delim[iorb(l,zeta)+1]], np.float64)
+    chi = [[np.array(data[delim[iorb(l,zeta)]+6:delim[iorb(l,zeta)+1]],
+                     np.float64)
             for zeta in range(nzeta[l]) ] for l in range(lmax+1)]
 
-    return {'elem': elem, 'ecut': ecut, 'rcut': rcut, 'nr': nr, 'dr': dr, 'chi': chi}
+    return {'elem': elem, 'ecut': ecut, 'rcut': rcut, 'nr': nr, 'dr': dr,
+            'chi': chi}
 
 
 def _extract(keyword, text):
@@ -196,7 +201,8 @@ def read_param(fpath):
         A dictionary containing the following key-value pairs:
 
         'coeff' : list of list of list of float
-            A nested list of spherical Bessel coefficients organized as coeff[l][zeta][iq].
+            A nested list of spherical Bessel coefficients,
+            coeff[l][zeta][iq] -> float.
         'rcut' : float
             Cutoff radius of the orbital.
         'sigma' : float
@@ -231,8 +237,9 @@ def read_param(fpath):
     
     nzeta_cumu = [0] + list(accumulate(nzeta))
     iorb = lambda l, zeta : nzeta_cumu[l] + zeta
-    coeff = [[ list(map(float, data[delim[iorb(l,zeta)]+6:delim[iorb(l,zeta)+1]])) \
-            for zeta in range(nzeta[l])] for l in range(lmax+1)]
+    coeff = [[list(map(float,
+                       data[delim[iorb(l,zeta)]+6:delim[iorb(l,zeta)+1]]))
+              for zeta in range(nzeta[l])] for l in range(lmax+1)]
 
     return {'coeff': coeff, 'rcut': rcut, 'sigma': sigma, 'elem': elem}
 
@@ -260,19 +267,17 @@ def write_param(fpath, coeff, rcut, sigma, elem):
         nzeta = [len(coeff[l]) for l in range(lmax+1)]
         n = sum(nzeta)
 
-        f.write('<Coefficient rcut="{0}" sigma="{1}" element="{2}">\n'
-                .format(rcut, sigma, elem))
-        f.write('     {0} Total number of radial orbitals.\n'
-                .format(n))
+        f.write(f'<Coefficient rcut="{rcut}" sigma="{sigma}" ' \
+                f'element="{elem}">\n')
+        f.write(f'     {n} Total number of radial orbitals.\n')
 
         for l in range(lmax+1):
             for zeta in range(nzeta[l]):
                 f.write('    Type   L   Zeta-Orbital\n')
-                f.write('      {elem}   {angmom}       {zeta}\n'
-                        .format(elem=elem, angmom=l, zeta=zeta))
+                f.write(f'      {elem}   {l}       {zeta}\n')
 
                 for i in range(len(coeff[l][zeta])):
-                    f.write('{: 21.14f}\n'.format(coeff[l][zeta][i]))
+                    f.write(f'{coeff[l][zeta][i]: 21.14f}\n')
 
         f.write('</Coefficient>\n')
 
@@ -299,9 +304,11 @@ def jygen(fname, rcut, dr, lmax, ecut, elem, reduced=True):
             
     spec_symbol = 'spdfghiklmnoqrtuvwxyz'
 
-    fname = f'jy_{suffix}_{rcut}au_{ecut}Ry_' \
-            + ''.join([f"{nbes[l]}{spec_symbol[l]}" for l in range(lmax+1)]) \
-            + '.orb' if fname is None else fname
+    if fname is None:
+        fname = f'jy_{suffix}_{rcut}au_{ecut}Ry_' \
+                + ''.join([f"{nbes[l]}{spec_symbol[l]}"
+                           for l in range(lmax+1)]) \
+                + '.orb'
     write_nao(fname, elem, ecut, rcut, len(r), dr, chi)
 
 
@@ -396,7 +403,7 @@ class _TestOrbIO(unittest.TestCase):
 
         os.remove(tmpfile)
 
-        jygen(None, 10, 0.01, 2, 100, 'Si', True)
+        #jygen(None, 10, 0.01, 2, 100, 'Si', True)
 
 if __name__ == '__main__':
     unittest.main()
