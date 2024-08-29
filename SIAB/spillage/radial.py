@@ -48,6 +48,45 @@ def rad_norm(chi, r):
     return np.sqrt(inner_prod(chi, chi, r))
 
 
+def kinetic(r, l, chi):
+    '''
+    Kinetic energy of pseudo-atomic orbitals.
+
+    The kinetic energy of a pseudo-atomic orbital
+
+                phi(vec{r}) = chi(r) * Y_{lm}(hat{r})
+
+    merely depends on the radial part chi(r) and l. Given a radial function
+    chi(r) evaluated on grid r, this function evaluates the integral
+
+        / rcut
+        |      dr chi(r)*[-(d/dr)(r^2*(d/dr)chi) + l*(l+1)*chi(r)]
+        / 0
+
+    by Simpson's rule.
+
+    Parameters
+    ----------
+        r : np.ndarray
+            Radial grid.
+        l : int
+            Angular momentum quantum number.
+        chi : np.ndarray 
+            Radial part of the pseudo-atomic orbital evaluated on the
+            radial grid r.
+
+    Note
+    ----
+    This function does not check whether the input chi is normalized or not;
+    it merely evaluates the integral.
+
+    '''
+    f = CubicSpline(r, chi)
+    dchi = f(r, 1)
+    d2chi = f(r, 2)
+    return simpson((-2 * r * dchi - r**2 * d2chi + l*(l+1) * chi) * chi, x=r)
+
+
 def _smooth(r, rcut, sigma):
     '''
     Smoothing function used in the generation of numerical radial functions.
@@ -85,9 +124,11 @@ def jl_raw(l, q, r, rcut=None, deriv=0):
 
     The q-th rcut-truncated l-th order spherical Bessel function is defined as
 
-                /   spherical_jn(l, JLZEROS[l][q] * r / rcut)   r <= rcut
+                -
+                |   spherical_jn(l, JLZEROS[l][q] * r / rcut)   r <= rcut
         f(r) =  |
-                \   0                                           r > rcut
+                |   0                                           r > rcut
+                -
 
     where JLZEROS[l][q] is the q-th positive zero of the l-th order spherical
     Besesl function.
@@ -463,6 +504,23 @@ class _TestRadial(unittest.TestCase):
                                np.sqrt((8.0 * np.pi**2 - 3) * a**3 / 48.0)
                                / np.pi,
                                places=12)
+
+
+    def test_kinetic(self):
+        rcut = 7.0
+        dr = 0.001
+        nr = int(rcut/dr) + 1
+        r = dr * np.arange(nr)
+
+        # check the numerical kinetic energies with analytical expressions
+        nq = 5
+        lmax = 4
+        for l in range(lmax+1):
+            for q in range(nq):
+                chi = jl_raw(l, q, r, rcut) / jl_raw_norm(l, q, rcut)
+                self.assertAlmostEqual(kinetic(r, l, chi),
+                                       (JLZEROS[l][q] / rcut)**2,
+                                       places=5)
 
 
     def test_smooth(self):

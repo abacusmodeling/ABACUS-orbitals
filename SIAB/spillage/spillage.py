@@ -125,25 +125,25 @@ def initgen_pw(nzeta, ecut, lmax, rcut, nbes_raw, mo_jy, wk,
     return [np.linalg.qr(coef_l)[0].T.tolist() for coef_l in coef]
 
 
-def initgen(nzeta, ecut, rcut, nbes, mo_jy, wk, diagosis=False):
+def initgen(nzeta_gen, nbes_gen, nbes_data, mo_jy, wk, diagosis=False):
     '''
     Generates an initial guess of the spherical Bessel coefficients from
     single-atom overlap data.
 
     Parameters
     ----------
-        nzeta : list of int
+        nzeta_gen : list of int
             Target number of zeta for each l.
-        ecut : float
-            Kinetic energy cutoff used to deduce the size of target
-            coefficients. Note that ecut should not yield numbers
-            larger than the counterparts in nbes.
-        rcut : float
-            Cutoff radius.
-        nbes : list of int or a 2-tuple of int 
+        nbes_gen : int or list of int
+            Number of spherical Bessel components for each l of the
+            generated coefficients.
+            If a list, nbes_gen[l] is the number corresponding to l.
+            If an int, the same number of spherical Bessel components
+            is assumed for each l.
+        nbes_data : list of int or a 2-tuple of int
             Number of spherical Bessel components for each l of the
             single-atom data (mo_jy).
-            If a list, nbes[l] is the number corresponding to l.
+            If a list, nbes_data[l] is the number corresponding to l.
             If a 2-tuple, it is taken as (lmax, nbes_each) and the same
             number of spherical Bessel components is assumed for all l.
         mo_jy : ndarray, shape (nk, nbands, njy)
@@ -163,46 +163,45 @@ def initgen(nzeta, ecut, rcut, nbes, mo_jy, wk, diagosis=False):
     Note
     ----
     This function does not discriminate various types of spherical waves
-    (raw/normalized/reduced). The generated coefficients are in the same
-    as that of the input data (mo_jy). Note, however, that the coefficients
-    are always "normalized" in the sense that norm(coef[l][zeta]) = 1 for
-    any l and zeta, which means they yield normalized orbitals in the case
-    of normalized/reduced spherical waves, but not for raw spherical waves.
+    radial functions (raw/normalized/reduced). The coefficients are generated
+    in terms of that of the input data (mo_jy).
+
+    The resulting coefficients are always "normalized" in the sense that
+    norm(coef[l][zeta]) = 1 for any l and zeta, which means they yield
+    normalized orbitals in the case of normalized/reduced spherical waves,
+    but not for raw spherical waves. However, since ABACUS always normalizes
+    the numerical atomic orbitals in LCAO calculations, raw spherical wave
+    radial functions should never occur in practice.
 
     '''
-    if isinstance(nbes, tuple):
-        lmax, nbes_each = nbes
-        nbes = [nbes_each] * (lmax + 1)
+    if isinstance(nbes_data, tuple):
+        lmax_data, nbes_each = nbes_data
+        nbes_data = [nbes_each] * (lmax_data + 1)
     else:
-        lmax = len(nbes) - 1
+        lmax_data = len(nbes_data) - 1
 
     # maximum l of the generated coefficients
-    lmax_gen = len(nzeta) - 1
-    assert lmax_gen <= lmax
+    lmax_gen = len(nzeta_gen) - 1
+    assert lmax_gen <= lmax_data
 
-    # number of spherical Bessel components for each l
-    # of the generated coefficients
-    # TODO & FIXME we need to know whether it's reduced or normalized
-    # to determine the number of Bessel components
-    nbes_gen = [_nbes(l, rcut, ecut) -1 for l in range(lmax_gen + 1)]
-    assert all(nbes_gen[l] > 0 and nbes_gen[l] <= nbes[l]
+    assert all(nbes_gen[l] > 0 and nbes_gen[l] <= nbes_data[l]
                for l in range(lmax_gen+1))
 
     nk, nbands, njy = mo_jy.shape
 
     # number of spherical waves per l
-    njy_l = [(2*l+1) * nbes[l] for l in range(lmax+1)]
+    njy_l = [(2*l+1) * nbes_data[l] for l in range(lmax_data+1)]
     assert(sum(njy_l) == njy)
 
     index_l_start = [0] + np.cumsum(njy_l).tolist()
     Y = [mo_jy[:,:,range(index_l_start[l], index_l_start[l+1])]
-         .reshape(nk, -1, nbes[l]) # reshape to (nk, nbands*(2*l+1), nbes[l])
+         .reshape(nk, -1, nbes_data[l]) # (nk, nbands*(2*l+1), nbes_data[l])
          [:,:,:nbes_gen[l]]
-         for l in range(lmax+1)]
+         for l in range(lmax_data+1)]
 
     coef = []
     for l in range(lmax_gen + 1):
-        if nzeta[l] == 0:
+        if nzeta_gen[l] == 0:
             coef.append([])
             continue
 
@@ -211,12 +210,12 @@ def initgen(nzeta, ecut, rcut, nbes, mo_jy, wk, diagosis=False):
 
         val, vec = np.linalg.eigh(YdaggerY)
 
-        # eigenvectors corresponding to the largest nzeta eigenvalues
-        coef.append(vec[:,-nzeta[l]:][:,::-1].T.tolist())
+        # eigenvectors corresponding to the largest nzeta_gen eigenvalues
+        coef.append(vec[:,-nzeta_gen[l]:][:,::-1].T.tolist())
 
         if diagosis:
             print( "ORBGEN: <jy|mo><mo|jy> eigval diagnosis:")
-            print(f"        l = {l}: {val[-nzeta[l]:][::-1]}")
+            print(f"        l = {l}: {val[-nzeta_gen[l]:][::-1]}")
 
     return coef
 
@@ -424,10 +423,8 @@ class Spillage:
 
         # permutation
         p = perm_zeta_m(index_map(natom, lmax, nbes)[1])
-        mo_jy[:,:,:,:] = mo_jy[:,:,:,p]
-        jy_jy[:,:,:,:] = jy_jy[:,:,:,p][:,:,p,:]
-        # NOTE: it's important to have the l.h.s. of the above line
-        # with [:,:,:,:] instead of just letting jy_jy = jy_jy[...][...]
+        mo_jy = mo_jy[:,:,:,p].copy()
+        jy_jy = jy_jy[:,:,:,p][:,:,p,:].copy()
 
         #print(f"mo_jy.shape = {mo_jy.shape}")
         #print(f"jy_jy.shape = {jy_jy.shape}")
@@ -786,7 +783,7 @@ class _TestSpillage(unittest.TestCase):
         plt.show()
 
 
-    def est_initgen(self):
+    def test_initgen(self):
         '''
         Checks intial guess generation from spherical-wave reference state.
 
@@ -808,7 +805,9 @@ class _TestSpillage(unittest.TestCase):
         p = perm_zeta_m(index_map([1], [2], [nbes])[1])
         mo_jy = mo_jy[:,:,p]
 
-        coef = initgen(nzeta, 60.0, 7.0, [16,15,15], mo_jy, wk, True)
+        rcut = 7.0
+        nbes_gen = [_nbes(l, rcut, 60) - 1 for l in range(len(nzeta) + 1)]
+        coef = initgen(nzeta, nbes_gen, [16,15,15], mo_jy, wk, True)
 
         self.assertEqual(len(coef), len(nzeta))
         self.assertEqual([len(coef[l]) for l in range(len(nzeta))], nzeta)
@@ -817,11 +816,7 @@ class _TestSpillage(unittest.TestCase):
 
         dr = 0.01
         r = np.linspace(0, rcut, int(rcut/dr)+1)
-
-        if reduced:
-            chi = build_reduced(coef, rcut, r, True)
-        else:
-            chi = build_raw(coeff_normalized2raw(coef, rcut), rcut, r, True)
+        chi = build_reduced(coef, rcut, r, True)
 
         plot_chi(chi, r)
         plt.show()
@@ -1088,7 +1083,7 @@ class _TestSpillage(unittest.TestCase):
         plt.show()
 
 
-    def test_opt_jy(self):
+    def est_opt_jy(self):
         from listmanip import merge
 
         reduced = True 

@@ -389,13 +389,14 @@ def write_input(job_dir, **kwargs):
     Writes an INPUT file to the specified directory.
 
     '''
-    assert all(key in _valid_keys for key in kwargs.keys()), 'Invalid INPUT keywords.'
+    assert all(key in _valid_keys for key in kwargs.keys()), \
+            'Invalid INPUT keywords.'
 
     key_width = max([len(key) for key in kwargs.keys()])
     with open(job_dir+'/INPUT', 'w') as f:
         f.write('INPUT_PARAMETERS\n')
         for key, value in kwargs.items():
-            f.write('{key:<{width}}    {value}\n'.format(key=key, value=value, width=key_width))
+            f.write(f'{key:<{key_width}}    {value}\n')
 
 
 def read_input(fpath):
@@ -411,9 +412,11 @@ def read_input(fpath):
         inputs = f.read().split('\n')
     assert inputs[0].strip() == 'INPUT_PARAMETERS', 'Invalid INPUT file.'
 
-    inputs = dict([re.search(_input_pattern, line).group(1, 3) \
-            for line in inputs[1:] if line.strip() != '' and line.lstrip()[0] != '#' ])
-    assert all(key in _valid_keys for key in inputs.keys()), 'Invalid INPUT keywords.'
+    inputs = dict([re.search(_input_pattern, line).group(1, 3)
+                   for line in inputs[1:]
+                   if line.strip() != '' and line.lstrip()[0] != '#' ])
+    assert all(key in _valid_keys for key in inputs.keys()), \
+            'Invalid INPUT keywords.'
 
     return inputs
 

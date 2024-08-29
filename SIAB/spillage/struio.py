@@ -1,21 +1,27 @@
 '''
-This script contains functions to generate ABACUS STRU files from a "STRU" dict, and vice versa.
+This script contains functions to generate ABACUS STRU files from a "STRU"
+dict, and vice versa.
 
 A "STRU" dict contains the following key-value pairs:
 
 'lat' : dict
-    Parameters to determine the lattice vectors. The associated value is a dict with the following key-value pairs:
+    Parameters to determine the lattice vectors. The associated value
+    is a dict with the following key-value pairs:
     'const' : float
         Lattice constant in Bohr.
     'vec' : list of list of float, optional
-        Lattice vectors in unit of stru['lat']['const']. Should not be present if 'latname' is specified in INPUT.
+        Lattice vectors in unit of stru['lat']['const']. Should not be
+        present if 'latname' is specified in INPUT.
     'param' : list of float, optional
-        Extra lattice parameters used when latname is specified in INPUT. See reference for details.
+        Extra lattice parameters used when latname is specified in INPUT.
+        See reference for details.
 'coord_type' : str
-    Coordinate type in ATOMIC_POSITIONS, could be 'Direct', 'Cartesian', 'Cartesian_angstrom' and several more.
+    Coordinate type in ATOMIC_POSITIONS, could be 'Direct', 'Cartesian',
+    'Cartesian_angstrom' and several more.
     See reference for details.
 'species' : list of dict
-    A list of atomic species, each of which is a dict containing the following key-value pairs:
+    A list of atomic species, each of which is a dict containing the
+    following key-value pairs:
     'symbol' : str
         Element symbol.
     'mass' : float
@@ -25,22 +31,28 @@ A "STRU" dict contains the following key-value pairs:
     'pp_type' : str, optional
         Type of the pseudopotential file. See reference for details.
     'orb_file' : str, optional
-        Name of the numerical atomic orbital file. Should not be present in PW calculations.
+        Name of the numerical atomic orbital file. Should not be present
+        in PW calculations.
     'natom' : int
         Number of atoms of this species.
     'mag_each' : float
         Magnetic moment of each atom.
     'atoms' : list of dict
-        A list of atoms of this species, each of which is a dict containing the following key-value pairs:
+        A list of atoms of this species, each of which is a dict containing
+        the following key-value pairs:
         'coord' : list of float
-            Coordinates of the atom. The type is determined by stru['coord_type'].
+            Coordinates of the atom. Its type is determined by
+            stru['coord_type'].
         'm' : list of int, optional
-            Multiplication factor of the coordinates in MD or relaxation. Each int must be 0 or 1.
+            Multiplication factor of the coordinates in MD or relaxation.
+            Each int must be 0 or 1.
         'v' : list of float, optional
             Initial velocity of the atom in MD or relaxation.
         'mag' : float|tuple, optional
-            Magnetic moment of the atom. A float value implies collinear magnetism.
-            If tuple, it could be either ('Cartesian', [mx, my, mz]) or ('Spherical', [mr, mpolar, mazimuth]).
+            Magnetic moment of the atom.
+            A float value implies collinear magnetism.
+            If tuple, it could be either ('Cartesian', [mx, my, mz])
+            or ('Spherical', [mr, mpolar, mazimuth]).
 
 Reference
 ---------
@@ -56,7 +68,8 @@ def write_stru(job_dir, stru, fname='STRU'):
     job_dir: str
         Directory in which the STRU file is generated.
     stru : dict
-        Parameters to generate the STRU file. It contains the following key-value pairs:
+        Parameters to generate the STRU file.
+        See the docstring at the beginning of this script for details.
     fname : str
         Name of the STRU file.
 
@@ -65,75 +78,82 @@ def write_stru(job_dir, stru, fname='STRU'):
 
         #============ ATOMIC_SPECIES ============
         f.write('ATOMIC_SPECIES\n')
-        width = { key + '_w' : max([len(str(s[key])) for s in stru['species'] ]) for key in ['symbol', 'mass', 'pp_file'] }
+        width = {key + '_w' : max([len(str(s[key])) for s in stru['species']])
+                 for key in ['symbol', 'mass', 'pp_file']}
         for s in stru['species']:
             f.write('{symbol:<{symbol_w}}  {mass:>{mass_w}}  {pp_file:>{pp_file_w}}'.format(**s, **width))
             if 'pp_type' in s:
-                f.write('  {}'.format(s['pp_type']))
+                f.write(f"  {s['pp_type']}")
             f.write('\n')
 
         #============ NUMERICAL_ORBITAL ============
         if 'orb_file' in stru['species'][0]:
             f.write('\nNUMERICAL_ORBITAL\n')
             for s in stru['species']:
-                f.write('{}\n'.format(s['orb_file']))
+                f.write(f"{s['orb_file']}\n")
         
         #============ LATTICE_CONSTANT/PARAMETER/VECTORS ============
         f.write('\nLATTICE_CONSTANT\n')
-        f.write('{}\n'.format(stru['lat']['const']))
+        f.write(f"{stru['lat']['const']}\n")
 
         if 'vec' in stru['lat']:
             f.write('\nLATTICE_VECTORS\n')
             for v in stru['lat']['vec']:
-                f.write('{} {} {}\n'.format(v[0], v[1], v[2]))
+                f.write(f'{v[0]} {v[1]} {v[2]}\n')
 
         if 'param' in stru['lat']:
             f.write('\nLATTICE_PARAMETER\n')
             for param in stru['lat']['param']:
-                f.write('{} '.format(param))
+                f.write(f'{param} ')
             f.write('\n')
 
         #============ ATOMIC_POSITIONS ============
         f.write('\nATOMIC_POSITIONS\n')
-        f.write('{}\n'.format(stru['coord_type']))
+        f.write(f"{stru['coord_type']}\n")
 
         for s in stru['species']:
-            f.write('\n{}\n'.format(s['symbol']))
-            f.write('{}\n'.format(s['mag_each']))
-            f.write('{}\n'.format(s['natom']))
+            f.write(f"\n{s['symbol']}\n")
+            f.write(f"{s['mag_each']}\n")
+            f.write(f"{s['natom']}\n")
 
             for atom in s['atom']:
-                f.write('{} {} {}'.format(atom['coord'][0], atom['coord'][1], atom['coord'][2]))
+                f.write(' '.join(f'{x}' for x in atom['coord']))
 
                 for key in ['m', 'v']: # frozen atom / initial velocity
                     if key in atom:
-                        f.write(' {} {} {} {}'.format(key, atom[key][0], atom[key][1], atom[key][2]))
+                        f.write(f' {key}' +
+                                ''.join(f' {x}' for x in atom[key]))
 
                 if 'mag' in atom:
                     if not isinstance(atom['mag'], tuple): # collinear
-                        f.write(' mag {}'.format(atom['mag']))
+                        f.write(f" mag {atom['mag']}")
                     else: # non-collinear
                         mag_coord_type, mag = atom['mag']
                         assert mag_coord_type in ['Cartesian', 'Spherical']
                         if mag_coord_type == 'Cartesian':
-                            f.write(' mag {} {} {}'.format(mag[0], mag[1], mag[2]))
+                            f.write(f' mag {mag[0]} {mag[1]} {mag[2]}')
                         else:
-                            f.write(' mag {} angle1 {} angle2 {}'.format(mag[0], mag[1], mag[2]))
+                            f.write(f' mag {mag[0]} angle1 {mag[1]} angle2 {mag[2]}')
 
                 f.write('\n')
 
 
-def _parse_coordinate_line(line):
+def _parse_coord_line(line):
     '''
-    Parses a coordinate line (which may include extra parameters) in the ATOMIC_POSITIONS block.
+    Parses a coordinate line (which may include extra parameters)
+    in the ATOMIC_POSITIONS block.
 
-    A coordinate line always contains the x, y, z coordinates of an atom, and may also include
+    A coordinate line always contains the x, y, z coordinates of an atom,
+    and may also include
         - whether an atom is frozen in MD or relaxation
         - initial velocity of an atom in MD or relaxation
         - magnetic moment of an atom
 
-    See https://abacus.deepmodeling.com/en/latest/advanced/input_files/stru.html#More-Key-Words
-    for details.
+    Reference
+    ---------
+    https://abacus.deepmodeling.com/en/latest/advanced/input_files/stru.html
+
+    (see section "More Key Words" for details)
 
     '''
     fields = line.split()
@@ -152,7 +172,8 @@ def _parse_coordinate_line(line):
             idx += 4
         elif fields[idx] in ['mag', 'magmom']:
             '''
-            here we assume that frozen atom info cannot be placed after a collinear mag info without a keyword
+            here we assume that frozen atom info cannot be placed after
+            a collinear mag info without a keyword
             i.e., the following coordinate line
                 0.0 0.0 0.0 mag 1.0 0 0 0
             is not allowed; one must explicitly specify 'm' in this case:
@@ -160,10 +181,12 @@ def _parse_coordinate_line(line):
 
             '''
             if idx + 2 < len(fields) and fields[idx+2] == 'angle1':
-                result['mag'] = ('Spherical', [float(fields[idx+1]), float(fields[idx+3]), float(fields[idx+5])])
+                result['mag'] = ('Spherical',
+                                 list(map(float, fields[idx+1:idx+6:2])))
                 idx += 6
             elif idx + 2 < len(fields) and fields[idx+2][0].isdigit():
-                result['mag'] = ('Cartesian', [float(fields[idx+1]), float(fields[idx+2]), float(fields[idx+3])])
+                result['mag'] = ('Cartesian',
+                                 list(map(float, fields[idx+1:idx+4])))
                 idx += 4
             else: # collinear
                 result['mag'] = float(fields[idx+1])
@@ -180,8 +203,8 @@ def _atomic_positions_gen(lines):
 
     '''
     natom = int(lines[2])
-    yield { 'symbol': lines[0], 'mag_each': float(lines[1]), 'natom': natom, \
-            'atom': [ _parse_coordinate_line(line) for line in lines[3:3+natom] ] }
+    yield {'symbol': lines[0], 'mag_each': float(lines[1]), 'natom': natom,
+           'atom': [_parse_coord_line(line) for line in lines[3:3+natom]]}
     if len(lines) > 3 + natom:
         yield from _atomic_positions_gen(lines[3+natom:])
 
@@ -194,31 +217,42 @@ def read_stru(fpath):
     -------
         A dict containing the following keys-value pairs:
         'species' : list of dict
-            List of atomic species. Each dict contains 'symbol', 'mass', 'pp_file',
-            and optionally 'pp_type'.
+            List of atomic species. Each dict contains 'symbol', 'mass',
+            'pp_file', and optionally 'pp_type'.
         
     '''
-    block_title = ['ATOMIC_SPECIES', 'NUMERICAL_ORBITAL', 'LATTICE_CONSTANT', 'LATTICE_PARAMETER', \
-            'LATTICE_VECTORS', 'ATOMIC_POSITIONS']
+    block_title = ['ATOMIC_SPECIES',
+                   'NUMERICAL_ORBITAL',
+                   'LATTICE_CONSTANT',
+                   'LATTICE_PARAMETER',
+                   'LATTICE_VECTORS',
+                   'ATOMIC_POSITIONS']
 
     _trim = lambda line: line.split('#')[0].split('//')[0].strip(' \t\n')
     with open(fpath, 'r') as f:
-        lines = [_trim(line).replace('\t', ' ') for line in f.readlines() if len(_trim(line)) > 0]
+        lines = [_trim(line).replace('\t', ' ')
+                 for line in f.readlines() if len(_trim(line)) > 0]
 
     # break the content into blocks
-    delim = [i for i, line in enumerate(lines) if line in block_title] + [len(lines)]
-    blocks = { lines[delim[i]] : lines[delim[i]+1:delim[i+1]] for i in range(len(delim) - 1) }
+    delim = [i for i, line in enumerate(lines) if line in block_title] \
+            + [len(lines)]
+    blocks = {lines[delim[i]] : lines[delim[i]+1:delim[i+1]]
+              for i in range(len(delim) - 1)}
 
     stru = {}
     #============ LATTICE_CONSTANT/PARAMETER/VECTORS ============
     stru['lat'] = {'const': float(blocks['LATTICE_CONSTANT'][0])}
     if 'LATTICE_VECTORS' in blocks:
-        stru['lat']['vec'] = [[float(x) for x in line.split()] for line in blocks['LATTICE_VECTORS']]
+        stru['lat']['vec'] = [[float(x) for x in line.split()]
+                              for line in blocks['LATTICE_VECTORS']]
     elif 'LATTICE_PARAMETER' in blocks:
-        stru['lat']['param'] = [float(x) for x in blocks['LATTICE_PARAMETERS'].split()]
+        stru['lat']['param'] = [float(x)
+                                for x in blocks['LATTICE_PARAMETERS'].split()]
 
     #============ ATOMIC_SPECIES ============
-    stru['species'] = [ dict(zip(['symbol', 'mass', 'pp_file', 'pp_type'], line.split())) for line in blocks['ATOMIC_SPECIES'] ]
+    stru['species'] = [dict(zip(['symbol', 'mass', 'pp_file', 'pp_type'],
+                                line.split()))
+                       for line in blocks['ATOMIC_SPECIES']]
     for s in stru['species']:
         s['mass'] = float(s['mass'])
 
@@ -248,7 +282,10 @@ class _TestStruIO(unittest.TestCase):
         stru = read_stru('./testfiles/STRU.test')
 
         self.assertEqual(stru['lat']['const'], 20.0)
-        self.assertEqual(stru['lat']['vec'], [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+        self.assertEqual(stru['lat']['vec'],
+                         [[1.0, 0.0, 0.0],
+                          [0.0, 1.0, 0.0],
+                          [0.0, 0.0, 1.0]])
 
         self.assertEqual(stru['coord_type'], 'Cartesian_angstrom')
 
@@ -266,16 +303,21 @@ class _TestStruIO(unittest.TestCase):
         self.assertEqual(stru['species'][1]['mag_each'], 0.0)
         self.assertEqual(stru['species'][2]['mag_each'], 1.0)
 
-        self.assertEqual(stru['species'][0]['atom'][0]['coord'], [0.0, 0.0, 0.0])
-        self.assertEqual(stru['species'][1]['atom'][0]['coord'], [3.0, 4.0, 5.0])
-        self.assertEqual(stru['species'][2]['atom'][2]['coord'], [0.7, 0.8, 0.9])
+        self.assertEqual(stru['species'][0]['atom'][0]['coord'],
+                         [0.0, 0.0, 0.0])
+        self.assertEqual(stru['species'][1]['atom'][0]['coord'],
+                         [3.0, 4.0, 5.0])
+        self.assertEqual(stru['species'][2]['atom'][2]['coord'],
+                         [0.7, 0.8, 0.9])
 
         self.assertEqual(stru['species'][0]['atom'][1]['m'], [1, 1, 1])
-        self.assertEqual(stru['species'][1]['atom'][0]['v'], [0.0, 0.0, -1.0])
+        self.assertEqual(stru['species'][1]['atom'][0]['v'], [0., 0., -1.])
         self.assertEqual(stru['species'][2]['atom'][2]['m'], [0, 0, 0])
 
-        self.assertEqual(stru['species'][0]['atom'][0]['mag'], ('Spherical', [0.5, 72.0, 36.0]))
-        self.assertEqual(stru['species'][0]['atom'][1]['mag'], ('Cartesian', [0.5, 0.5, 0.5]))
+        self.assertEqual(stru['species'][0]['atom'][0]['mag'],
+                         ('Spherical', [0.5, 72.0, 36.0]))
+        self.assertEqual(stru['species'][0]['atom'][1]['mag'],
+                         ('Cartesian', [0.5, 0.5, 0.5]))
         self.assertEqual(stru['species'][2]['atom'][0]['mag'], 0.5)
 
 
@@ -302,8 +344,12 @@ class _TestStruIO(unittest.TestCase):
                         'natom': 2,
                         'mag_each': 0.0,
                         'atom': [
-                            {'coord': [0.0, 0.0, 0.0], 'v': [0.0, 0.0, -1.0], 'mag': ('Spherical', [0.5, 72.0, 36.0])},
-                            {'coord': [0.0, 0.0, 1.0], 'm': [1, 1, 1], 'mag': ('Cartesian', [0.5, 0.5, 0.5])},
+                            {'coord': [0.0, 0.0, 0.0],
+                             'v': [0.0, 0.0, -1.0],
+                             'mag': ('Spherical', [0.5, 72.0, 36.0])},
+                            {'coord': [0.0, 0.0, 1.0],
+                             'm': [1, 1, 1],
+                             'mag': ('Cartesian', [0.5, 0.5, 0.5])},
                             ]
                         },
                     {
@@ -314,7 +360,10 @@ class _TestStruIO(unittest.TestCase):
                         'natom': 1,
                         'mag_each': 0.0,
                         'atom': [
-                            {'coord': [0.0, 0.0, 0.0], 'm': [0, 0, 0], 'v': [0.0, 0.0, -1.0], 'mag': 0.5},
+                            {'coord': [0.0, 0.0, 0.0],
+                             'm': [0, 0, 0],
+                             'v': [0.0, 0.0, -1.0],
+                             'mag': 0.5},
                             ]
                         },
                     {
@@ -327,7 +376,10 @@ class _TestStruIO(unittest.TestCase):
                         'mag_each': 1.0,
                         'atom': [
                             {'coord': [0.0, 0.0, 0.0], 'mag': 0.5},
-                            {'coord': [0.0, 0.0, 0.0], 'mag': ('Cartesian', [1.0, 1.0, 1.0]), 'v': [0.0, 0.0,  1.0], 'm': [0, 0, 0]},
+                            {'coord': [0.0, 0.0, 0.0],
+                             'mag': ('Cartesian', [1.0, 1.0, 1.0]),
+                             'v': [0.0, 0.0,  1.0],
+                             'm': [0, 0, 0]},
                             {'coord': [0.0, 0.0, 0.0], 'v': [0.0, 0.0, -1.0]},
                             ]
                         },
