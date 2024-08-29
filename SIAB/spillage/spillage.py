@@ -14,11 +14,54 @@ from scipy.optimize import minimize, basinhopping
 from copy import deepcopy
 
 
-def _overlap_spillage(natom, lmax, rcut, nbes,
+def _overlap_spillage(natom, lmax, nbes,
                       jy_jy, mo_jy, mo_mo, wk,
                       coef, ibands, coef_frozen=None):
     '''
     Standard spillage function (overlap spillage).
+
+    The spillage function is defined as
+
+    S = (1/N) sum_k wk[k] sum_i <mo(i,k)|Q_frozen(k) Q(k) Q_frozen(k)|mo(i,k)>
+
+    where N is the number of involved bands, wk[k] is the k-point weight,
+    Q (Q_frozen) is the projection operator onto the complement of the AO
+    subspace specified by coef (coef_frozen).
+
+    Parameters
+    ----------
+        natom : list of int
+            Number of atoms for each atom type.
+        lmax : list of int
+            Maximum angular momentum for each atom type.
+        nbes : int / list of int / list of list of int
+            Number of spherical wave radial functions.
+            If an integer, the same number is assumed in all cases.
+            If a list, nbes[l] specifies the number for angular momentum l,
+            which is assumed to be the same for different atomic types.
+            If a nested list, nbes[itype][l] specifies the number for angular
+            momentum l of atomic type `itype`.
+        jy_jy : ndarray, shape (nk, njy, njy)
+            Overlap between spherical waves (jy).
+        mo_jy : ndarray, shape (nk, nbands, njy)
+            Overlap between reference states and spherical waves.
+        mo_mo : ndarray, shape (nk, nbands)
+            Overlap between reference states (diagonal terms only).
+        wk : ndarray, shape (nk,)
+            k-point weights.
+        coef : nested list
+            The coefficients of pseudo-atomic orbital basis orbitals
+            in terms of the spherical wave basis. coef[itype][l][zeta]
+            gives a list of spherical wave coefficients that specifies
+            an orbital.
+            Note that len(coef[itype][l][zeta]) must not be larger than
+            nbes[itype][l]; coef[itype][l][zeta] will be padded with zeros
+            if len(coef[itype][l][zeta]) < nbes[itype][l].
+        ibands : list of int or range
+            Band indices to be included in the spillage calculation.
+        coef_frozen : nested list (optional)
+            The coefficients of frozen orbitals in the same format as coef.
+
 
     Note
     ----
@@ -571,7 +614,7 @@ class Spillage:
 
 
 
-    def _generalize_spillage(self, iconf, coef, ibands, with_grad=False):
+    def _generalized_spillage(self, iconf, coef, ibands, with_grad=False):
         '''
         Generalized spillage function and its gradient.
 
@@ -662,7 +705,7 @@ class Spillage:
 
         pat = nestpat(coef_init)
         def f(c): # function to be minimized
-            s = lambda i: self._generalize_spillage(iconfs[i],
+            s = lambda i: self._generalized_spillage(iconfs[i],
                                                     nest(c.tolist(), pat),
                                                     ibands[i],
                                                     with_grad=True)
@@ -951,14 +994,15 @@ class _TestSpillage(unittest.TestCase):
                 orbgen._tab_frozen(coef_frozen)
                 for iconf, config in enumerate(self.config_pw):
                     dat = orbgen.config[iconf]
-                    spill_ref = _overlap_spillage(dat['natom'], dat['lmax'],
-                                                  dat['rcut'], dat['nbes'],
+                    spill_ref = _overlap_spillage(dat['natom'],
+                                                  dat['lmax'],
+                                                  dat['nbes'],
                                                   dat['jy_jy'][0],
                                                   dat['mo_jy'][0],
                                                   dat['mo_mo'][0],
                                                   dat['wk'],
                                                   coef, ibands, coef_frozen)
-                    spill = orbgen._generalize_spillage(iconf, coef, ibands)
+                    spill = orbgen._generalized_spillage(iconf, coef, ibands)
                     self.assertAlmostEqual(spill, spill_ref, places=10)
 
 
@@ -984,7 +1028,7 @@ class _TestSpillage(unittest.TestCase):
                 orbgen._tab_deriv(coef)
 
                 for iconf, _ in enumerate(orbgen.config):
-                    dspill = orbgen._generalize_spillage(iconf, coef,
+                    dspill = orbgen._generalized_spillage(iconf, coef,
                                                          ibands, True)[1]
                     dspill = np.array(flatten(dspill))
 
@@ -997,13 +1041,13 @@ class _TestSpillage(unittest.TestCase):
                         coef_p = flatten(deepcopy(coef))
                         coef_p[i] += dc
                         coef_p = nest(coef_p, pat)
-                        spill_p = orbgen._generalize_spillage(iconf, coef_p,
+                        spill_p = orbgen._generalized_spillage(iconf, coef_p,
                                                               ibands)
 
                         coef_m = flatten(deepcopy(coef))
                         coef_m[i] -= dc
                         coef_m = nest(coef_m, pat)
-                        spill_m = orbgen._generalize_spillage(iconf, coef_m,
+                        spill_m = orbgen._generalized_spillage(iconf, coef_m,
                                                               ibands)
 
                         dspill_fd[i] = (spill_p - spill_m) / (2 * dc)
@@ -1083,7 +1127,7 @@ class _TestSpillage(unittest.TestCase):
         plt.show()
 
 
-    def est_opt_jy(self):
+    def test_opt_jy(self):
         from listmanip import merge
 
         reduced = True 

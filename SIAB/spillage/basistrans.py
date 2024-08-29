@@ -25,8 +25,8 @@ def jy2ao(coef, natom, lmax, nbes):
             gives a list of spherical wave coefficients that specifies
             an orbital.
             Note that len(coef[itype][l][zeta]) must not be larger than
-            nbes[l]; coef[itype][l][zeta] will be padded with zeros if
-            len(coef[itype][l][zeta]) < nbes[l].
+            nbes[itype][l]; coef[itype][l][zeta] will be padded with zeros
+            if len(coef[itype][l][zeta]) < nbes[itype][l].
         natom : list of int
             Number of atoms for each atom type.
         lmax : list of int
