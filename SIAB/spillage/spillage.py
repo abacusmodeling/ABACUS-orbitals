@@ -263,6 +263,294 @@ def initgen(nzeta_gen, nbes_gen, nbes_data, mo_jy, wk, diagosis=False):
     return coef
 
 
+#############################################################
+class Spillage:
+    '''
+    Generalized spillage function and its optimization.
+
+    Attributes
+    ----------
+        config : list
+            A list of dict. Each dict contains the data for a geometric
+            configuration, including both the overlap and operator matrix
+            elements.
+            The overlap and operator data are read from orb_matrix.0.dat
+            and orb_matrix.1.dat respectively. Before appending to config,
+            the two datasets are subject to a consistency check, after which
+            a new one consisting of the common part of overlap and operator
+            data plus the stacked matrix data are appended to config.
+            NOTE: this behavior may be subject to change in the future.
+        spill_frozen : list
+            The band-wise spillage contribution from frozen orbitals.
+        mo_Pfrozen_jy : list
+            <mo|P_frozen|jy> and <mo|P_frozen op|jy> for each configuration,
+            where P_frozen is the projection operator onto the frozen subspace.
+        mo_Qfrozen_dao : list
+            The derivatives of <mo|Q_frozen|ao> and <mo|Q_frozen op|ao> w.r.t.
+            the coefficients for each configuration, where Q_frozen is the
+            projection operator onto the complement of the frozen subspace.
+        dao_jy : list
+            The derivatives of <ao|jy> and <ao|op|jy> w.r.t. the coefficients
+            for each configuration.
+
+    '''
+    def __init__(self):
+        self.reset()
+
+
+    def reset(self):
+        # data
+        self.config = []
+
+        # updated by _tab_frozen
+        self.spill_frozen = None
+        self.mo_Pfrozen_jy = None
+        self.mo_Qfrozen_dao = []
+
+        # updated by _tab_deriv
+        self.dao_jy = []
+
+
+    def _tab_frozen(self, coef_frozen):
+        '''
+        Tabulates for each configuration the band-wise spillage contribution
+        from frozen orbitals as well as
+
+                            <mo|P_frozen   |jy>
+                            <mo|P_frozen op|jy>
+
+        where P_frozen is the projection operator onto the frozen subspace:
+
+                        P_frozen = |frozen_dual><frozen|
+
+        '''
+        if coef_frozen is None:
+            self.spill_frozen = None
+            self.mo_Pfrozen_jy = None
+            return
+
+        # jy -> frozen orbital transformation matrices
+        jy2frozen = [jy2ao(coef_frozen, dat['natom'],
+                           dat['lmax'], dat['nbes'])
+                     for dat in self.config]
+
+        frozen_frozen = [jy2froz.T @ dat['jy_jy'] @ jy2froz
+                         for dat, jy2froz in zip(self.config, jy2frozen)]
+
+        mo_frozen = [dat['mo_jy'] @ jy2froz
+                     for dat, jy2froz in zip(self.config, jy2frozen)]
+
+        # <mo|frozen_dual> only; no need to compute <mo|op|frozen_dual>
+        mo_frozen_dual = [mrdiv(mo_froz[0], froz_froz[0])
+                          for mo_froz, froz_froz
+                          in zip(mo_frozen, frozen_frozen)]
+
+        # for each config, indexed as [0/1][k][mo][jy]
+        self.mo_Pfrozen_jy = [mo_froz_dual @ jy2froz.T @ dat['jy_jy']
+                              for mo_froz_dual, dat, jy2froz
+                              in zip(mo_frozen_dual, self.config, jy2frozen)]
+
+        tmp = [rfrob(mo_froz_dual @ froz_froz[1], mo_froz_dual, True)
+               - 2.0 * rfrob(mo_froz_dual, mo_froz[1], True)
+               for mo_froz_dual, mo_froz, froz_froz
+               in zip(mo_frozen_dual, mo_frozen, frozen_frozen)]
+
+        # weighted sum over k
+        self.spill_frozen = [dat['wk'] @ spill_froz
+                             for dat, spill_froz
+                             in zip(self.config, tmp)]
+
+
+    def _tab_deriv(self, coef):
+        '''
+        Given coef which specifies a set of atomic orbital basis, this
+        function tabulates for each configuration the derivatives of
+
+                                <ao|jy>
+                                <ao|op|jy>
+
+                            <mo|Q_frozen   |ao>
+                            <mo|Q_frozen op|ao>
+
+        with respect to each Bessel coefficient of |ao>, where Q_frozen is
+        the projection operator onto the complement of the frozen subspace:
+
+                        Q_frozen = 1 - |frozen_dual><frozen|
+
+        (Q_frozen = 1 if there is no frozen orbitals)
+
+
+        Note
+        ----
+        The only useful information of coef is its nesting pattern, which
+        determines what derivatives to compute.
+
+        '''
+        # jy -> (d/dcoef)ao transformation matrices
+        jy2dao_all = [[jy2ao(nest(ci.tolist(), nestpat(coef)),
+                             dat['natom'], dat['lmax'], dat['nbes'])
+                       for ci in np.eye(len(flatten(coef)))]
+                      for dat in self.config]
+
+        # derivatives of <ao|(I/op)|jy> for each config,
+        # index as dao_jy[iconf][0(ov)/1(op)][icoef][k][ao][jy]
+        self.dao_jy = [np.array([jy2dao_i.T @ dat['jy_jy']
+                                 for jy2dao_i in jy2dao])
+                       .transpose(1,0,2,3,4)
+                       for dat, jy2dao in zip(self.config, jy2dao_all)]
+
+        # derivatives of <mo|ao> and <mo|op|ao>
+        self.mo_Qfrozen_dao = [np.array([dat['mo_jy'] @ jy2dao_i
+                                         for jy2dao_i in jy2dao])
+                               for dat, jy2dao
+                               in zip(self.config, jy2dao_all)]
+        # at this stage, the index for each config follows
+        # [icoef][ov/op][k][mo][ao]
+        # where 0->overlap; 1->operator
+
+        if self.spill_frozen is not None:
+            # subtract from the previous results <mo|P_frozen|ao>
+            # and <mo|P_frozen op|ao>
+            self.mo_Qfrozen_dao = [mo_Qfroz_dao -
+                                   np.array([mo_Pfroz_jy @ jy2dao_i
+                                             for jy2dao_i in jy2dao])
+                                   for mo_Qfroz_dao, mo_Pfroz_jy, jy2dao
+                                   in zip(self.mo_Qfrozen_dao,
+                                          self.mo_Pfrozen_jy,
+                                          jy2dao_all)
+                                   ]
+
+        # transpose to [0/1][icoef][k][mo][ao]
+        self.mo_Qfrozen_dao = [dV.transpose(1,0,2,3,4)
+                               for dV in self.mo_Qfrozen_dao]
+
+
+
+    def _generalized_spillage(self, iconf, coef, ibands, with_grad=False):
+        '''
+        Generalized spillage function and its gradient.
+
+        '''
+        dat = self.config[iconf]
+
+        spill = (dat['wk'] @ dat['mo_mo'][1][:,ibands]).real.sum()
+
+        # jy->ao basis transformation matrix
+        _jy2ao = jy2ao(coef, dat['natom'], dat['lmax'], dat['nbes'])
+
+        # <mo|Q_frozen|ao> and <mo|Q_frozen op|ao>
+        V = dat['mo_jy'][:,:,ibands,:] @ _jy2ao
+        if self.spill_frozen is not None:
+            V -= self.mo_Pfrozen_jy[iconf][:,:,ibands,:] @ _jy2ao
+            spill += self.spill_frozen[iconf][ibands].sum()
+
+        # <ao|ao> and <ao|op|ao>
+        W = _jy2ao.T @ dat['jy_jy'] @ _jy2ao
+
+        V_dual = mrdiv(V[0], W[0]) # overlap only; no need for op
+        VdaggerV = V_dual.transpose((0,2,1)).conj() @ V_dual
+
+        spill += dat['wk'] @ (rfrob(W[1], VdaggerV)
+                              - 2.0 * rfrob(V_dual, V[1]))
+        spill /= len(ibands)
+
+        if with_grad:
+            # (d/dcoef)<ao|ao> and (d/dcoef)<ao|op|ao>
+            dW = self.dao_jy[iconf] @ _jy2ao
+            dW += dW.transpose((0,1,2,4,3)).conj()
+
+            # (d/dcoef)<mo|Q_frozen|ao> and (d/dcoef)<mo|Q_frozen op|ao>
+            dV = self.mo_Qfrozen_dao[iconf][:,:,:,ibands,:]
+
+            grad = (rfrob(dW[1], VdaggerV)
+                    - 2.0 * rfrob(V_dual, dV[1])
+                    + 2.0 * rfrob(dV[0] - V_dual @ dW[0],
+                                   mrdiv(V_dual @ W[1] - V[1], W[0]))
+                    ) @ dat['wk']
+
+            grad /= len(ibands)
+            grad = nest(grad.tolist(), nestpat(coef))
+
+        return (spill, grad) if with_grad else spill
+
+
+    def opt(self, coef_init, coef_frozen, iconfs, ibands, options, nthreads=1):
+        '''
+        Spillage minimization w.r.t. (normalized or reduced) spherical
+        Bessel coefficients.
+
+        Parameters
+        ----------
+            coef_init : nested list
+                Initial guess for the coefficients.
+            coef_frozen : nested list
+                Coefficients for the frozen orbitals.
+            iconfs : list of int or 'all'
+                List of configuration indices to be included in the
+                optimization. If 'all', all configurations are included.
+            ibands : range/tuple or list of range/tuple
+                Band indices to be included in the spillage calculation.
+                If a range or tuple is given, the same indices are used
+                for all configurations.
+                If a list of range/tuple is given, each range/tuple will
+                be applied to the configuration specified by iconfs
+                respectively.
+            options : dict
+                Options for the optimization.
+            nthreads : int
+                Number of threads for config-level parallellization.
+
+        '''
+        from multiprocessing.pool import ThreadPool
+        pool = ThreadPool(nthreads)
+
+        if coef_frozen is not None:
+            self._tab_frozen(coef_frozen)
+
+        self._tab_deriv(coef_init)
+
+        iconfs = range(len(self.config)) if iconfs == 'all' else iconfs
+        nconf = len(iconfs)
+
+        ibands = [ibands] * nconf if not isinstance(ibands, list) else ibands
+        assert len(ibands) == nconf, f"len(ibands) = {len(ibands)} != {nconf}"
+
+        pat = nestpat(coef_init)
+        def f(c): # function to be minimized
+            s = lambda i: self._generalized_spillage(iconfs[i],
+                                                    nest(c.tolist(), pat),
+                                                    ibands[i],
+                                                    with_grad=True)
+            spills, grads = zip(*pool.map(s, range(nconf)))
+            return (sum(spills) / nconf,
+                    sum(np.array(flatten(g)) for g in grads) / nconf)
+
+        c0 = np.array(flatten(coef_init))
+
+        # Restricts the coefficients to [-1, 1] for better numerical stability
+        # FIXME Is this necessary?
+        bounds = [(-1.0, 1.0) for _ in c0]
+        #bounds = None
+
+        res = minimize(f, c0, jac=True, method='L-BFGS-B',
+                       bounds=bounds, options=options)
+
+        #minimizer_kwargs = {"method": "L-BFGS-B", "jac": True,
+        #                    "bounds": bounds}
+        #res = basinhopping(f, c0, minimizer_kwargs=minimizer_kwargs,
+        #                   niter=20, disp=True)
+
+        pool.close()
+
+        coef_opt = nest(res.x.tolist(), pat)
+        return [[np.linalg.qr(np.array(coef_tl).T)[0].T.tolist()
+                 if coef_tl else []
+                 for coef_tl in coef_t] for coef_t in coef_opt]
+
+
+
+#############################################################
+
 class Spillage:
     '''
     Generalized spillage function and its optimization.
@@ -580,8 +868,6 @@ class Spillage:
 
         # derivatives of <ao|(I/op)|jy> for each config,
         # index as dao_jy[iconf][0(ov)/1(op)][icoef][k][ao][jy]
-        import time
-        start = time.time()
         self.dao_jy = [np.array([jy2dao_i.T @ dat['jy_jy']
                                  for jy2dao_i in jy2dao])
                        .transpose(1,0,2,3,4)
