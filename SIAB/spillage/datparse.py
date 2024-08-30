@@ -235,6 +235,16 @@ def read_wfc_lcao_txt(fname):
     (...more coefficients...)
     >>>>>>> ends here
 
+    Returns
+    -------
+        wfc : 2D array of shape (nao, nbands)
+            Wave function coefficients in LCAO basis. The datatype is
+            complex for multi-k calculations and float for gamma-only.
+        e : array
+            Band energies.
+        occ : array
+            Occupations.
+
     Notes
     -----
     This function applies to both gamma-only and multiple-k calculations.
@@ -259,7 +269,7 @@ def read_wfc_lcao_txt(fname):
     if not is_gamma:
         wfc = wfc.view(complex)
 
-    return wfc, e, occ
+    return wfc.T, e, occ
 
 
 def read_abacus_csr(fname):
@@ -427,13 +437,13 @@ class _TestDatParse(unittest.TestCase):
 
     def test_read_wfc_lcao_txt_gamma(self):
         wfc, e, occ = read_wfc_lcao_txt('./testfiles/WFC_NAO_GAMMA1.txt')
-        self.assertEqual(wfc.shape, (4, 10))
+        self.assertEqual(wfc.shape, (10, 4))
         self.assertAlmostEqual(wfc[0,0], -0.53725)
 
 
     def test_read_wfc_lcao_txt_multik(self):
         wfc, e, occ = read_wfc_lcao_txt('./testfiles/WFC_NAO_K4.txt')
-        self.assertEqual(wfc.shape, (4, 10))
+        self.assertEqual(wfc.shape, (10, 4))
         self.assertAlmostEqual(wfc[-1,-1], -7.0718e-02+6.4397e-04j)
 
 

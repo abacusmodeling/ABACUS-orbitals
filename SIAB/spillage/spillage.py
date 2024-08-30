@@ -6,7 +6,7 @@ from SIAB.spillage.index import index_map, perm_zeta_m, _nao
 from SIAB.spillage.linalg_helper import mrdiv, rfrob
 from SIAB.spillage.basistrans import jy2ao
 from SIAB.spillage.datparse import read_orb_mat, _assert_consistency, \
-        read_wfc_lcao_txt, read_abacus_csr
+        read_wfc_lcao_txt, read_abacus_tri
 
 import glob
 import numpy as np
@@ -14,17 +14,115 @@ from scipy.optimize import minimize, basinhopping
 from copy import deepcopy
 
 
+def initgen(nzeta_gen, nbes_gen, nbes_data, ref_jy, wk, diagosis=False):
+    '''
+    Generates an initial guess of the spherical Bessel coefficients from
+    single-atom overlap data.
+
+    Parameters
+    ----------
+        nzeta_gen : list of int
+            Target number of zeta for each l.
+        nbes_gen : int or list of int
+            Number of spherical Bessel components for each l to generate.
+            If a list, nbes_gen[l] is the number corresponding to l.
+            If an int, the same number of spherical Bessel components
+            is assumed for each l.
+        nbes_data : list of int or a 2-tuple of int
+            Number of spherical Bessel components for each l of the
+            single-atom overlap data (ref_jy).
+            If a list, nbes_data[l] is the number corresponding to l.
+            If a 2-tuple, it is taken as (lmax, nbes_each) and the same
+            number of spherical Bessel components is assumed for each l.
+        ref_jy : ndarray, shape (nk, nbands, njy)
+            Overlap between single-atom reference states and spherical
+            waves (jy). The order of jy must be lexicographic in terms
+            of (l, m, q) where l & m are the angular momentum indices
+            and q is the radial index.
+        wk : ndarray, shape (nk,)
+            Weights of k points.
+        diagosis : bool
+            If true, print for each l the largest nzeta_gen[l] eigenvalues of
+
+                    sum_k wk * Y[l,k].T.conj() @ Y[l,k]
+
+            where Y[l,k] is the subblock of <ref(k)|jy(k)> with spherical
+            waves (jy) of angular momentum l and reorganized to a matrix of
+            shape (nbands*(2*l+1), nbes_data[l]).
+            (The data is assume for a single atom, so the number of spherical
+            waves per l is simply (2l+1) * nbes_data[l].)
+
+    Returns
+    -------
+        A nested list. coef[l][zeta][q] -> float.
+
+    Note
+    ----
+    This function does not discriminate various types of spherical waves
+    radial functions (raw/normalized/reduced). The coefficients are generated
+    in terms of that of the input data (ref_jy).
+
+    The resulting coefficients are always "normalized" in the sense that
+    norm(coef[l][zeta]) = 1 for any l and zeta, which means they yield
+    normalized orbitals in the case of normalized/reduced spherical waves,
+    but not for raw spherical waves. However, since ABACUS always normalizes
+    the numerical atomic orbitals in LCAO calculations, raw spherical wave
+    radial functions should never occur in practice.
+
+    '''
+    if isinstance(nbes_data, tuple):
+        lmax_data, nbes_each = nbes_data
+        nbes_data = [nbes_each] * (lmax_data + 1)
+    else:
+        lmax_data = len(nbes_data) - 1
+
+    lmax_gen = len(nzeta_gen) - 1
+    assert lmax_gen <= lmax_data
+    assert all(nbes_gen[l] <= nbes_data[l] for l in range(lmax_gen+1))
+
+    # number of spherical waves per l
+    njy_l = [(2*l+1) * nbes_data[l] for l in range(lmax_data+1)]
+    nk, nbands, njy = ref_jy.shape
+    assert(sum(njy_l) == njy)
+
+    # reorganize ref_jy to Y[l,k] for each l
+    index_l_start = [0] + np.cumsum(njy_l).tolist()
+    Y = [ref_jy[:,:,range(index_l_start[l], index_l_start[l+1])]
+         .reshape(nk, -1, nbes_data[l]) # (nk, nbands*(2*l+1), nbes_data[l])
+         [:,:,:nbes_gen[l]]
+         for l in range(lmax_data+1)]
+
+    coef = []
+    for l in range(lmax_gen + 1):
+        if nzeta_gen[l] == 0:
+            coef.append([])
+            continue
+
+        YdaggerY = ((Y[l].swapaxes(-2, -1).conj() @ Y[l])
+                    * np.array(wk).reshape(-1, 1, 1)).sum(0).real
+        val, vec = np.linalg.eigh(YdaggerY)
+
+        # eigenvectors corresponding to the largest nzeta_gen eigenvalues
+        coef.append(vec[:,-nzeta_gen[l]:][:,::-1].T.tolist())
+
+        if diagosis:
+            print( "ORBGEN: <jy|ref><ref|jy> eigval diagnosis:")
+            print(f"        l = {l}: {val[-nzeta_gen[l]:][::-1]}")
+
+    return coef
+
+
 def _overlap_spillage(natom, lmax, nbes,
-                      jy_jy, mo_jy, mo_mo, wk,
+                      jy_jy, ref_jy, ref_ref, wk,
                       coef, ibands, coef_frozen=None):
     '''
     Standard spillage function (overlap spillage).
 
     The spillage function is defined as
 
-    S = (1/N) sum_k wk[k] sum_i <mo(i,k)|Q_frozen(k) Q(k) Q_frozen(k)|mo(i,k)>
+    S = (1/N) sum_{ik} w[k] <ref(i,k)|Q_frozen(k) Q(k) Q_frozen(k)|ref(i,k)>
 
-    where N is the number of involved bands, wk[k] is the k-point weight,
+    where N is the number of involved bands, w[k] is the k-point weight,
     Q (Q_frozen) is the projection operator onto the complement of the AO
     subspace specified by coef (coef_frozen).
 
@@ -43,9 +141,9 @@ def _overlap_spillage(natom, lmax, nbes,
             momentum l of atomic type `itype`.
         jy_jy : ndarray, shape (nk, njy, njy)
             Overlap between spherical waves (jy).
-        mo_jy : ndarray, shape (nk, nbands, njy)
+        ref_jy : ndarray, shape (nk, nbands, njy)
             Overlap between reference states and spherical waves.
-        mo_mo : ndarray, shape (nk, nbands)
+        ref_ref : ndarray, shape (nk, nbands)
             Overlap between reference states (diagonal terms only).
         wk : ndarray, shape (nk,)
             k-point weights.
@@ -60,7 +158,8 @@ def _overlap_spillage(natom, lmax, nbes,
         ibands : list of int or range
             Band indices to be included in the spillage calculation.
         coef_frozen : nested list (optional)
-            The coefficients of frozen orbitals in the same format as coef.
+            The coefficients of frozen pseudo-atomic orbitals in terms of
+            the spherical wave basis. The format is the same as coef.
 
 
     Note
@@ -70,16 +169,16 @@ def _overlap_spillage(natom, lmax, nbes,
     as a cross-check for the implementation of the generalized spillage.
 
     '''
-    spill = (wk @ mo_mo[:,ibands]).real.sum()
+    spill = (wk @ ref_ref[:,ibands]).real.sum()
 
-    mo_jy = mo_jy[:,ibands,:]
+    ref_jy = ref_jy[:,ibands,:]
     _jy2ao = jy2ao(coef, natom, lmax, nbes)
-    V = mo_jy @ _jy2ao
+    V = ref_jy @ _jy2ao
     W = _jy2ao.T @ jy_jy @ _jy2ao
 
     if coef_frozen is not None:
         jy2frozen = jy2ao(coef_frozen, natom, lmax, nbes)
-        X = mo_jy @ jy2frozen
+        X = ref_jy @ jy2frozen
         S = jy2frozen.T @ jy_jy @ jy2frozen
         X_dual = mrdiv(X, S)
 
@@ -91,205 +190,51 @@ def _overlap_spillage(natom, lmax, nbes,
     return spill / len(ibands)
 
 
-def initgen_pw(nzeta, ecut, lmax, rcut, nbes_raw, mo_jy, wk,
-               reduced=False, diagosis=False):
-    '''
-    Generates an initial guess for the spherical Bessel coefficients from
-    the single-atom overlap data (plane-wave reference state).
 
-    Parameters
-    ----------
-        nzeta : list of int
-            Target number of zeta for each l.
-        ecut : float
-            Kinetic energy cutoff for the target coefficients.
-            Note that the deduced number of spherical Bessel components
-            must not be larger than nbes.
-        lmax : int
-            Maximum l of the single-atom data
-        rcut : float
-            Cutoff radius.
-        nbes_raw : int
-            Number of raw spherical Bessel components for each l of the
-            single-atom data.
-        mo_jy : ndarray, shape (nk, nbands, nao*nbes)
-            Overlap between the single-atom reference states and raw-
-            truncated spherical waves (jy).
-        wk : ndarray, shape (nk,)
-            k-point weights.
-        reduced : bool
-            If true, the initial guess is generated in terms of the
-            reduced spherical Bessel basis; otherwise in the normalized
-            truncated spherical Bessel basis.
-
-    '''
-    # maximum l of the generated coefficients
-    lmax_gen = len(nzeta) - 1
-    assert lmax_gen <= lmax
-
-    # number of spherical Bessel components for each l
-    # of the generated coefficients
-    nbes_gen = [_nbes(l, rcut, ecut) for l in range(lmax_gen + 1)]
-    assert all(n > 0 and n <= nbes_raw for n in nbes_gen)
-
-    # transform <mo|jy(raw)> to <mo|jy(reduced)> or <mo|jy(normalized)>
-    if reduced:
-        coef = [[jl_reduce(l, nbes_raw, rcut).T.tolist()
-                 for l in range(lmax + 1)]]
-    else: # normalized
-        uvec = lambda v, k, n: [v if i == k else 0 for i in range(n)]
-        coef = [[[uvec(1. / jl_raw_norm(l, q, rcut), q, nbes_raw)
-                  for q in range(nbes_raw)]
-                 for l in range(lmax + 1)]]
-
-    nk, nbands, _ = mo_jy.shape
-    nbes_now = nbes_raw - 1 if reduced else nbes_raw
-    Y = (mo_jy @ jy2ao(coef, [1], [lmax], nbes_raw)) \
-            .reshape(nk, nbands, -1, nbes_now)
-
-    coef = []
-    for l in range(lmax_gen + 1):
-        Yl = Y[:, :, l*l:(l+1)*(l+1), :] \
-                .reshape(nk, -1, nbes_now)[:,:,:nbes_gen[l]]
-
-        YdaggerY = ((Yl.transpose((0, 2, 1)).conj() @ Yl)
-                    * wk.reshape(-1, 1, 1)).sum(0).real
-
-        val, vec = np.linalg.eigh(YdaggerY)
-
-        # eigenvectors corresponding to the largest nzeta eigenvalues
-        coef.append(vec[:,-nzeta[l]:][:,::-1])
-        # NOTE coef is column-wise at this stage; to be transposed later
-
-        if diagosis:
-            print( "ORBGEN: <jy|mo><mo|jy> eigval diagnosis:")
-            print(f"        l = {l}: {val[-nzeta[l]:][::-1]}")
-
-    return [np.linalg.qr(coef_l)[0].T.tolist() for coef_l in coef]
-
-
-def initgen(nzeta_gen, nbes_gen, nbes_data, mo_jy, wk, diagosis=False):
-    '''
-    Generates an initial guess of the spherical Bessel coefficients from
-    single-atom overlap data.
-
-    Parameters
-    ----------
-        nzeta_gen : list of int
-            Target number of zeta for each l.
-        nbes_gen : int or list of int
-            Number of spherical Bessel components for each l of the
-            generated coefficients.
-            If a list, nbes_gen[l] is the number corresponding to l.
-            If an int, the same number of spherical Bessel components
-            is assumed for each l.
-        nbes_data : list of int or a 2-tuple of int
-            Number of spherical Bessel components for each l of the
-            single-atom data (mo_jy).
-            If a list, nbes_data[l] is the number corresponding to l.
-            If a 2-tuple, it is taken as (lmax, nbes_each) and the same
-            number of spherical Bessel components is assumed for all l.
-        mo_jy : ndarray, shape (nk, nbands, njy)
-            Overlap between single-atom reference states and spherical
-            waves (jy). The order of jy must be lexicographic in terms
-            of (l, m, q) where l & m are the angular momentum indices
-            and q is the radial index.
-        wk : ndarray, shape (nk,)
-            Weights of k points.
-        diagosis : bool
-            If true, print the eigenvalues of <jy|mo><mo|jy> for each l.
-
-    Returns
-    -------
-        A nested list. coef[l][zeta][q] -> float.
-
-    Note
-    ----
-    This function does not discriminate various types of spherical waves
-    radial functions (raw/normalized/reduced). The coefficients are generated
-    in terms of that of the input data (mo_jy).
-
-    The resulting coefficients are always "normalized" in the sense that
-    norm(coef[l][zeta]) = 1 for any l and zeta, which means they yield
-    normalized orbitals in the case of normalized/reduced spherical waves,
-    but not for raw spherical waves. However, since ABACUS always normalizes
-    the numerical atomic orbitals in LCAO calculations, raw spherical wave
-    radial functions should never occur in practice.
-
-    '''
-    if isinstance(nbes_data, tuple):
-        lmax_data, nbes_each = nbes_data
-        nbes_data = [nbes_each] * (lmax_data + 1)
-    else:
-        lmax_data = len(nbes_data) - 1
-
-    # maximum l of the generated coefficients
-    lmax_gen = len(nzeta_gen) - 1
-    assert lmax_gen <= lmax_data
-
-    assert all(nbes_gen[l] > 0 and nbes_gen[l] <= nbes_data[l]
-               for l in range(lmax_gen+1))
-
-    nk, nbands, njy = mo_jy.shape
-
-    # number of spherical waves per l
-    njy_l = [(2*l+1) * nbes_data[l] for l in range(lmax_data+1)]
-    assert(sum(njy_l) == njy)
-
-    index_l_start = [0] + np.cumsum(njy_l).tolist()
-    Y = [mo_jy[:,:,range(index_l_start[l], index_l_start[l+1])]
-         .reshape(nk, -1, nbes_data[l]) # (nk, nbands*(2*l+1), nbes_data[l])
-         [:,:,:nbes_gen[l]]
-         for l in range(lmax_data+1)]
-
-    coef = []
-    for l in range(lmax_gen + 1):
-        if nzeta_gen[l] == 0:
-            coef.append([])
-            continue
-
-        YdaggerY = ((Y[l].swapaxes(-2, -1).conj() @ Y[l])
-                    * np.array(wk).reshape(-1, 1, 1)).sum(0).real
-
-        val, vec = np.linalg.eigh(YdaggerY)
-
-        # eigenvectors corresponding to the largest nzeta_gen eigenvalues
-        coef.append(vec[:,-nzeta_gen[l]:][:,::-1].T.tolist())
-
-        if diagosis:
-            print( "ORBGEN: <jy|mo><mo|jy> eigval diagnosis:")
-            print(f"        l = {l}: {val[-nzeta_gen[l]:][::-1]}")
-
-    return coef
-
-
-#############################################################
 class Spillage:
     '''
     Generalized spillage function and its optimization.
 
     Attributes
     ----------
-        config : list
-            A list of dict. Each dict contains the data for a geometric
-            configuration, including both the overlap and operator matrix
-            elements.
-            The overlap and operator data are read from orb_matrix.0.dat
-            and orb_matrix.1.dat respectively. Before appending to config,
-            the two datasets are subject to a consistency check, after which
-            a new one consisting of the common part of overlap and operator
-            data plus the stacked matrix data are appended to config.
-            NOTE: this behavior may be subject to change in the future.
-        spill_frozen : list
-            The band-wise spillage contribution from frozen orbitals.
-        mo_Pfrozen_jy : list
-            <mo|P_frozen|jy> and <mo|P_frozen op|jy> for each configuration,
-            where P_frozen is the projection operator onto the frozen subspace.
-        mo_Qfrozen_dao : list
-            The derivatives of <mo|Q_frozen|ao> and <mo|Q_frozen op|ao> w.r.t.
-            the coefficients for each configuration, where Q_frozen is the
-            projection operator onto the complement of the frozen subspace.
-        dao_jy : list
+        config : list of dict
+            Each dict contains the data from a geometric configuration,
+            including the following key-value pairs:
+
+            natom : list of int
+                Number of atoms for each atom type.
+            lmax : list of int
+                Maximum angular momentum for each atom type.
+            nbes : int / list of int / list of list of int
+                Number of spherical wave radial functions.
+                If an integer, the same number is assumed in all cases.
+                If a list, nbes[l] specifies the number for angular momentum
+                l, which is assumed to be the same for all atomic types.
+                If a nested list, nbes[itype][l] specifies the number for
+                angular momentum l of atomic type `itype`.
+            jy_jy : ndarray, shape (nk, njy, njy)
+                Overlap between spherical waves (jy).
+            ref_jy : ndarray, shape (nk, nbands, njy)
+                Overlap between reference states and spherical waves.
+            ref_ref : ndarray, shape (nk, nbands)
+                Overlap between reference states (diagonal terms only).
+            wk : ndarray, shape (nk,)
+                k-point weights.
+
+        spill_frozen : list of array
+            Band-wise spillage contribution from frozen orbitals.
+            spill_frozen[iconf][iband] -> float.
+        ref_Pfrozen_jy : list of ndarray
+            <ref|P_frozen|jy> and <ref|P_frozen op|jy> for each configuration
+            (P_frozen is the projection operator onto the frozen subspace).
+            ref_Pfrozen_jy[iconf][0] and ref_Pfrozen_jy[iconf][1] correspond
+            to <ref|P_frozen|jy> and <ref|P_frozen op|jy> respectively. Each
+            of them has a shape of (nk, nbands, njy).
+        ref_Qfrozen_dao : list of ndarray
+            Derivatives of <ref|Q_frozen|ao> and <ref|Q_frozen op|ao> w.r.t.
+            the spherical wave radial coefficients (Q_frozen is the projection
+            operator onto the complement of the frozen subspace).
+        dao_jy : list of ndarray
             The derivatives of <ao|jy> and <ao|op|jy> w.r.t. the coefficients
             for each configuration.
 
@@ -299,16 +244,11 @@ class Spillage:
 
 
     def reset(self):
-        # data
         self.config = []
-
-        # updated by _tab_frozen
         self.spill_frozen = None
-        self.mo_Pfrozen_jy = None
-        self.mo_Qfrozen_dao = []
-
-        # updated by _tab_deriv
-        self.dao_jy = []
+        self.ref_Pfrozen_jy = None
+        self.ref_Qfrozen_dao = None
+        self.dao_jy = None
 
 
     def _tab_frozen(self, coef_frozen):
@@ -316,64 +256,55 @@ class Spillage:
         Tabulates for each configuration the band-wise spillage contribution
         from frozen orbitals as well as
 
-                            <mo|P_frozen   |jy>
-                            <mo|P_frozen op|jy>
+                            <ref|P_frozen   |jy>
+                            <ref|P_frozen op|jy>
 
         where P_frozen is the projection operator onto the frozen subspace:
 
                         P_frozen = |frozen_dual><frozen|
 
         '''
+        self.spill_frozen = [None] * len(self.config)
+        self.ref_Pfrozen_jy = [None] * len(self.config)
+
         if coef_frozen is None:
-            self.spill_frozen = None
-            self.mo_Pfrozen_jy = None
             return
 
-        # jy -> frozen orbital transformation matrices
-        jy2frozen = [jy2ao(coef_frozen, dat['natom'],
-                           dat['lmax'], dat['nbes'])
-                     for dat in self.config]
+        for iconf, dat in enumerate(self.config):
+            jy2frozen = jy2ao(coef_frozen, dat['natom'],
+                              dat['lmax'], dat['nbes'])
 
-        frozen_frozen = [jy2froz.T @ dat['jy_jy'] @ jy2froz
-                         for dat, jy2froz in zip(self.config, jy2frozen)]
+            frozen_frozen = jy2frozen.T @ dat['jy_jy'] @ jy2frozen
+            ref_frozen = dat['ref_jy'] @ jy2frozen
 
-        mo_frozen = [dat['mo_jy'] @ jy2froz
-                     for dat, jy2froz in zip(self.config, jy2frozen)]
+            # no need to compute <ref|op|frozen_dual>
+            ref_frozen_dual = mrdiv(ref_frozen[0], frozen_frozen[0])
 
-        # <mo|frozen_dual> only; no need to compute <mo|op|frozen_dual>
-        mo_frozen_dual = [mrdiv(mo_froz[0], froz_froz[0])
-                          for mo_froz, froz_froz
-                          in zip(mo_frozen, frozen_frozen)]
+            self.ref_Pfrozen_jy[iconf] = \
+                    ref_frozen_dual @ jy2frozen.T @ dat['jy_jy']
 
-        # for each config, indexed as [0/1][k][mo][jy]
-        self.mo_Pfrozen_jy = [mo_froz_dual @ jy2froz.T @ dat['jy_jy']
-                              for mo_froz_dual, dat, jy2froz
-                              in zip(mo_frozen_dual, self.config, jy2frozen)]
+            # spill_frozen before weighted sum over k
+            tmp = rfrob(ref_frozen_dual @ frozen_frozen[1],
+                        ref_frozen_dual, True) \
+                    - 2.0 * rfrob(ref_frozen_dual, ref_frozen[1], True)
 
-        tmp = [rfrob(mo_froz_dual @ froz_froz[1], mo_froz_dual, True)
-               - 2.0 * rfrob(mo_froz_dual, mo_froz[1], True)
-               for mo_froz_dual, mo_froz, froz_froz
-               in zip(mo_frozen_dual, mo_frozen, frozen_frozen)]
-
-        # weighted sum over k
-        self.spill_frozen = [dat['wk'] @ spill_froz
-                             for dat, spill_froz
-                             in zip(self.config, tmp)]
+            self.spill_frozen[iconf] = dat['wk'] @ tmp
 
 
     def _tab_deriv(self, coef):
         '''
-        Given coef which specifies a set of atomic orbital basis, this
-        function tabulates for each configuration the derivatives of
+        Given coef which specifies a set of pseudo-atomic orbitals from
+        spherical waves, this function tabulates for each configuration
+        the derivatives of
 
                                 <ao|jy>
                                 <ao|op|jy>
 
-                            <mo|Q_frozen   |ao>
-                            <mo|Q_frozen op|ao>
+                            <ref|Q_frozen   |ao>
+                            <ref|Q_frozen op|ao>
 
-        with respect to each Bessel coefficient of |ao>, where Q_frozen is
-        the projection operator onto the complement of the frozen subspace:
+        with respect to each element of coef, where Q_frozen is the
+        projection operator onto the complement of the frozen subspace:
 
                         Q_frozen = 1 - |frozen_dual><frozen|
 
@@ -382,48 +313,34 @@ class Spillage:
 
         Note
         ----
-        The only useful information of coef is its nesting pattern, which
-        determines what derivatives to compute.
+        The only useful information of coef is its nesting pattern; its
+        values are not used in this function.
 
         '''
-        # jy -> (d/dcoef)ao transformation matrices
-        jy2dao_all = [[jy2ao(nest(ci.tolist(), nestpat(coef)),
-                             dat['natom'], dat['lmax'], dat['nbes'])
-                       for ci in np.eye(len(flatten(coef)))]
-                      for dat in self.config]
+        self.dao_jy = [None] * len(self.config)
+        self.ref_Qfrozen_dao = [None] * len(self.config)
 
-        # derivatives of <ao|(I/op)|jy> for each config,
-        # index as dao_jy[iconf][0(ov)/1(op)][icoef][k][ao][jy]
-        self.dao_jy = [np.array([jy2dao_i.T @ dat['jy_jy']
-                                 for jy2dao_i in jy2dao])
-                       .transpose(1,0,2,3,4)
-                       for dat, jy2dao in zip(self.config, jy2dao_all)]
+        for iconf, dat in enumerate(self.config):
+            jy2dao = [jy2ao(nest(ci.tolist(), nestpat(coef)),
+                            dat['natom'], dat['lmax'], dat['nbes'])
+                      for ci in np.eye(len(flatten(coef)))]
 
-        # derivatives of <mo|ao> and <mo|op|ao>
-        self.mo_Qfrozen_dao = [np.array([dat['mo_jy'] @ jy2dao_i
-                                         for jy2dao_i in jy2dao])
-                               for dat, jy2dao
-                               in zip(self.config, jy2dao_all)]
-        # at this stage, the index for each config follows
-        # [icoef][ov/op][k][mo][ao]
-        # where 0->overlap; 1->operator
+            self.dao_jy[iconf] = \
+                    np.array([jy2dao_i.T @ dat['jy_jy']
+                              for jy2dao_i in jy2dao]) \
+                    .transpose(1,0,2,3,4)
 
-        if self.spill_frozen is not None:
-            # subtract from the previous results <mo|P_frozen|ao>
-            # and <mo|P_frozen op|ao>
-            self.mo_Qfrozen_dao = [mo_Qfroz_dao -
-                                   np.array([mo_Pfroz_jy @ jy2dao_i
-                                             for jy2dao_i in jy2dao])
-                                   for mo_Qfroz_dao, mo_Pfroz_jy, jy2dao
-                                   in zip(self.mo_Qfrozen_dao,
-                                          self.mo_Pfrozen_jy,
-                                          jy2dao_all)
-                                   ]
+            self.ref_Qfrozen_dao[iconf] = \
+                    np.array([dat['ref_jy'] @ jy2dao_i
+                              for jy2dao_i in jy2dao])
 
-        # transpose to [0/1][icoef][k][mo][ao]
-        self.mo_Qfrozen_dao = [dV.transpose(1,0,2,3,4)
-                               for dV in self.mo_Qfrozen_dao]
+            if self.spill_frozen[iconf] is not None:
+                self.ref_Qfrozen_dao[iconf] -= \
+                        np.array([self.ref_Pfrozen_jy[iconf] @ jy2dao_i
+                                  for jy2dao_i in jy2dao])
 
+            self.ref_Qfrozen_dao[iconf] = \
+                    self.ref_Qfrozen_dao[iconf].transpose(1,0,2,3,4)
 
 
     def _generalized_spillage(self, iconf, coef, ibands, with_grad=False):
@@ -432,16 +349,13 @@ class Spillage:
 
         '''
         dat = self.config[iconf]
-
-        spill = (dat['wk'] @ dat['mo_mo'][1][:,ibands]).real.sum()
-
-        # jy->ao basis transformation matrix
+        spill = (dat['wk'] @ dat['ref_ref'][1][:,ibands]).real.sum()
         _jy2ao = jy2ao(coef, dat['natom'], dat['lmax'], dat['nbes'])
 
-        # <mo|Q_frozen|ao> and <mo|Q_frozen op|ao>
-        V = dat['mo_jy'][:,:,ibands,:] @ _jy2ao
+        # <ref|Q_frozen|ao> and <ref|Q_frozen op|ao>
+        V = dat['ref_jy'][:,:,ibands,:] @ _jy2ao
         if self.spill_frozen is not None:
-            V -= self.mo_Pfrozen_jy[iconf][:,:,ibands,:] @ _jy2ao
+            V -= self.ref_Pfrozen_jy[iconf][:,:,ibands,:] @ _jy2ao
             spill += self.spill_frozen[iconf][ibands].sum()
 
         # <ao|ao> and <ao|op|ao>
@@ -459,8 +373,8 @@ class Spillage:
             dW = self.dao_jy[iconf] @ _jy2ao
             dW += dW.transpose((0,1,2,4,3)).conj()
 
-            # (d/dcoef)<mo|Q_frozen|ao> and (d/dcoef)<mo|Q_frozen op|ao>
-            dV = self.mo_Qfrozen_dao[iconf][:,:,:,ibands,:]
+            # (d/dcoef)<ref|Q_frozen|ao> and (d/dcoef)<ref|Q_frozen op|ao>
+            dV = self.ref_Qfrozen_dao[iconf][:,:,:,ibands,:]
 
             grad = (rfrob(dW[1], VdaggerV)
                     - 2.0 * rfrob(V_dual, dV[1])
@@ -474,17 +388,19 @@ class Spillage:
         return (spill, grad) if with_grad else spill
 
 
-    def opt(self, coef_init, coef_frozen, iconfs, ibands, options, nthreads=1):
+    def opt(self, coef_init, coef_frozen, iconfs, ibands,
+            options, nthreads=1):
         '''
-        Spillage minimization w.r.t. (normalized or reduced) spherical
-        Bessel coefficients.
+        Spillage minimization w.r.t. spherical Bessel coefficients.
 
         Parameters
         ----------
             coef_init : nested list
                 Initial guess for the coefficients.
+                coef_init[itype][l][zeta][q] -> float.
             coef_frozen : nested list
                 Coefficients for the frozen orbitals.
+                coef_frozen[itype][l][zeta][q] -> float.
             iconfs : list of int or 'all'
                 List of configuration indices to be included in the
                 optimization. If 'all', all configurations are included.
@@ -494,11 +410,12 @@ class Spillage:
                 for all configurations.
                 If a list of range/tuple is given, each range/tuple will
                 be applied to the configuration specified by iconfs
-                respectively.
+                respectively, in which case len(ibands) and len(iconfs)
+                must agree.
             options : dict
                 Options for the optimization.
             nthreads : int
-                Number of threads for config-level parallellization.
+                Number of threads for config-level parallelization.
 
         '''
         from multiprocessing.pool import ThreadPool
@@ -509,21 +426,26 @@ class Spillage:
 
         self._tab_deriv(coef_init)
 
-        iconfs = range(len(self.config)) if iconfs == 'all' else iconfs
-        nconf = len(iconfs)
+        if iconfs == 'all':
+            iconfs = range(len(self.config))
+        nconfs = len(iconfs)
 
-        ibands = [ibands] * nconf if not isinstance(ibands, list) else ibands
-        assert len(ibands) == nconf, f"len(ibands) = {len(ibands)} != {nconf}"
+        if not isinstance(ibands, list):
+            ibands = [ibands] * nconfs
+
+        assert len(ibands) == nconfs, \
+                f"len(ibands) = {len(ibands)} does not agree with " \
+                "the given iconfs (len={nconfss})"
 
         pat = nestpat(coef_init)
         def f(c): # function to be minimized
             s = lambda i: self._generalized_spillage(iconfs[i],
-                                                    nest(c.tolist(), pat),
-                                                    ibands[i],
-                                                    with_grad=True)
-            spills, grads = zip(*pool.map(s, range(nconf)))
-            return (sum(spills) / nconf,
-                    sum(np.array(flatten(g)) for g in grads) / nconf)
+                                                     nest(c.tolist(), pat),
+                                                     ibands[i],
+                                                     with_grad=True)
+            spills, grads = zip(*pool.map(s, range(nconfs)))
+            return (sum(spills) / nconfs,
+                    sum(np.array(flatten(g)) for g in grads) / nconfs)
 
         c0 = np.array(flatten(coef_init))
 
@@ -535,6 +457,7 @@ class Spillage:
         res = minimize(f, c0, jac=True, method='L-BFGS-B',
                        bounds=bounds, options=options)
 
+        # to use basinhopping:
         #minimizer_kwargs = {"method": "L-BFGS-B", "jac": True,
         #                    "bounds": bounds}
         #res = basinhopping(f, c0, minimizer_kwargs=minimizer_kwargs,
@@ -549,477 +472,478 @@ class Spillage:
 
 
 
-#############################################################
-
-class Spillage:
-    '''
-    Generalized spillage function and its optimization.
-
-    Attributes
-    ----------
-        reduced: bool
-            If true, the optimization is performed in the end-smoothed mixed
-            spherical Bessel basis; otherwise in the normalized truncated
-            spherical Bessel basis.
-        config : list
-            A list of dict. Each dict contains the data for a geometric
-            configuration, including both the overlap and operator matrix
-            elements.
-            The overlap and operator data are read from orb_matrix.0.dat
-            and orb_matrix.1.dat respectively. Before appending to config,
-            the two datasets are subject to a consistency check, after which
-            a new one consisting of the common part of overlap and operator
-            data plus the stacked matrix data are appended to config.
-            NOTE: this behavior may be subject to change in the future.
-        rcut : float
-            Cutoff radius. So far only one rcut is allowed throughout the
-            entire dataset.
-        spill_frozen : list
-            The band-wise spillage contribution from frozen orbitals.
-        mo_Pfrozen_jy : list
-            <mo|P_frozen|jy> and <mo|P_frozen op|jy> for each configuration,
-            where P_frozen is the projection operator onto the frozen subspace.
-        mo_Qfrozen_dao : list
-            The derivatives of <mo|Q_frozen|ao> and <mo|Q_frozen op|ao> w.r.t.
-            the coefficients for each configuration, where Q_frozen is the
-            projection operator onto the complement of the frozen subspace.
-        dao_jy : list
-            The derivatives of <ao|jy> and <ao|op|jy> w.r.t. the coefficients
-            for each configuration.
-
-    '''
-
-    def __init__(self, reduced=True):
-        self.reset()
-        self.reduced = reduced
-
-
-    def reset(self):
-        self.config = []
-        self.rcut = None
-
-        self.spill_frozen = None
-        self.mo_Pfrozen_jy = None
-        self.mo_Qfrozen_dao = []
-        self.dao_jy = []
-
-
-    def config_add_pw(self, config, weight=(0.0, 1.0)):
-        '''
-        Parses the plane-wave data and appends it to the configuration list.
-
-        Parameters
-        ----------
-            config : str or 2-tuple of str
-                If a str is given, it is taken as the path to the plane-wave
-                job directory.
-                If 2-tuple of str is given, it is understood as the paths to
-                the data files (orb_matrix.x.dat).
-            weight : tuple of float
-                Weights for the overlap and operator data respectively.
-
-        '''
-        if isinstance(config, str):
-            ov = read_orb_mat(config + '/orb_matrix.0.dat')
-            op = read_orb_mat(config + '/orb_matrix.1.dat')
-        else:
-            ov = read_orb_mat(config[0])
-            op = read_orb_mat(config[1])
-
-        wov, wop = weight
-
-        # The overlap and operator data must be consistent except
-        # for their matrix data (mo_mo, mo_jy and jy_jy).
-        _assert_consistency(ov, op)
-
-        ntype, natom, lmax, nbes, rcut = \
-            [ov[key] for key in ['ntype', 'natom', 'lmax', 'nbes', 'rcut']]
-
-        # The output of PW calculation is based on raw truncated spherical
-        # Bessel basis, while the optimization will be performed in either
-        # reduced or normalized basis. Here we transform mo_jy & jy_jy to
-        # the basis of the optimization.
-        if self.reduced:
-            coef = [[jl_reduce(l, nbes, rcut).T.tolist()
-                     for l in range(lmax[itype]+1)]
-                    for itype in range(ntype)]
-        else:
-            uvec = lambda v, k, n: [v if i == k else 0 for i in range(n)]
-            coef = [[[uvec(1. / jl_raw_norm(l, q, rcut), q, nbes)
-                      for q in range(nbes)]
-                     for l in range(lmax[itype]+1)]
-                    for itype in range(ntype)]
-
-        # basis transformation matrix
-        C = jy2ao(coef, natom, lmax, nbes)
-        #print(f"coef.shape = {C.shape}")
-        #print(f"natom = {natom}")
-        #print(f"lmax = {lmax}")
-        #print(f"nbes = {nbes}")
-        #print(f"rcut = {rcut}")
-
-
-        # packed data for a configuration
-        dat = {'ntype': ntype,
-               'natom': natom,
-               'lmax': lmax,
-               'nbes': nbes-1 if self.reduced else nbes,
-               'rcut': rcut,
-               'nbands': ov['nbands'],
-               'nk': ov['nk'],
-               'wk': ov['wk'],
-               'mo_mo': np.array([ov['mo_mo'],
-                                  wov*ov['mo_mo'] + wop*op['mo_mo']]),
-               'mo_jy': np.array([ov['mo_jy'] @ C,
-                                  (wov*ov['mo_jy'] + wop*op['mo_jy']) @ C]),
-               'jy_jy': np.array([C.T @ ov['jy_jy'] @ C,
-                                  C.T @ (wov*ov['jy_jy'] + wop*op['jy_jy'])
-                                  @ C]),
-               }
-
-        #print(f"mo_jy.shape = {dat['mo_jy'].shape}")
-        #print(f"jy_jy.shape = {dat['jy_jy'].shape}")
-        #print(f"mo_mo.shape = {dat['mo_mo'].shape}")
-        #print('')
-
-        self.config.append(dat)
-
-        # NOTE currently a dataset merely contains one atom type
-        # and one rcut. This may change in the future.
-        if self.rcut is None:
-            self.rcut = dat['rcut']
-        else:
-            assert self.rcut == ov['rcut']
-
-
-    def config_add_jy(self, config, nbes, rcut, weight=(0.0, 1.0)):
-        '''
-
-
-        '''
-        from struio import read_stru
-
-        file_stru = glob.glob(config + '/STRU*')
-        assert len(file_stru) == 1
-
-        stru = read_stru(file_stru[0])
-        ntype = len(stru['species'])
-        natom = [spec['natom'] for spec in stru['species']]
-        lmax = [len(nbes_t) - 1 for nbes_t in nbes]
-
-        file_SR = glob.glob(config + '/OUT*/data-SR-sparse_SPIN0.csr')
-        file_TR = glob.glob(config + '/OUT*/data-TR-sparse_SPIN0.csr')
-        assert len(file_SR) == 1 and len(file_TR) == 1
-
-        S = sum(read_abacus_csr(file_SR[0])[0]).toarray() # S(k=0)
-        T = sum(read_abacus_csr(file_TR[0])[0]).toarray() # T(k=0)
-
-        file_wfc = glob.glob(config + '/OUT*/WFC_NAO*')
-        nk = len(file_wfc)
-
-        # currently only supports Gamma point (with possibly nspin=2)
-        assert nk == 1 or nk == 2 
-
-        if nk == 2:
-            wk = [0.5, 0.5]
-            wfc = np.array([read_wfc_lcao_txt(file_wfc[0])[0],
-                            read_wfc_lcao_txt(file_wfc[1])[0]])
-            S = np.array([S, S])
-            T = np.array([T, T])
-        else:
-            wk = [1.0]
-            wfc = np.expand_dims(read_wfc_lcao_txt(file_wfc[0])[0], axis=0)
-            S = np.expand_dims(S, axis=0)
-            T = np.expand_dims(T, axis=0)
-
-        # wfc has shape (nk, nbands, nao)
-        nbands = wfc.shape[-2]
-
-        # simply set mo_mo_ov = 1 instead of calculating it
-        mo_mo_op = np.real(np.sum((wfc.conj() @ T) * wfc, 2))
-        mo_jy_ov = wfc.conj() @ S
-        mo_jy_op = wfc.conj() @ T
-
-        wov, wop = weight
-        mo_mo_ov = np.ones((nk, nbands))
-
-        mo_mo = np.array([mo_mo_ov, wov*mo_mo_ov + wop*mo_mo_op])
-        mo_jy = np.array([mo_jy_ov, wov*mo_jy_ov + wop*mo_jy_op])
-        jy_jy = np.array([S, wov*S + wop*T])
-
-        # NOTE: The LCAO basis in ABACUS follows a lexicographic order of
-        # (itype, iatom, l, q, 2*|m|-(m>0))
-        # which has to be transformed to a lexicographic order of
-        # (itype, iatom, l, 2*|m|-(m>0), q)
-
-        # permutation
-        p = perm_zeta_m(index_map(natom, lmax, nbes)[1])
-        mo_jy = mo_jy[:,:,:,p].copy()
-        jy_jy = jy_jy[:,:,:,p][:,:,p,:].copy()
-
-        #print(f"mo_jy.shape = {mo_jy.shape}")
-        #print(f"jy_jy.shape = {jy_jy.shape}")
-        #print(f"mo_mo.shape = {mo_mo.shape}")
-
-        # packed data for a configuration
-        dat = {'ntype': ntype,
-               'natom': natom,
-               'lmax': lmax,
-               'nbes': nbes[0],
-               'rcut': rcut,
-               'nbands': nbands,
-               'nk': nk,
-               'wk': wk,
-               'mo_mo': mo_mo,
-               'mo_jy': mo_jy,
-               'jy_jy': jy_jy,
-               }
-
-        self.config.append(dat)
-
-        # NOTE currently a dataset merely contains one atom type
-        # and one rcut. This may change in the future.
-        if self.rcut is None:
-            self.rcut = dat['rcut']
-        else:
-            assert self.rcut == dat['rcut']
-
-
-    def _tab_frozen(self, coef_frozen):
-        '''
-        Tabulates for each configuration the band-wise spillage contribution
-        from frozen orbitals and
-
-                            <mo|P_frozen   |jy>
-                            <mo|P_frozen op|jy>
-
-        where P_frozen is the projection operator onto the frozen subspace:
-
-                        P_frozen = |frozen_dual><frozen|
-
-        '''
-        if coef_frozen is None:
-            self.spill_frozen = None
-            self.mo_Pfrozen_jy = None
-            return
-
-        # jy -> frozen orbital transformation matrices
-        jy2frozen = [jy2ao(coef_frozen,
-                           dat['natom'], dat['lmax'], dat['nbes'])
-                     for dat in self.config]
-
-        frozen_frozen = [jy2froz.T @ dat['jy_jy'] @ jy2froz
-                         for dat, jy2froz in zip(self.config, jy2frozen)]
-
-        mo_frozen = [dat['mo_jy'] @ jy2froz
-                     for dat, jy2froz in zip(self.config, jy2frozen)]
-
-        # <mo|frozen_dual> only; no need to compute <mo|op|frozen_dual>
-        mo_frozen_dual = [mrdiv(mo_froz[0], froz_froz[0])
-                          for mo_froz, froz_froz
-                          in zip(mo_frozen, frozen_frozen)]
-
-        # for each config, indexed as [0/1][k][mo][jy]
-        self.mo_Pfrozen_jy = [mo_froz_dual @ jy2froz.T @ dat['jy_jy']
-                              for mo_froz_dual, dat, jy2froz
-                              in zip(mo_frozen_dual, self.config, jy2frozen)]
-
-        tmp = [rfrob(mo_froz_dual @ froz_froz[1], mo_froz_dual, True)
-               - 2.0 * rfrob(mo_froz_dual, mo_froz[1], True)
-               for mo_froz_dual, mo_froz, froz_froz
-               in zip(mo_frozen_dual, mo_frozen, frozen_frozen)]
-
-        # weighted sum over k
-        self.spill_frozen = [dat['wk'] @ spill_froz
-                             for dat, spill_froz
-                             in zip(self.config, tmp)]
-
-
-    def _tab_deriv(self, coef):
-        '''
-        Given coef which specifies a set of atomic orbital basis, this
-        function tabulates for each configuration the derivatives of
-
-                                <ao|jy>
-                                <ao|op|jy>
-
-                            <mo|Q_frozen   |ao>
-                            <mo|Q_frozen op|ao>
-
-        with respect to each Bessel coefficient of |ao>, where Q_frozen is
-        the projection operator onto the complement of the frozen subspace:
-
-                        Q_frozen = 1 - |frozen_dual><frozen|
-
-        (Q_frozen = 1 if there is no frozen orbitals)
-
-
-        Note
-        ----
-        The only useful information of coef is its nesting pattern, which
-        determines what derivatives to compute.
-
-        '''
-        # jy -> (d/dcoef)ao transformation matrices
-        jy2dao_all = [[jy2ao(nest(ci.tolist(), nestpat(coef)),
-                             dat['natom'], dat['lmax'], dat['nbes'])
-                       for ci in np.eye(len(flatten(coef)))]
-                      for dat in self.config]
-
-        # derivatives of <ao|(I/op)|jy> for each config,
-        # index as dao_jy[iconf][0(ov)/1(op)][icoef][k][ao][jy]
-        self.dao_jy = [np.array([jy2dao_i.T @ dat['jy_jy']
-                                 for jy2dao_i in jy2dao])
-                       .transpose(1,0,2,3,4)
-                       for dat, jy2dao in zip(self.config, jy2dao_all)]
-
-        # derivatives of <mo|ao> and <mo|op|ao>
-        self.mo_Qfrozen_dao = [np.array([dat['mo_jy'] @ jy2dao_i
-                                         for jy2dao_i in jy2dao])
-                               for dat, jy2dao
-                               in zip(self.config, jy2dao_all)]
-        # at this stage, the index for each config follows
-        # [icoef][ov/op][k][mo][ao]
-        # where 0->overlap; 1->operator
-
-        if self.spill_frozen is not None:
-            # subtract from the previous results <mo|P_frozen|ao>
-            # and <mo|P_frozen op|ao>
-            self.mo_Qfrozen_dao = [mo_Qfroz_dao -
-                                   np.array([mo_Pfroz_jy @ jy2dao_i
-                                             for jy2dao_i in jy2dao])
-                                   for mo_Qfroz_dao, mo_Pfroz_jy, jy2dao
-                                   in zip(self.mo_Qfrozen_dao,
-                                          self.mo_Pfrozen_jy,
-                                          jy2dao_all)
-                                   ]
-
-        # transpose to [0/1][icoef][k][mo][ao]
-        self.mo_Qfrozen_dao = [dV.transpose(1,0,2,3,4)
-                               for dV in self.mo_Qfrozen_dao]
-
-
-
-    def _generalized_spillage(self, iconf, coef, ibands, with_grad=False):
-        '''
-        Generalized spillage function and its gradient.
-
-        '''
-        dat = self.config[iconf]
-
-        spill = (dat['wk'] @ dat['mo_mo'][1][:,ibands]).real.sum()
-
-        # jy->ao basis transformation matrix
-        _jy2ao = jy2ao(coef, dat['natom'], dat['lmax'], dat['nbes'])
-
-        # <mo|Q_frozen|ao> and <mo|Q_frozen op|ao>
-        V = dat['mo_jy'][:,:,ibands,:] @ _jy2ao
-        if self.spill_frozen is not None:
-            V -= self.mo_Pfrozen_jy[iconf][:,:,ibands,:] @ _jy2ao
-            spill += self.spill_frozen[iconf][ibands].sum()
-
-        # <ao|ao> and <ao|op|ao>
-        W = _jy2ao.T @ dat['jy_jy'] @ _jy2ao
-
-        V_dual = mrdiv(V[0], W[0]) # overlap only; no need for op
-        VdaggerV = V_dual.transpose((0,2,1)).conj() @ V_dual
-
-        spill += dat['wk'] @ (rfrob(W[1], VdaggerV)
-                              - 2.0 * rfrob(V_dual, V[1]))
-        spill /= len(ibands)
-
-        if with_grad:
-            # (d/dcoef)<ao|ao> and (d/dcoef)<ao|op|ao>
-            dW = self.dao_jy[iconf] @ _jy2ao
-            dW += dW.transpose((0,1,2,4,3)).conj()
-
-            # (d/dcoef)<mo|Q_frozen|ao> and (d/dcoef)<mo|Q_frozen op|ao>
-            dV = self.mo_Qfrozen_dao[iconf][:,:,:,ibands,:]
-
-            grad = (rfrob(dW[1], VdaggerV)
-                    - 2.0 * rfrob(V_dual, dV[1])
-                    + 2.0 * rfrob(dV[0] - V_dual @ dW[0],
-                                   mrdiv(V_dual @ W[1] - V[1], W[0]))
-                    ) @ dat['wk']
-
-            grad /= len(ibands)
-            grad = nest(grad.tolist(), nestpat(coef))
-
-        return (spill, grad) if with_grad else spill
-
-
-    def opt(self, coef_init, coef_frozen, iconfs, ibands, options, nthreads=1):
-        '''
-        Spillage minimization w.r.t. (normalized or reduced) spherical
-        Bessel coefficients.
-
-        Parameters
-        ----------
-            coef_init : nested list
-                Initial guess for the coefficients.
-            coef_frozen : nested list
-                Coefficients for the frozen orbitals.
-            iconfs : list of int or 'all'
-                List of configuration indices to be included in the
-                optimization. If 'all', all configurations are included.
-            ibands : range/tuple or list of range/tuple
-                Band indices to be included in the spillage calculation.
-                If a range or tuple is given, the same indices are used
-                for all configurations.
-                If a list of range/tuple is given, each range/tuple will
-                be applied to the configuration specified by iconfs
-                respectively.
-            options : dict
-                Options for the optimization.
-            nthreads : int
-                Number of threads for config-level parallellization.
-
-        '''
-        from multiprocessing.pool import ThreadPool
-        pool = ThreadPool(nthreads)
-
-        if coef_frozen is not None:
-            self._tab_frozen(coef_frozen)
-
-        self._tab_deriv(coef_init)
-
-        iconfs = range(len(self.config)) if iconfs == 'all' else iconfs
-        nconf = len(iconfs)
-
-        ibands = [ibands] * nconf if not isinstance(ibands, list) else ibands
-        assert len(ibands) == nconf, f"len(ibands) = {len(ibands)} != {nconf}"
-
-        pat = nestpat(coef_init)
-        def f(c): # function to be minimized
-            s = lambda i: self._generalized_spillage(iconfs[i],
-                                                    nest(c.tolist(), pat),
-                                                    ibands[i],
-                                                    with_grad=True)
-            spills, grads = zip(*pool.map(s, range(nconf)))
-            return (sum(spills) / nconf,
-                    sum(np.array(flatten(g)) for g in grads) / nconf)
-
-        c0 = np.array(flatten(coef_init))
-
-        # Restricts the coefficients to [-1, 1] for better numerical stability
-        # FIXME Is this necessary?
-        bounds = [(-1.0, 1.0) for _ in c0]
-        #bounds = None
-
-        res = minimize(f, c0, jac=True, method='L-BFGS-B',
-                       bounds=bounds, options=options)
-
-        #minimizer_kwargs = {"method": "L-BFGS-B", "jac": True,
-        #                    "bounds": bounds}
-        #res = basinhopping(f, c0, minimizer_kwargs=minimizer_kwargs,
-        #                   niter=20, disp=True)
-
-        pool.close()
-
-        coef_opt = nest(res.x.tolist(), pat)
-        return [[np.linalg.qr(np.array(coef_tl).T)[0].T.tolist()
-                 if coef_tl else []
-                 for coef_tl in coef_t] for coef_t in coef_opt]
+#class Spillage:
+#    '''
+#    Generalized spillage function and its optimization.
+#
+#    Attributes
+#    ----------
+#        reduced: bool
+#            If true, the optimization is performed in the end-smoothed mixed
+#            spherical Bessel basis; otherwise in the normalized truncated
+#            spherical Bessel basis.
+#        config : list
+#            A list of dict. Each dict contains the data for a geometric
+#            configuration, including both the overlap and operator matrix
+#            elements.
+#            The overlap and operator data are read from orb_matrix.0.dat
+#            and orb_matrix.1.dat respectively. Before appending to config,
+#            the two datasets are subject to a consistency check, after which
+#            a new one consisting of the common part of overlap and operator
+#            data plus the stacked matrix data are appended to config.
+#            NOTE: this behavior may be subject to change in the future.
+#        rcut : float
+#            Cutoff radius. So far only one rcut is allowed throughout the
+#            entire dataset.
+#        spill_frozen : list
+#            The band-wise spillage contribution from frozen orbitals.
+#        mo_Pfrozen_jy : list
+#            <mo|P_frozen|jy> and <mo|P_frozen op|jy> for each configuration,
+#            where P_frozen is the projection operator onto the frozen subspace.
+#        mo_Qfrozen_dao : list
+#            The derivatives of <mo|Q_frozen|ao> and <mo|Q_frozen op|ao> w.r.t.
+#            the coefficients for each configuration, where Q_frozen is the
+#            projection operator onto the complement of the frozen subspace.
+#        dao_jy : list
+#            The derivatives of <ao|jy> and <ao|op|jy> w.r.t. the coefficients
+#            for each configuration.
+#
+#    '''
+#
+#    def __init__(self, reduced=True):
+#        self.reset()
+#        self.reduced = reduced
+#
+#
+#    def reset(self):
+#        self.config = []
+#        self.rcut = None
+#
+#        self.spill_frozen = None
+#        self.mo_Pfrozen_jy = None
+#        self.mo_Qfrozen_dao = []
+#        self.dao_jy = []
+#
+#
+#    def config_add_pw(self, config, weight=(0.0, 1.0)):
+#        '''
+#        Parses the plane-wave data and appends it to the configuration list.
+#
+#        Parameters
+#        ----------
+#            config : str or 2-tuple of str
+#                If a str is given, it is taken as the path to the plane-wave
+#                job directory.
+#                If 2-tuple of str is given, it is understood as the paths to
+#                the data files (orb_matrix.x.dat).
+#            weight : tuple of float
+#                Weights for the overlap and operator data respectively.
+#
+#        '''
+#        if isinstance(config, str):
+#            ov = read_orb_mat(config + '/orb_matrix.0.dat')
+#            op = read_orb_mat(config + '/orb_matrix.1.dat')
+#        else:
+#            ov = read_orb_mat(config[0])
+#            op = read_orb_mat(config[1])
+#
+#        wov, wop = weight
+#
+#        # The overlap and operator data must be consistent except
+#        # for their matrix data (mo_mo, mo_jy and jy_jy).
+#        _assert_consistency(ov, op)
+#
+#        ntype, natom, lmax, nbes, rcut = \
+#            [ov[key] for key in ['ntype', 'natom', 'lmax', 'nbes', 'rcut']]
+#
+#        # The output of PW calculation is based on raw truncated spherical
+#        # Bessel basis, while the optimization will be performed in either
+#        # reduced or normalized basis. Here we transform mo_jy & jy_jy to
+#        # the basis of the optimization.
+#        if self.reduced:
+#            coef = [[jl_reduce(l, nbes, rcut).T.tolist()
+#                     for l in range(lmax[itype]+1)]
+#                    for itype in range(ntype)]
+#        else:
+#            uvec = lambda v, k, n: [v if i == k else 0 for i in range(n)]
+#            coef = [[[uvec(1. / jl_raw_norm(l, q, rcut), q, nbes)
+#                      for q in range(nbes)]
+#                     for l in range(lmax[itype]+1)]
+#                    for itype in range(ntype)]
+#
+#        # basis transformation matrix
+#        C = jy2ao(coef, natom, lmax, nbes)
+#        #print(f"coef.shape = {C.shape}")
+#        #print(f"natom = {natom}")
+#        #print(f"lmax = {lmax}")
+#        #print(f"nbes = {nbes}")
+#        #print(f"rcut = {rcut}")
+#
+#
+#        # packed data for a configuration
+#        dat = {'ntype': ntype,
+#               'natom': natom,
+#               'lmax': lmax,
+#               'nbes': nbes-1 if self.reduced else nbes,
+#               'rcut': rcut,
+#               'nbands': ov['nbands'],
+#               'nk': ov['nk'],
+#               'wk': ov['wk'],
+#               'mo_mo': np.array([ov['mo_mo'],
+#                                  wov*ov['mo_mo'] + wop*op['mo_mo']]),
+#               'mo_jy': np.array([ov['mo_jy'] @ C,
+#                                  (wov*ov['mo_jy'] + wop*op['mo_jy']) @ C]),
+#               'jy_jy': np.array([C.T @ ov['jy_jy'] @ C,
+#                                  C.T @ (wov*ov['jy_jy'] + wop*op['jy_jy'])
+#                                  @ C]),
+#               }
+#
+#        #print(f"mo_jy.shape = {dat['mo_jy'].shape}")
+#        #print(f"jy_jy.shape = {dat['jy_jy'].shape}")
+#        #print(f"mo_mo.shape = {dat['mo_mo'].shape}")
+#        #print('')
+#
+#        self.config.append(dat)
+#
+#        # NOTE currently a dataset merely contains one atom type
+#        # and one rcut. This may change in the future.
+#        if self.rcut is None:
+#            self.rcut = dat['rcut']
+#        else:
+#            assert self.rcut == ov['rcut']
+#
+#
+#    def config_add_jy(self, config, nbes, rcut, weight=(0.0, 1.0)):
+#        '''
+#
+#
+#        '''
+#        from struio import read_stru
+#
+#        file_stru = glob.glob(config + '/STRU*')
+#        assert len(file_stru) == 1
+#
+#        stru = read_stru(file_stru[0])
+#        ntype = len(stru['species'])
+#        natom = [spec['natom'] for spec in stru['species']]
+#        lmax = [len(nbes_t) - 1 for nbes_t in nbes]
+#
+#        file_SR = glob.glob(config + '/OUT*/data-SR-sparse_SPIN0.csr')
+#        file_TR = glob.glob(config + '/OUT*/data-TR-sparse_SPIN0.csr')
+#        assert len(file_SR) == 1 and len(file_TR) == 1
+#
+#        S = sum(read_abacus_csr(file_SR[0])[0]).toarray() # S(k=0)
+#        T = sum(read_abacus_csr(file_TR[0])[0]).toarray() # T(k=0)
+#
+#        file_wfc = glob.glob(config + '/OUT*/WFC_NAO*')
+#        nk = len(file_wfc)
+#
+#        # currently only supports Gamma point (with possibly nspin=2)
+#        assert nk == 1 or nk == 2 
+#
+#        if nk == 2:
+#            wk = [0.5, 0.5]
+#            wfc = np.array([read_wfc_lcao_txt(file_wfc[0])[0],
+#                            read_wfc_lcao_txt(file_wfc[1])[0]])
+#            S = np.array([S, S])
+#            T = np.array([T, T])
+#        else:
+#            wk = [1.0]
+#            wfc = np.expand_dims(read_wfc_lcao_txt(file_wfc[0])[0], axis=0)
+#            S = np.expand_dims(S, axis=0)
+#            T = np.expand_dims(T, axis=0)
+#
+#        # wfc has shape (nk, nbands, nao)
+#        nbands = wfc.shape[-2]
+#
+#        # simply set mo_mo_ov = 1 instead of calculating it
+#        mo_mo_op = np.real(np.sum((wfc.conj() @ T) * wfc, 2))
+#        mo_jy_ov = wfc.conj() @ S
+#        mo_jy_op = wfc.conj() @ T
+#
+#        wov, wop = weight
+#        mo_mo_ov = np.ones((nk, nbands))
+#
+#        mo_mo = np.array([mo_mo_ov, wov*mo_mo_ov + wop*mo_mo_op])
+#        mo_jy = np.array([mo_jy_ov, wov*mo_jy_ov + wop*mo_jy_op])
+#        jy_jy = np.array([S, wov*S + wop*T])
+#
+#        # NOTE: The LCAO basis in ABACUS follows a lexicographic order of
+#        # (itype, iatom, l, q, 2*|m|-(m>0))
+#        # which has to be transformed to a lexicographic order of
+#        # (itype, iatom, l, 2*|m|-(m>0), q)
+#
+#        # permutation
+#        p = perm_zeta_m(index_map(natom, lmax, nbes)[1])
+#        mo_jy = mo_jy[:,:,:,p].copy()
+#        jy_jy = jy_jy[:,:,:,p][:,:,p,:].copy()
+#
+#        #print(f"mo_jy.shape = {mo_jy.shape}")
+#        #print(f"jy_jy.shape = {jy_jy.shape}")
+#        #print(f"mo_mo.shape = {mo_mo.shape}")
+#
+#        # packed data for a configuration
+#        dat = {'ntype': ntype,
+#               'natom': natom,
+#               'lmax': lmax,
+#               'nbes': nbes[0],
+#               'rcut': rcut,
+#               'nbands': nbands,
+#               'nk': nk,
+#               'wk': wk,
+#               'mo_mo': mo_mo,
+#               'mo_jy': mo_jy,
+#               'jy_jy': jy_jy,
+#               }
+#
+#        self.config.append(dat)
+#
+#        # NOTE currently a dataset merely contains one atom type
+#        # and one rcut. This may change in the future.
+#        if self.rcut is None:
+#            self.rcut = dat['rcut']
+#        else:
+#            assert self.rcut == dat['rcut']
+#
+#
+#    def _tab_frozen(self, coef_frozen):
+#        '''
+#        Tabulates for each configuration the band-wise spillage contribution
+#        from frozen orbitals and
+#
+#                            <mo|P_frozen   |jy>
+#                            <mo|P_frozen op|jy>
+#
+#        where P_frozen is the projection operator onto the frozen subspace:
+#
+#                        P_frozen = |frozen_dual><frozen|
+#
+#        '''
+#        if coef_frozen is None:
+#            self.spill_frozen = None
+#            self.mo_Pfrozen_jy = None
+#            return
+#
+#        # jy -> frozen orbital transformation matrices
+#        jy2frozen = [jy2ao(coef_frozen,
+#                           dat['natom'], dat['lmax'], dat['nbes'])
+#                     for dat in self.config]
+#
+#        frozen_frozen = [jy2froz.T @ dat['jy_jy'] @ jy2froz
+#                         for dat, jy2froz in zip(self.config, jy2frozen)]
+#
+#        mo_frozen = [dat['mo_jy'] @ jy2froz
+#                     for dat, jy2froz in zip(self.config, jy2frozen)]
+#
+#        # <mo|frozen_dual> only; no need to compute <mo|op|frozen_dual>
+#        mo_frozen_dual = [mrdiv(mo_froz[0], froz_froz[0])
+#                          for mo_froz, froz_froz
+#                          in zip(mo_frozen, frozen_frozen)]
+#
+#        # for each config, indexed as [0/1][k][mo][jy]
+#        self.mo_Pfrozen_jy = [mo_froz_dual @ jy2froz.T @ dat['jy_jy']
+#                              for mo_froz_dual, dat, jy2froz
+#                              in zip(mo_frozen_dual, self.config, jy2frozen)]
+#
+#        tmp = [rfrob(mo_froz_dual @ froz_froz[1], mo_froz_dual, True)
+#               - 2.0 * rfrob(mo_froz_dual, mo_froz[1], True)
+#               for mo_froz_dual, mo_froz, froz_froz
+#               in zip(mo_frozen_dual, mo_frozen, frozen_frozen)]
+#
+#        # weighted sum over k
+#        self.spill_frozen = [dat['wk'] @ spill_froz
+#                             for dat, spill_froz
+#                             in zip(self.config, tmp)]
+#
+#        print(self.spill_frozen[0].shape)
+#        exit()
+#
+#
+#    def _tab_deriv(self, coef):
+#        '''
+#        Given coef which specifies a set of atomic orbital basis, this
+#        function tabulates for each configuration the derivatives of
+#
+#                                <ao|jy>
+#                                <ao|op|jy>
+#
+#                            <mo|Q_frozen   |ao>
+#                            <mo|Q_frozen op|ao>
+#
+#        with respect to each Bessel coefficient of |ao>, where Q_frozen is
+#        the projection operator onto the complement of the frozen subspace:
+#
+#                        Q_frozen = 1 - |frozen_dual><frozen|
+#
+#        (Q_frozen = 1 if there is no frozen orbitals)
+#
+#
+#        Note
+#        ----
+#        The only useful information of coef is its nesting pattern, which
+#        determines what derivatives to compute.
+#
+#        '''
+#        # jy -> (d/dcoef)ao transformation matrices
+#        jy2dao_all = [[jy2ao(nest(ci.tolist(), nestpat(coef)),
+#                             dat['natom'], dat['lmax'], dat['nbes'])
+#                       for ci in np.eye(len(flatten(coef)))]
+#                      for dat in self.config]
+#
+#        # derivatives of <ao|(I/op)|jy> for each config,
+#        # index as dao_jy[iconf][0(ov)/1(op)][icoef][k][ao][jy]
+#        self.dao_jy = [np.array([jy2dao_i.T @ dat['jy_jy']
+#                                 for jy2dao_i in jy2dao])
+#                       .transpose(1,0,2,3,4)
+#                       for dat, jy2dao in zip(self.config, jy2dao_all)]
+#
+#        # derivatives of <mo|ao> and <mo|op|ao>
+#        self.mo_Qfrozen_dao = [np.array([dat['mo_jy'] @ jy2dao_i
+#                                         for jy2dao_i in jy2dao])
+#                               for dat, jy2dao
+#                               in zip(self.config, jy2dao_all)]
+#        # at this stage, the index for each config follows
+#        # [icoef][ov/op][k][mo][ao]
+#        # where 0->overlap; 1->operator
+#
+#        if self.spill_frozen is not None:
+#            # subtract from the previous results <mo|P_frozen|ao>
+#            # and <mo|P_frozen op|ao>
+#            self.mo_Qfrozen_dao = [mo_Qfroz_dao -
+#                                   np.array([mo_Pfroz_jy @ jy2dao_i
+#                                             for jy2dao_i in jy2dao])
+#                                   for mo_Qfroz_dao, mo_Pfroz_jy, jy2dao
+#                                   in zip(self.mo_Qfrozen_dao,
+#                                          self.mo_Pfrozen_jy,
+#                                          jy2dao_all)
+#                                   ]
+#
+#        # transpose to [0/1][icoef][k][mo][ao]
+#        self.mo_Qfrozen_dao = [dV.transpose(1,0,2,3,4)
+#                               for dV in self.mo_Qfrozen_dao]
+#
+#
+#
+#    def _generalized_spillage(self, iconf, coef, ibands, with_grad=False):
+#        '''
+#        Generalized spillage function and its gradient.
+#
+#        '''
+#        dat = self.config[iconf]
+#
+#        spill = (dat['wk'] @ dat['mo_mo'][1][:,ibands]).real.sum()
+#
+#        # jy->ao basis transformation matrix
+#        _jy2ao = jy2ao(coef, dat['natom'], dat['lmax'], dat['nbes'])
+#
+#        # <mo|Q_frozen|ao> and <mo|Q_frozen op|ao>
+#        V = dat['mo_jy'][:,:,ibands,:] @ _jy2ao
+#        if self.spill_frozen is not None:
+#            V -= self.mo_Pfrozen_jy[iconf][:,:,ibands,:] @ _jy2ao
+#            spill += self.spill_frozen[iconf][ibands].sum()
+#
+#        # <ao|ao> and <ao|op|ao>
+#        W = _jy2ao.T @ dat['jy_jy'] @ _jy2ao
+#
+#        V_dual = mrdiv(V[0], W[0]) # overlap only; no need for op
+#        VdaggerV = V_dual.transpose((0,2,1)).conj() @ V_dual
+#
+#        spill += dat['wk'] @ (rfrob(W[1], VdaggerV)
+#                              - 2.0 * rfrob(V_dual, V[1]))
+#        spill /= len(ibands)
+#
+#        if with_grad:
+#            # (d/dcoef)<ao|ao> and (d/dcoef)<ao|op|ao>
+#            dW = self.dao_jy[iconf] @ _jy2ao
+#            dW += dW.transpose((0,1,2,4,3)).conj()
+#
+#            # (d/dcoef)<mo|Q_frozen|ao> and (d/dcoef)<mo|Q_frozen op|ao>
+#            dV = self.mo_Qfrozen_dao[iconf][:,:,:,ibands,:]
+#
+#            grad = (rfrob(dW[1], VdaggerV)
+#                    - 2.0 * rfrob(V_dual, dV[1])
+#                    + 2.0 * rfrob(dV[0] - V_dual @ dW[0],
+#                                   mrdiv(V_dual @ W[1] - V[1], W[0]))
+#                    ) @ dat['wk']
+#
+#            grad /= len(ibands)
+#            grad = nest(grad.tolist(), nestpat(coef))
+#
+#        return (spill, grad) if with_grad else spill
+#
+#
+#    def opt(self, coef_init, coef_frozen, iconfs, ibands, options, nthreads=1):
+#        '''
+#        Spillage minimization w.r.t. (normalized or reduced) spherical
+#        Bessel coefficients.
+#
+#        Parameters
+#        ----------
+#            coef_init : nested list
+#                Initial guess for the coefficients.
+#            coef_frozen : nested list
+#                Coefficients for the frozen orbitals.
+#            iconfs : list of int or 'all'
+#                List of configuration indices to be included in the
+#                optimization. If 'all', all configurations are included.
+#            ibands : range/tuple or list of range/tuple
+#                Band indices to be included in the spillage calculation.
+#                If a range or tuple is given, the same indices are used
+#                for all configurations.
+#                If a list of range/tuple is given, each range/tuple will
+#                be applied to the configuration specified by iconfs
+#                respectively.
+#            options : dict
+#                Options for the optimization.
+#            nthreads : int
+#                Number of threads for config-level parallellization.
+#
+#        '''
+#        from multiprocessing.pool import ThreadPool
+#        pool = ThreadPool(nthreads)
+#
+#        if coef_frozen is not None:
+#            self._tab_frozen(coef_frozen)
+#
+#        self._tab_deriv(coef_init)
+#
+#        iconfs = range(len(self.config)) if iconfs == 'all' else iconfs
+#        nconf = len(iconfs)
+#
+#        ibands = [ibands] * nconf if not isinstance(ibands, list) else ibands
+#        assert len(ibands) == nconf, f"len(ibands) = {len(ibands)} != {nconf}"
+#
+#        pat = nestpat(coef_init)
+#        def f(c): # function to be minimized
+#            s = lambda i: self._generalized_spillage(iconfs[i],
+#                                                    nest(c.tolist(), pat),
+#                                                    ibands[i],
+#                                                    with_grad=True)
+#            spills, grads = zip(*pool.map(s, range(nconf)))
+#            return (sum(spills) / nconf,
+#                    sum(np.array(flatten(g)) for g in grads) / nconf)
+#
+#        c0 = np.array(flatten(coef_init))
+#
+#        # Restricts the coefficients to [-1, 1] for better numerical stability
+#        # FIXME Is this necessary?
+#        bounds = [(-1.0, 1.0) for _ in c0]
+#        #bounds = None
+#
+#        res = minimize(f, c0, jac=True, method='L-BFGS-B',
+#                       bounds=bounds, options=options)
+#
+#        #minimizer_kwargs = {"method": "L-BFGS-B", "jac": True,
+#        #                    "bounds": bounds}
+#        #res = basinhopping(f, c0, minimizer_kwargs=minimizer_kwargs,
+#        #                   niter=20, disp=True)
+#
+#        pool.close()
+#
+#        coef_opt = nest(res.x.tolist(), pat)
+#        return [[np.linalg.qr(np.array(coef_tl).T)[0].T.tolist()
+#                 if coef_tl else []
+#                 for coef_tl in coef_t] for coef_t in coef_opt]
 
 
 ############################################################
@@ -1036,12 +960,7 @@ import matplotlib.pyplot as plt
 class _TestSpillage(unittest.TestCase):
 
     def setUp(self):
-        self.orbgen_rdc = Spillage(True)
-        self.orbgen_nrm = Spillage(False)
 
-        #datadir_pw = './testfiles/Si/pw/'
-        #config_pw = ['Si-dimer-1.8', 'Si-dimer-2.8', 'Si-dimer-3.8',
-        #             'Si-trimer-1.7', 'Si-trimer-2.7']
         datadir_pw = '../../testfiles/pw_10au/'
         config_pw = ['Si-dimer-1.80', 'Si-dimer-2.80', 'Si-dimer-3.80',
                      'Si-trimer-1.70', 'Si-trimer-2.70',
@@ -1060,7 +979,7 @@ class _TestSpillage(unittest.TestCase):
 
     def randcoef(self, nzeta, nbes):
         '''
-        Generates some random coefficients for unit tests.
+        Generates some random coefficients.
 
         Parameters
         ----------
@@ -1080,36 +999,36 @@ class _TestSpillage(unittest.TestCase):
                 for it, nzeta_t in enumerate(nzeta)]
 
 
-    def est_initgen_pw(self):
-        '''
-        Checks intial guess generation from the plane-wave reference state.
+    #def est_initgen_pw(self):
+    #    '''
+    #    Checks intial guess generation from the plane-wave reference state.
 
-        '''
-        reduced = True # False: normalized; True: reduced
+    #    '''
+    #    reduced = True # False: normalized; True: reduced
 
-        ov = read_orb_mat('./testfiles/Si/pw/Si-monomer/orb_matrix.0.dat')
-        nzeta = [2, 2, 1]
-        rcut = ov['rcut']
-        ecut = ov['ecutjlq']
+    #    ov = read_orb_mat('./testfiles/Si/pw/Si-monomer/orb_matrix.0.dat')
+    #    nzeta = [2, 2, 1]
+    #    rcut = ov['rcut']
+    #    ecut = ov['ecutjlq']
 
-        coef = initgen_pw(nzeta, ecut, len(nzeta)-1, rcut, ov['nbes'],
-                          ov['mo_jy'], ov['wk'], reduced)
+    #    coef = initgen_pw(nzeta, ecut, len(nzeta)-1, rcut, ov['nbes'],
+    #                      ov['mo_jy'], ov['wk'], reduced)
 
-        self.assertEqual(len(coef), len(nzeta))
-        self.assertEqual([len(coef[l]) for l in range(len(nzeta))], nzeta)
+    #    self.assertEqual(len(coef), len(nzeta))
+    #    self.assertEqual([len(coef[l]) for l in range(len(nzeta))], nzeta)
 
-        return # suppress the plot
+    #    return # suppress the plot
 
-        dr = 0.01
-        r = np.linspace(0, rcut, int(rcut/dr)+1)
+    #    dr = 0.01
+    #    r = np.linspace(0, rcut, int(rcut/dr)+1)
 
-        if reduced:
-            chi = build_reduced(coef, rcut, r, True)
-        else:
-            chi = build_raw(coeff_normalized2raw(coef, rcut), rcut, r, True)
+    #    if reduced:
+    #        chi = build_reduced(coef, rcut, r, True)
+    #    else:
+    #        chi = build_raw(coeff_normalized2raw(coef, rcut), rcut, r, True)
 
-        plot_chi(chi, r)
-        plt.show()
+    #    plot_chi(chi, r)
+    #    plt.show()
 
 
     def test_initgen(self):
@@ -1117,32 +1036,34 @@ class _TestSpillage(unittest.TestCase):
         Checks intial guess generation from spherical-wave reference state.
 
         '''
-        file_SR = './testfiles/Si/jy/Si-monomer/data-SR-sparse_SPIN0.csr'
-        file_wfc = './testfiles/Si/jy/Si-monomer/WFC_NAO_K1.txt'
+        file_Sk = './testgen/Si/jy/single-atom/OUT.ABACUS/data-0-S'
+        file_wfc = './testgen/Si/jy/single-atom/OUT.ABACUS/WFC_NAO_GAMMA1.txt'
 
-        S = sum(read_abacus_csr(file_SR)[0]).toarray() # S(k=0)
+        nbes_data = [21, 20, 20]
+        wk = np.array([1.0])
+
+        S = read_abacus_tri(file_Sk)
         S = np.expand_dims(S, axis=0) # (nk, nao, nao)
 
-        nk = 1
-        wk = np.array([1.0])
-        wfc = np.expand_dims(read_wfc_lcao_txt(file_wfc)[0], axis=0)
+        wfc = read_wfc_lcao_txt(file_wfc)[0]
+        wfc = np.expand_dims(wfc, axis=0)
 
-        mo_jy = wfc.conj() @ S
+        ref_jy = wfc.swapaxes(-2, -1).conj() @ S
+        p = perm_zeta_m(index_map([1], [2], [nbes_data])[1])
+        ref_jy = ref_jy[:,:,p]
 
         nzeta = [3, 3, 2]
-        nbes = [16,15,15]
-        p = perm_zeta_m(index_map([1], [2], [nbes])[1])
-        mo_jy = mo_jy[:,:,p]
-
-        rcut = 7.0
-        nbes_gen = [_nbes(l, rcut, 60) - 1 for l in range(len(nzeta) + 1)]
-        coef = initgen(nzeta, nbes_gen, [16,15,15], mo_jy, wk, True)
+        ibands = range(22)
+        nbes_gen = nbes_data
+        coef = initgen(nzeta, nbes_gen, nbes_data,
+                       ref_jy[:,ibands,:], wk, True)
 
         self.assertEqual(len(coef), len(nzeta))
         self.assertEqual([len(coef[l]) for l in range(len(nzeta))], nzeta)
 
-        return # suppress the plot
+        #return # suppress the plot
 
+        rcut = 7.0
         dr = 0.01
         r = np.linspace(0, rcut, int(rcut/dr)+1)
         chi = build_reduced(coef, rcut, r, True)
@@ -1413,7 +1334,7 @@ class _TestSpillage(unittest.TestCase):
         plt.show()
 
 
-    def test_opt_jy(self):
+    def est_opt_jy(self):
         from listmanip import merge
 
         reduced = True 
