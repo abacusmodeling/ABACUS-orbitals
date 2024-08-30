@@ -6,7 +6,7 @@ from SIAB.spillage.index import index_map, perm_zeta_m, _nao
 from SIAB.spillage.linalg_helper import mrdiv, rfrob
 from SIAB.spillage.basistrans import jy2ao
 from SIAB.spillage.datparse import read_orb_mat, _assert_consistency, \
-        read_wfc_lcao_txt, read_abacus_tri
+        read_wfc_lcao_txt, read_abacus_tri, read_abacus_kpoints
 
 import glob
 import numpy as np
@@ -155,8 +155,9 @@ def _overlap_spillage(natom, lmax, nbes,
             Note that len(coef[itype][l][zeta]) must not be larger than
             nbes[itype][l]; coef[itype][l][zeta] will be padded with zeros
             if len(coef[itype][l][zeta]) < nbes[itype][l].
-        ibands : list of int or range
+        ibands : list of int or range or 'all'
             Band indices to be included in the spillage calculation.
+            If 'all', all bands are included.
         coef_frozen : nested list (optional)
             The coefficients of frozen pseudo-atomic orbitals in terms of
             the spherical wave basis. The format is the same as coef.
@@ -169,6 +170,9 @@ def _overlap_spillage(natom, lmax, nbes,
     as a cross-check for the implementation of the generalized spillage.
 
     '''
+    if ibands == 'all':
+        ibands = range(ref_ref.shape[1])
+
     spill = (wk @ ref_ref[:,ibands]).real.sum()
 
     ref_jy = ref_jy[:,ibands,:]
@@ -959,6 +963,163 @@ import matplotlib.pyplot as plt
 
 class _TestSpillage(unittest.TestCase):
 
+    def test_initgen_gamma(self):
+        path = './testgen/Si/jy-7au/monomer-gamma/OUT.ABACUS/'
+        wk = np.array([1.0])
+
+        file_Sk = f'{path}/data-0-S'
+        file_wfc = f'{path}/WFC_NAO_GAMMA1.txt'
+
+        S = read_abacus_tri(file_Sk)
+        S = np.expand_dims(S, axis=0) # (nk, nao, nao)
+
+        wfc = read_wfc_lcao_txt(file_wfc)[0]
+        wfc = np.expand_dims(wfc, axis=0)
+
+        ref_jy = wfc.swapaxes(-2, -1).conj() @ S
+
+        nbes_data = [21, 20, 20]
+        p = perm_zeta_m(index_map([1], [2], [nbes_data])[1])
+        ref_jy = ref_jy[:,:,p]
+
+        nzeta = [3, 3, 2]
+        ibands = range(22)
+        nbes_gen = nbes_data
+        coef = initgen(nzeta, nbes_gen, nbes_data,
+                       ref_jy[:,ibands,:], wk, True)
+
+        self.assertEqual(len(coef), len(nzeta))
+        self.assertEqual([len(coef_l) for coef_l in coef], nzeta)
+
+        return # suppress the plot
+
+        rcut = 7.0
+        dr = 0.01
+        r = np.linspace(0, rcut, int(rcut/dr)+1)
+        chi = build_reduced(coef, rcut, r, True)
+
+        plot_chi(chi, r)
+        plt.show()
+
+
+    def test_initgen_k(self):
+        path = './testgen/Si/jy-7au/monomer-k/OUT.ABACUS/'
+        k, wk = read_abacus_kpoints(f'{path}/kpoints')
+        nk = len(k)
+
+        S = []
+        wfc = []
+        for ik in range(nk):
+            file_Sk = f'{path}/data-{ik}-S'
+            file_wfc = f'{path}/WFC_NAO_K{ik+1}.txt'
+
+            S.append(read_abacus_tri(file_Sk))
+            wfc.append(read_wfc_lcao_txt(file_wfc)[0])
+
+        S = np.array(S)
+        wfc = np.array(wfc)
+
+        ref_jy = wfc.swapaxes(-2, -1).conj() @ S
+
+        nbes_data = [21, 20, 20]
+        p = perm_zeta_m(index_map([1], [2], [nbes_data])[1])
+        ref_jy = ref_jy[:,:,p]
+
+        nzeta = [3, 3, 2]
+        ibands = range(22)
+        nbes_gen = nbes_data
+        coef = initgen(nzeta, nbes_gen, nbes_data,
+                       ref_jy[:,ibands,:], wk, True)
+
+        self.assertEqual(len(coef), len(nzeta))
+        self.assertEqual([len(coef_l) for coef_l in coef], nzeta)
+
+        return # suppress the plot
+
+        rcut = 7.0
+        dr = 0.01
+        r = np.linspace(0, rcut, int(rcut/dr)+1)
+        chi = build_reduced(coef, rcut, r, True)
+
+        plot_chi(chi, r)
+        plt.show()
+
+
+    def est_overlap_spillage_gamma(self):
+        path = './testgen/Si/jy-7au/dimer-1.8-gamma/OUT.ABACUS/'
+        wk = np.array([1.0])
+
+        file_Sk = f'{path}/data-0-S'
+        file_wfc = f'{path}/WFC_NAO_GAMMA1.txt'
+
+        S = read_abacus_tri(file_Sk)
+        S = np.expand_dims(S, axis=0) # (nk, nao, nao)
+
+        wfc = read_wfc_lcao_txt(file_wfc)[0]
+        wfc = np.expand_dims(wfc, axis=0)
+
+        jy_jy = S
+        ref_jy = wfc.swapaxes(-2, -1).conj() @ S
+        ref_ref = np.sum(wfc.conj() * (S @ wfc), axis=1).real
+
+        natom = [2]
+        lmax = [2]
+        nbes = [21, 20, 20]
+        p = perm_zeta_m(index_map(natom, lmax, [nbes])[1])
+        ref_jy = ref_jy[:,:,p].copy()
+        jy_jy = jy_jy[:,:,p][:,p,:].copy()
+
+        nzeta = [3, 3, 2]
+        ibands = 'all'
+        coef = [[np.random.randn(nzeta[l], nbes[l]).tolist()
+                 for l in range(lmax_t+1)]
+                for lmax_t in lmax]
+
+        spill = _overlap_spillage(natom, lmax, nbes,
+                                  jy_jy, ref_jy, ref_ref, wk,
+                                  coef, ibands, None)
+
+
+    def test_overlap_spillage_k(self):
+        path = './testgen/Si/jy-7au/dimer-1.8-k/OUT.ABACUS/'
+
+        wk = np.array(read_abacus_kpoints(f'{path}/kpoints')[1])
+        nk = len(wk)
+
+        S = []
+        wfc = []
+        for ik in range(nk):
+            file_Sk = f'{path}/data-{ik}-S'
+            file_wfc = f'{path}/WFC_NAO_K{ik+1}.txt'
+
+            S.append(read_abacus_tri(file_Sk))
+            wfc.append(read_wfc_lcao_txt(file_wfc)[0])
+
+        S = np.array(S)
+        wfc = np.array(wfc)
+
+        jy_jy = S
+        ref_jy = wfc.swapaxes(-2, -1).conj() @ S
+        ref_ref = np.sum(wfc.conj() * (S @ wfc), axis=1).real
+
+        natom = [2]
+        lmax = [2]
+        nbes = [21, 20, 20]
+        p = perm_zeta_m(index_map(natom, lmax, [nbes])[1])
+        ref_jy = ref_jy[:,:,p].copy()
+        jy_jy = jy_jy[:,:,p][:,p,:].copy()
+
+        nzeta = [3, 3, 2]
+        ibands = 'all'
+        coef = [[np.random.randn(nzeta[l], nbes[l]).tolist()
+                 for l in range(lmax_t+1)]
+                for lmax_t in lmax]
+
+        spill = _overlap_spillage(natom, lmax, nbes,
+                                  jy_jy, ref_jy, ref_ref, wk,
+                                  coef, ibands, None)
+
+
     def setUp(self):
 
         datadir_pw = '../../testfiles/pw_10au/'
@@ -1031,47 +1192,7 @@ class _TestSpillage(unittest.TestCase):
     #    plt.show()
 
 
-    def test_initgen(self):
-        '''
-        Checks intial guess generation from spherical-wave reference state.
-
-        '''
-        file_Sk = './testgen/Si/jy/single-atom/OUT.ABACUS/data-0-S'
-        file_wfc = './testgen/Si/jy/single-atom/OUT.ABACUS/WFC_NAO_GAMMA1.txt'
-
-        nbes_data = [21, 20, 20]
-        wk = np.array([1.0])
-
-        S = read_abacus_tri(file_Sk)
-        S = np.expand_dims(S, axis=0) # (nk, nao, nao)
-
-        wfc = read_wfc_lcao_txt(file_wfc)[0]
-        wfc = np.expand_dims(wfc, axis=0)
-
-        ref_jy = wfc.swapaxes(-2, -1).conj() @ S
-        p = perm_zeta_m(index_map([1], [2], [nbes_data])[1])
-        ref_jy = ref_jy[:,:,p]
-
-        nzeta = [3, 3, 2]
-        ibands = range(22)
-        nbes_gen = nbes_data
-        coef = initgen(nzeta, nbes_gen, nbes_data,
-                       ref_jy[:,ibands,:], wk, True)
-
-        self.assertEqual(len(coef), len(nzeta))
-        self.assertEqual([len(coef[l]) for l in range(len(nzeta))], nzeta)
-
-        #return # suppress the plot
-
-        rcut = 7.0
-        dr = 0.01
-        r = np.linspace(0, rcut, int(rcut/dr)+1)
-        chi = build_reduced(coef, rcut, r, True)
-
-        plot_chi(chi, r)
-        plt.show()
-
-
+    
     def est_config_add_pw(self):
         '''
         Checks if config_add_pw loads & transforms data correctly.
