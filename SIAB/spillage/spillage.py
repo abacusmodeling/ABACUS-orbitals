@@ -6,7 +6,8 @@ from SIAB.spillage.index import index_map, perm_zeta_m, _nao
 from SIAB.spillage.linalg_helper import mrdiv, rfrob
 from SIAB.spillage.basistrans import jy2ao
 from SIAB.spillage.datparse import read_orb_mat, _assert_consistency, \
-        read_wfc_lcao_txt, read_abacus_tri, read_abacus_kpoints
+        read_wfc_lcao_txt, read_abacus_tri, read_running_scf_log, \
+        read_abacus_kpoints
 
 import glob
 import numpy as np
@@ -333,7 +334,7 @@ class Spillage:
                     np.array([dat['ref_jy'] @ jy2dao_i
                               for jy2dao_i in jy2dao])
 
-            if self.spill_frozen[iconf] is not None:
+            if self.spill_frozen is not None:
                 self.ref_Qfrozen_dao[iconf] -= \
                         np.array([self.ref_Pfrozen_jy[iconf] @ jy2dao_i
                                   for jy2dao_i in jy2dao])
@@ -478,7 +479,7 @@ class Spillage_jy(Spillage):
 
     '''
 
-    def config_add(self, outdir):
+    def config_add(self, outdir, weight=(0.0, 1.0)):
         '''
         Adds a configuration by loading data from an OUT.{suffix} dir.
 
@@ -493,108 +494,70 @@ class Spillage_jy(Spillage):
         for details of the dict.
 
         '''
-        print(f'nk = {nk}')
+
+        dat = read_running_scf_log(outdir + '/running_scf.log')
+        nspin, wk, natom, nbes = [dat[key] for key in
+                                  ['nspin', 'wk', 'natom', 'nzeta']]
+
+        print(f'wk = {wk}')
         print(f'nspin = {nspin}')
 
+        nk = len(wk)
+        S = [read_abacus_tri(f'{outdir}/data-{ik}-S') for ik in range(nk)]
+        T = [read_abacus_tri(f'{outdir}/data-{ik}-T') for ik in range(nk)]
 
-        # natom, nbes, wk(, nspin), jy_jy, ref_jy, ref_ref
+        wfc_suffix = 'GAMMA' if nk == 1 else 'K'
+        C = [read_wfc_lcao_txt(f'{outdir}/WFC_NAO_{wfc_suffix}{ik+1}.txt')[0]
+             for ik in range(nspin * nk)]
 
+        if nspin == 2:
+            # replicate S & T for spin-up and spin-down
+            S = [*S, *S]
+            T = [*T, *T]
+            wk = [*wk, *wk]
 
+        S = np.array(S)
+        T = np.array(T)
+        C = np.array(C)
 
-#        from struio import read_stru
-#
-#        file_stru = glob.glob(config + '/STRU*')
-#        assert len(file_stru) == 1
-#
-#        stru = read_stru(file_stru[0])
-#        ntype = len(stru['species'])
-#        natom = [spec['natom'] for spec in stru['species']]
-#        lmax = [len(nbes_t) - 1 for nbes_t in nbes]
-#
-#        file_SR = glob.glob(config + '/OUT*/data-SR-sparse_SPIN0.csr')
-#        file_TR = glob.glob(config + '/OUT*/data-TR-sparse_SPIN0.csr')
-#        assert len(file_SR) == 1 and len(file_TR) == 1
-#
-#        S = sum(read_abacus_csr(file_SR[0])[0]).toarray() # S(k=0)
-#        T = sum(read_abacus_csr(file_TR[0])[0]).toarray() # T(k=0)
-#
-#        file_wfc = glob.glob(config + '/OUT*/WFC_NAO*')
-#        nk = len(file_wfc)
-#
-#        # currently only supports Gamma point (with possibly nspin=2)
-#        assert nk == 1 or nk == 2 
-#
-#        if nk == 2:
-#            wk = [0.5, 0.5]
-#            wfc = np.array([read_wfc_lcao_txt(file_wfc[0])[0],
-#                            read_wfc_lcao_txt(file_wfc[1])[0]])
-#            S = np.array([S, S])
-#            T = np.array([T, T])
-#        else:
-#            wk = [1.0]
-#            wfc = np.expand_dims(read_wfc_lcao_txt(file_wfc[0])[0], axis=0)
-#            S = np.expand_dims(S, axis=0)
-#            T = np.expand_dims(T, axis=0)
-#
-#        # wfc has shape (nk, nbands, nao)
-#        nbands = wfc.shape[-2]
-#
-#        # simply set mo_mo_ov = 1 instead of calculating it
-#        mo_mo_op = np.real(np.sum((wfc.conj() @ T) * wfc, 2))
-#        mo_jy_ov = wfc.conj() @ S
-#        mo_jy_op = wfc.conj() @ T
-#
-#        wov, wop = weight
-#        mo_mo_ov = np.ones((nk, nbands))
-#
-#        mo_mo = np.array([mo_mo_ov, wov*mo_mo_ov + wop*mo_mo_op])
-#        mo_jy = np.array([mo_jy_ov, wov*mo_jy_ov + wop*mo_jy_op])
-#        jy_jy = np.array([S, wov*S + wop*T])
-#
-#        # NOTE: The LCAO basis in ABACUS follows a lexicographic order of
-#        # (itype, iatom, l, q, 2*|m|-(m>0))
-#        # which has to be transformed to a lexicographic order of
-#        # (itype, iatom, l, 2*|m|-(m>0), q)
-#
-#        # permutation
-#        p = perm_zeta_m(index_map(natom, lmax, nbes)[1])
-#        mo_jy = mo_jy[:,:,:,p].copy()
-#        jy_jy = jy_jy[:,:,:,p][:,:,p,:].copy()
-#
-#        #print(f"mo_jy.shape = {mo_jy.shape}")
-#        #print(f"jy_jy.shape = {jy_jy.shape}")
-#        #print(f"mo_mo.shape = {mo_mo.shape}")
-#
-#        # packed data for a configuration
-#        dat = {'ntype': ntype,
-#               'natom': natom,
-#               'lmax': lmax,
-#               'nbes': nbes[0],
-#               'rcut': rcut,
-#               'nbands': nbands,
-#               'nk': nk,
-#               'wk': wk,
-#               'mo_mo': mo_mo,
-#               'mo_jy': mo_jy,
-#               'jy_jy': jy_jy,
-#               }
-#
-#        self.config.append(dat)
-#
+        print(f'S.shape = {S.shape}')
+        print(f'T.shape = {T.shape}')
+        print(f'C.shape = {C.shape}')
 
+        wov, wop = weight
+        ref_ov_ref = np.sum(C.conj() * (S @ C), -2)
+        ref_op_ref = np.sum(C.conj() * (T @ C), -2)
 
+        ref_ov_jy = C.swapaxes(-2, -1).conj() @ S
+        ref_op_jy = C.swapaxes(-2, -1).conj() @ T
 
+        ref_ref = np.array([ref_ov_ref, wov*ref_ov_ref + wop*ref_op_ref])
+        ref_jy  = np.array([ref_ov_jy , wov*ref_ov_jy  + wop*ref_op_jy ])
+        jy_jy   = np.array([S, wov*S + wop*T])
 
+        # NOTE: The LCAO basis in ABACUS follows a lexicographic order of
+        # (itype, iatom, l, q, mm) where mm = 2*|m|-(m>0), which will be
+        # transformed to a lexicographic order of (itype, iatom, l, mm, q)
+        lmax = [len(nbes_t) - 1 for nbes_t in nbes]
+        p = perm_zeta_m(index_map(natom, lmax, nbes)[1])
+        ref_jy = ref_jy[:,:,:,p].copy()
+        jy_jy = jy_jy[:,:,:,p][:,:,p,:].copy()
 
+        print(f"mo_jy.shape = {ref_jy.shape}")
+        print(f"jy_jy.shape = {jy_jy.shape}")
+        print(f"mo_mo.shape = {ref_ref.shape}")
 
+        # packed data for a configuration
+        dat = {
+                'natom': natom,
+                'nbes': nbes,
+                'wk': wk,
+                'ref_ref': ref_ref,
+                'ref_jy': ref_jy,
+                'jy_jy': jy_jy,
+                }
 
-
-
-
-
-
-
-
+        self.config.append(dat)
 
 
 #class Spillage:
@@ -738,338 +701,6 @@ class Spillage_jy(Spillage):
 #            assert self.rcut == ov['rcut']
 #
 #
-#    def config_add_jy(self, config, nbes, rcut, weight=(0.0, 1.0)):
-#        '''
-#
-#
-#        '''
-#        from struio import read_stru
-#
-#        file_stru = glob.glob(config + '/STRU*')
-#        assert len(file_stru) == 1
-#
-#        stru = read_stru(file_stru[0])
-#        ntype = len(stru['species'])
-#        natom = [spec['natom'] for spec in stru['species']]
-#        lmax = [len(nbes_t) - 1 for nbes_t in nbes]
-#
-#        file_SR = glob.glob(config + '/OUT*/data-SR-sparse_SPIN0.csr')
-#        file_TR = glob.glob(config + '/OUT*/data-TR-sparse_SPIN0.csr')
-#        assert len(file_SR) == 1 and len(file_TR) == 1
-#
-#        S = sum(read_abacus_csr(file_SR[0])[0]).toarray() # S(k=0)
-#        T = sum(read_abacus_csr(file_TR[0])[0]).toarray() # T(k=0)
-#
-#        file_wfc = glob.glob(config + '/OUT*/WFC_NAO*')
-#        nk = len(file_wfc)
-#
-#        # currently only supports Gamma point (with possibly nspin=2)
-#        assert nk == 1 or nk == 2 
-#
-#        if nk == 2:
-#            wk = [0.5, 0.5]
-#            wfc = np.array([read_wfc_lcao_txt(file_wfc[0])[0],
-#                            read_wfc_lcao_txt(file_wfc[1])[0]])
-#            S = np.array([S, S])
-#            T = np.array([T, T])
-#        else:
-#            wk = [1.0]
-#            wfc = np.expand_dims(read_wfc_lcao_txt(file_wfc[0])[0], axis=0)
-#            S = np.expand_dims(S, axis=0)
-#            T = np.expand_dims(T, axis=0)
-#
-#        # wfc has shape (nk, nbands, nao)
-#        nbands = wfc.shape[-2]
-#
-#        # simply set mo_mo_ov = 1 instead of calculating it
-#        mo_mo_op = np.real(np.sum((wfc.conj() @ T) * wfc, 2))
-#        mo_jy_ov = wfc.conj() @ S
-#        mo_jy_op = wfc.conj() @ T
-#
-#        wov, wop = weight
-#        mo_mo_ov = np.ones((nk, nbands))
-#
-#        mo_mo = np.array([mo_mo_ov, wov*mo_mo_ov + wop*mo_mo_op])
-#        mo_jy = np.array([mo_jy_ov, wov*mo_jy_ov + wop*mo_jy_op])
-#        jy_jy = np.array([S, wov*S + wop*T])
-#
-#        # NOTE: The LCAO basis in ABACUS follows a lexicographic order of
-#        # (itype, iatom, l, q, 2*|m|-(m>0))
-#        # which has to be transformed to a lexicographic order of
-#        # (itype, iatom, l, 2*|m|-(m>0), q)
-#
-#        # permutation
-#        p = perm_zeta_m(index_map(natom, lmax, nbes)[1])
-#        mo_jy = mo_jy[:,:,:,p].copy()
-#        jy_jy = jy_jy[:,:,:,p][:,:,p,:].copy()
-#
-#        #print(f"mo_jy.shape = {mo_jy.shape}")
-#        #print(f"jy_jy.shape = {jy_jy.shape}")
-#        #print(f"mo_mo.shape = {mo_mo.shape}")
-#
-#        # packed data for a configuration
-#        dat = {'ntype': ntype,
-#               'natom': natom,
-#               'lmax': lmax,
-#               'nbes': nbes[0],
-#               'rcut': rcut,
-#               'nbands': nbands,
-#               'nk': nk,
-#               'wk': wk,
-#               'mo_mo': mo_mo,
-#               'mo_jy': mo_jy,
-#               'jy_jy': jy_jy,
-#               }
-#
-#        self.config.append(dat)
-#
-#        # NOTE currently a dataset merely contains one atom type
-#        # and one rcut. This may change in the future.
-#        if self.rcut is None:
-#            self.rcut = dat['rcut']
-#        else:
-#            assert self.rcut == dat['rcut']
-#
-#
-#    def _tab_frozen(self, coef_frozen):
-#        '''
-#        Tabulates for each configuration the band-wise spillage contribution
-#        from frozen orbitals and
-#
-#                            <mo|P_frozen   |jy>
-#                            <mo|P_frozen op|jy>
-#
-#        where P_frozen is the projection operator onto the frozen subspace:
-#
-#                        P_frozen = |frozen_dual><frozen|
-#
-#        '''
-#        if coef_frozen is None:
-#            self.spill_frozen = None
-#            self.mo_Pfrozen_jy = None
-#            return
-#
-#        # jy -> frozen orbital transformation matrices
-#        jy2frozen = [jy2ao(coef_frozen,
-#                           dat['natom'], dat['lmax'], dat['nbes'])
-#                     for dat in self.config]
-#
-#        frozen_frozen = [jy2froz.T @ dat['jy_jy'] @ jy2froz
-#                         for dat, jy2froz in zip(self.config, jy2frozen)]
-#
-#        mo_frozen = [dat['mo_jy'] @ jy2froz
-#                     for dat, jy2froz in zip(self.config, jy2frozen)]
-#
-#        # <mo|frozen_dual> only; no need to compute <mo|op|frozen_dual>
-#        mo_frozen_dual = [mrdiv(mo_froz[0], froz_froz[0])
-#                          for mo_froz, froz_froz
-#                          in zip(mo_frozen, frozen_frozen)]
-#
-#        # for each config, indexed as [0/1][k][mo][jy]
-#        self.mo_Pfrozen_jy = [mo_froz_dual @ jy2froz.T @ dat['jy_jy']
-#                              for mo_froz_dual, dat, jy2froz
-#                              in zip(mo_frozen_dual, self.config, jy2frozen)]
-#
-#        tmp = [rfrob(mo_froz_dual @ froz_froz[1], mo_froz_dual, True)
-#               - 2.0 * rfrob(mo_froz_dual, mo_froz[1], True)
-#               for mo_froz_dual, mo_froz, froz_froz
-#               in zip(mo_frozen_dual, mo_frozen, frozen_frozen)]
-#
-#        # weighted sum over k
-#        self.spill_frozen = [dat['wk'] @ spill_froz
-#                             for dat, spill_froz
-#                             in zip(self.config, tmp)]
-#
-#        print(self.spill_frozen[0].shape)
-#        exit()
-#
-#
-#    def _tab_deriv(self, coef):
-#        '''
-#        Given coef which specifies a set of atomic orbital basis, this
-#        function tabulates for each configuration the derivatives of
-#
-#                                <ao|jy>
-#                                <ao|op|jy>
-#
-#                            <mo|Q_frozen   |ao>
-#                            <mo|Q_frozen op|ao>
-#
-#        with respect to each Bessel coefficient of |ao>, where Q_frozen is
-#        the projection operator onto the complement of the frozen subspace:
-#
-#                        Q_frozen = 1 - |frozen_dual><frozen|
-#
-#        (Q_frozen = 1 if there is no frozen orbitals)
-#
-#
-#        Note
-#        ----
-#        The only useful information of coef is its nesting pattern, which
-#        determines what derivatives to compute.
-#
-#        '''
-#        # jy -> (d/dcoef)ao transformation matrices
-#        jy2dao_all = [[jy2ao(nest(ci.tolist(), nestpat(coef)),
-#                             dat['natom'], dat['lmax'], dat['nbes'])
-#                       for ci in np.eye(len(flatten(coef)))]
-#                      for dat in self.config]
-#
-#        # derivatives of <ao|(I/op)|jy> for each config,
-#        # index as dao_jy[iconf][0(ov)/1(op)][icoef][k][ao][jy]
-#        self.dao_jy = [np.array([jy2dao_i.T @ dat['jy_jy']
-#                                 for jy2dao_i in jy2dao])
-#                       .transpose(1,0,2,3,4)
-#                       for dat, jy2dao in zip(self.config, jy2dao_all)]
-#
-#        # derivatives of <mo|ao> and <mo|op|ao>
-#        self.mo_Qfrozen_dao = [np.array([dat['mo_jy'] @ jy2dao_i
-#                                         for jy2dao_i in jy2dao])
-#                               for dat, jy2dao
-#                               in zip(self.config, jy2dao_all)]
-#        # at this stage, the index for each config follows
-#        # [icoef][ov/op][k][mo][ao]
-#        # where 0->overlap; 1->operator
-#
-#        if self.spill_frozen is not None:
-#            # subtract from the previous results <mo|P_frozen|ao>
-#            # and <mo|P_frozen op|ao>
-#            self.mo_Qfrozen_dao = [mo_Qfroz_dao -
-#                                   np.array([mo_Pfroz_jy @ jy2dao_i
-#                                             for jy2dao_i in jy2dao])
-#                                   for mo_Qfroz_dao, mo_Pfroz_jy, jy2dao
-#                                   in zip(self.mo_Qfrozen_dao,
-#                                          self.mo_Pfrozen_jy,
-#                                          jy2dao_all)
-#                                   ]
-#
-#        # transpose to [0/1][icoef][k][mo][ao]
-#        self.mo_Qfrozen_dao = [dV.transpose(1,0,2,3,4)
-#                               for dV in self.mo_Qfrozen_dao]
-#
-#
-#
-#    def _generalized_spillage(self, iconf, coef, ibands, with_grad=False):
-#        '''
-#        Generalized spillage function and its gradient.
-#
-#        '''
-#        dat = self.config[iconf]
-#
-#        spill = (dat['wk'] @ dat['mo_mo'][1][:,ibands]).real.sum()
-#
-#        # jy->ao basis transformation matrix
-#        _jy2ao = jy2ao(coef, dat['natom'], dat['lmax'], dat['nbes'])
-#
-#        # <mo|Q_frozen|ao> and <mo|Q_frozen op|ao>
-#        V = dat['mo_jy'][:,:,ibands,:] @ _jy2ao
-#        if self.spill_frozen is not None:
-#            V -= self.mo_Pfrozen_jy[iconf][:,:,ibands,:] @ _jy2ao
-#            spill += self.spill_frozen[iconf][ibands].sum()
-#
-#        # <ao|ao> and <ao|op|ao>
-#        W = _jy2ao.T @ dat['jy_jy'] @ _jy2ao
-#
-#        V_dual = mrdiv(V[0], W[0]) # overlap only; no need for op
-#        VdaggerV = V_dual.transpose((0,2,1)).conj() @ V_dual
-#
-#        spill += dat['wk'] @ (rfrob(W[1], VdaggerV)
-#                              - 2.0 * rfrob(V_dual, V[1]))
-#        spill /= len(ibands)
-#
-#        if with_grad:
-#            # (d/dcoef)<ao|ao> and (d/dcoef)<ao|op|ao>
-#            dW = self.dao_jy[iconf] @ _jy2ao
-#            dW += dW.transpose((0,1,2,4,3)).conj()
-#
-#            # (d/dcoef)<mo|Q_frozen|ao> and (d/dcoef)<mo|Q_frozen op|ao>
-#            dV = self.mo_Qfrozen_dao[iconf][:,:,:,ibands,:]
-#
-#            grad = (rfrob(dW[1], VdaggerV)
-#                    - 2.0 * rfrob(V_dual, dV[1])
-#                    + 2.0 * rfrob(dV[0] - V_dual @ dW[0],
-#                                   mrdiv(V_dual @ W[1] - V[1], W[0]))
-#                    ) @ dat['wk']
-#
-#            grad /= len(ibands)
-#            grad = nest(grad.tolist(), nestpat(coef))
-#
-#        return (spill, grad) if with_grad else spill
-#
-#
-#    def opt(self, coef_init, coef_frozen, iconfs, ibands, options, nthreads=1):
-#        '''
-#        Spillage minimization w.r.t. (normalized or reduced) spherical
-#        Bessel coefficients.
-#
-#        Parameters
-#        ----------
-#            coef_init : nested list
-#                Initial guess for the coefficients.
-#            coef_frozen : nested list
-#                Coefficients for the frozen orbitals.
-#            iconfs : list of int or 'all'
-#                List of configuration indices to be included in the
-#                optimization. If 'all', all configurations are included.
-#            ibands : range/tuple or list of range/tuple
-#                Band indices to be included in the spillage calculation.
-#                If a range or tuple is given, the same indices are used
-#                for all configurations.
-#                If a list of range/tuple is given, each range/tuple will
-#                be applied to the configuration specified by iconfs
-#                respectively.
-#            options : dict
-#                Options for the optimization.
-#            nthreads : int
-#                Number of threads for config-level parallellization.
-#
-#        '''
-#        from multiprocessing.pool import ThreadPool
-#        pool = ThreadPool(nthreads)
-#
-#        if coef_frozen is not None:
-#            self._tab_frozen(coef_frozen)
-#
-#        self._tab_deriv(coef_init)
-#
-#        iconfs = range(len(self.config)) if iconfs == 'all' else iconfs
-#        nconf = len(iconfs)
-#
-#        ibands = [ibands] * nconf if not isinstance(ibands, list) else ibands
-#        assert len(ibands) == nconf, f"len(ibands) = {len(ibands)} != {nconf}"
-#
-#        pat = nestpat(coef_init)
-#        def f(c): # function to be minimized
-#            s = lambda i: self._generalized_spillage(iconfs[i],
-#                                                    nest(c.tolist(), pat),
-#                                                    ibands[i],
-#                                                    with_grad=True)
-#            spills, grads = zip(*pool.map(s, range(nconf)))
-#            return (sum(spills) / nconf,
-#                    sum(np.array(flatten(g)) for g in grads) / nconf)
-#
-#        c0 = np.array(flatten(coef_init))
-#
-#        # Restricts the coefficients to [-1, 1] for better numerical stability
-#        # FIXME Is this necessary?
-#        bounds = [(-1.0, 1.0) for _ in c0]
-#        #bounds = None
-#
-#        res = minimize(f, c0, jac=True, method='L-BFGS-B',
-#                       bounds=bounds, options=options)
-#
-#        #minimizer_kwargs = {"method": "L-BFGS-B", "jac": True,
-#        #                    "bounds": bounds}
-#        #res = basinhopping(f, c0, minimizer_kwargs=minimizer_kwargs,
-#        #                   niter=20, disp=True)
-#
-#        pool.close()
-#
-#        coef_opt = nest(res.x.tolist(), pat)
-#        return [[np.linalg.qr(np.array(coef_tl).T)[0].T.tolist()
-#                 if coef_tl else []
-#                 for coef_tl in coef_t] for coef_t in coef_opt]
-
 
 ############################################################
 #                           Test
@@ -1242,10 +873,20 @@ class _TestSpillage(unittest.TestCase):
 
 
     def test_jy_config_add(self):
-        path = './testgen/Si/jy-7au/dimer-1.8-k/OUT.ABACUS/'
+        path = './testgen/Si/jy-7au/dimer-1.8-gamma/OUT.ABACUS/'
 
         orbgen = Spillage_jy()
         orbgen.config_add(path)
+
+        nthreads = 2
+        options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': 2000,
+                   'disp': True, 'maxcor': 20}
+
+        coef_init = [[np.eye(3,21).tolist(),
+                      np.eye(3,20).tolist(),
+                      np.eye(2,20).tolist()]]
+        orbgen.opt(coef_init, None,
+                   'all', range(8), options, nthreads)
 
 
     def setUp(self):
