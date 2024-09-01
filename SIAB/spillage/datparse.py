@@ -360,6 +360,57 @@ def read_abacus_kpoints(fname):
     return k, wk
 
 
+def read_running_scf_log(fname):
+    '''
+    Read from running_scf.log the following information into a dict:
+
+    natom: list of int
+        number of atoms for each atom type
+    nzeta: list of list of int
+        Number of zeta functions for each angular momentum of each atom type
+        nzeta[itype][l] -> int.
+    nspin: int
+        number of spins, should be 1 or 2.
+    wk: list of float
+        k-point weights. If spin=2, the weights are NOT repeated.
+
+    '''
+    keywords = ['nzeta', 'nspin', 'wk']
+    status = {key: False for key in keywords}
+    with open(fname, 'r') as f:
+        for line in f:
+            if 'nspin' in line:
+                nspin = int(line.split()[-1])
+                status['nspin'] = True
+
+            if 'ntype' in line:
+                nzeta = []
+                natom = []
+                ntype = int(line.split()[-1])
+                for itype in range(ntype):
+                    while (line := next(f)).find('READING ATOM TYPE') == -1:
+                        continue
+                    next(f)
+
+                    nzeta.append([])
+                    while (line := next(f)).find('zeta') != -1:
+                        nzeta[itype].append(int(line.split()[-1]))
+
+                    natom.append(int(line.split()[-1]))
+
+                status['nzeta'] = True
+
+            if 'nkstot now' in line:
+                nk = int(line.split()[-1])
+                next(f); next(f)
+                wk = [float(next(f).split()[-1]) for _ in range(nk)]
+                status['wk'] = True
+
+            if all(status.values()):
+                break
+
+    return {'natom': natom, 'nzeta': nzeta, 'wk': wk, 'nspin': nspin}
+
 
 ############################################################
 #                           Test
@@ -479,6 +530,20 @@ class _TestDatParse(unittest.TestCase):
 
         self.assertTrue(np.allclose(k[-1], [0.4, -0.4, 0.2]))
         self.assertEqual(wk[-1], 0.192)
+
+
+    def test_read_running_scf_log(self):
+        dat = read_running_scf_log('./testfiles/running_scf.log1')
+        self.assertEqual(dat['natom'], [1, 1])
+        self.assertEqual(dat['nzeta'], [[2, 2, 2], [2, 2, 2]])
+        self.assertEqual(dat['nspin'], 1)
+        self.assertEqual(len(dat['wk']), 8)
+
+        dat = read_running_scf_log('./testfiles/running_scf.log2')
+        self.assertEqual(dat['natom'], [2])
+        self.assertEqual(dat['nzeta'], [[21, 20, 20]])
+        self.assertEqual(dat['nspin'], 2)
+        self.assertEqual(len(dat['wk']), 6)
 
 
 

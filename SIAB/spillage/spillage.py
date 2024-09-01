@@ -112,7 +112,7 @@ def initgen(nzeta_gen, nbes_gen, nbes_data, ref_jy, wk, diagosis=False):
     return coef
 
 
-def _overlap_spillage(natom, lmax, nbes,
+def _overlap_spillage(natom, nbes,
                       jy_jy, ref_jy, ref_ref, wk,
                       coef, ibands, coef_frozen=None):
     '''
@@ -130,11 +130,8 @@ def _overlap_spillage(natom, lmax, nbes,
     ----------
         natom : list of int
             Number of atoms for each atom type.
-        lmax : list of int
-            Maximum angular momentum for each atom type.
-        nbes : int / list of int / list of list of int
+        nbes : list of int / list of list of int
             Number of spherical wave radial functions.
-            If an integer, the same number is assumed in all cases.
             If a list, nbes[l] specifies the number for angular momentum l,
             which is assumed to be the same for different atomic types.
             If a nested list, nbes[itype][l] specifies the number for angular
@@ -176,12 +173,12 @@ def _overlap_spillage(natom, lmax, nbes,
     spill = (wk @ ref_ref[:,ibands]).real.sum()
 
     ref_jy = ref_jy[:,ibands,:]
-    _jy2ao = jy2ao(coef, natom, lmax, nbes)
+    _jy2ao = jy2ao(coef, natom, nbes)
     V = ref_jy @ _jy2ao
     W = _jy2ao.T @ jy_jy @ _jy2ao
 
     if coef_frozen is not None:
-        jy2frozen = jy2ao(coef_frozen, natom, lmax, nbes)
+        jy2frozen = jy2ao(coef_frozen, natom, nbes)
         X = ref_jy @ jy2frozen
         S = jy2frozen.T @ jy_jy @ jy2frozen
         X_dual = mrdiv(X, S)
@@ -207,19 +204,18 @@ class Spillage:
 
             natom : list of int
                 Number of atoms for each atom type.
-            lmax : list of int
-                Maximum angular momentum for each atom type.
-            nbes : int / list of int / list of list of int
+            nbes : list of int / list of list of int
                 Number of spherical wave radial functions.
-                If an integer, the same number is assumed in all cases.
                 If a list, nbes[l] specifies the number for angular momentum
                 l, which is assumed to be the same for all atomic types.
                 If a nested list, nbes[itype][l] specifies the number for
                 angular momentum l of atomic type `itype`.
             jy_jy : ndarray, shape (nk, njy, njy)
-                Overlap between spherical waves (jy).
+                Overlap between spherical waves (jy). The order of jy must
+                be lexicographic in terms of (itype, iatom, l, mm, q).
             ref_jy : ndarray, shape (nk, nbands, njy)
-                Overlap between reference states and spherical waves.
+                Overlap between reference states and spherical waves. The order
+                of jy must be lexicographic in terms of (itype, iatom, l, mm, q).
             ref_ref : ndarray, shape (nk, nbands)
                 Overlap between reference states (diagonal terms only).
             wk : ndarray, shape (nk,)
@@ -275,8 +271,7 @@ class Spillage:
             return
 
         for iconf, dat in enumerate(self.config):
-            jy2frozen = jy2ao(coef_frozen, dat['natom'],
-                              dat['lmax'], dat['nbes'])
+            jy2frozen = jy2ao(coef_frozen, dat['natom'], dat['nbes'])
 
             frozen_frozen = jy2frozen.T @ dat['jy_jy'] @ jy2frozen
             ref_frozen = dat['ref_jy'] @ jy2frozen
@@ -326,7 +321,7 @@ class Spillage:
 
         for iconf, dat in enumerate(self.config):
             jy2dao = [jy2ao(nest(ci.tolist(), nestpat(coef)),
-                            dat['natom'], dat['lmax'], dat['nbes'])
+                            dat['natom'], dat['nbes'])
                       for ci in np.eye(len(flatten(coef)))]
 
             self.dao_jy[iconf] = \
@@ -354,7 +349,7 @@ class Spillage:
         '''
         dat = self.config[iconf]
         spill = (dat['wk'] @ dat['ref_ref'][1][:,ibands]).real.sum()
-        _jy2ao = jy2ao(coef, dat['natom'], dat['lmax'], dat['nbes'])
+        _jy2ao = jy2ao(coef, dat['natom'], dat['nbes'])
 
         # <ref|Q_frozen|ao> and <ref|Q_frozen op|ao>
         V = dat['ref_jy'][:,:,ibands,:] @ _jy2ao
@@ -473,6 +468,132 @@ class Spillage:
         return [[np.linalg.qr(np.array(coef_tl).T)[0].T.tolist()
                  if coef_tl else []
                  for coef_tl in coef_t] for coef_t in coef_opt]
+
+
+
+class Spillage_jy(Spillage):
+    '''
+    Generalized spillage function and its optimization
+    with spherical-wave reference states.
+
+    '''
+
+    def config_add(self, outdir):
+        '''
+        Adds a configuration by loading data from an OUT.{suffix} dir.
+
+        This function looks for necessary data from the following files:
+        running_scf.log: natom, nzeta (nbes), wk, nspin
+        data-*-S: <jy|jy>
+        data-*-T: <jy|p^2|jy>
+        WFC_NAO-*.txt: reference states coefficients in jy basis
+
+        The data will be processed and packed to a dict which is then
+        appended to the config list. See the docstring of Spillage
+        for details of the dict.
+
+        '''
+        print(f'nk = {nk}')
+        print(f'nspin = {nspin}')
+
+
+        # natom, nbes, wk(, nspin), jy_jy, ref_jy, ref_ref
+
+
+
+#        from struio import read_stru
+#
+#        file_stru = glob.glob(config + '/STRU*')
+#        assert len(file_stru) == 1
+#
+#        stru = read_stru(file_stru[0])
+#        ntype = len(stru['species'])
+#        natom = [spec['natom'] for spec in stru['species']]
+#        lmax = [len(nbes_t) - 1 for nbes_t in nbes]
+#
+#        file_SR = glob.glob(config + '/OUT*/data-SR-sparse_SPIN0.csr')
+#        file_TR = glob.glob(config + '/OUT*/data-TR-sparse_SPIN0.csr')
+#        assert len(file_SR) == 1 and len(file_TR) == 1
+#
+#        S = sum(read_abacus_csr(file_SR[0])[0]).toarray() # S(k=0)
+#        T = sum(read_abacus_csr(file_TR[0])[0]).toarray() # T(k=0)
+#
+#        file_wfc = glob.glob(config + '/OUT*/WFC_NAO*')
+#        nk = len(file_wfc)
+#
+#        # currently only supports Gamma point (with possibly nspin=2)
+#        assert nk == 1 or nk == 2 
+#
+#        if nk == 2:
+#            wk = [0.5, 0.5]
+#            wfc = np.array([read_wfc_lcao_txt(file_wfc[0])[0],
+#                            read_wfc_lcao_txt(file_wfc[1])[0]])
+#            S = np.array([S, S])
+#            T = np.array([T, T])
+#        else:
+#            wk = [1.0]
+#            wfc = np.expand_dims(read_wfc_lcao_txt(file_wfc[0])[0], axis=0)
+#            S = np.expand_dims(S, axis=0)
+#            T = np.expand_dims(T, axis=0)
+#
+#        # wfc has shape (nk, nbands, nao)
+#        nbands = wfc.shape[-2]
+#
+#        # simply set mo_mo_ov = 1 instead of calculating it
+#        mo_mo_op = np.real(np.sum((wfc.conj() @ T) * wfc, 2))
+#        mo_jy_ov = wfc.conj() @ S
+#        mo_jy_op = wfc.conj() @ T
+#
+#        wov, wop = weight
+#        mo_mo_ov = np.ones((nk, nbands))
+#
+#        mo_mo = np.array([mo_mo_ov, wov*mo_mo_ov + wop*mo_mo_op])
+#        mo_jy = np.array([mo_jy_ov, wov*mo_jy_ov + wop*mo_jy_op])
+#        jy_jy = np.array([S, wov*S + wop*T])
+#
+#        # NOTE: The LCAO basis in ABACUS follows a lexicographic order of
+#        # (itype, iatom, l, q, 2*|m|-(m>0))
+#        # which has to be transformed to a lexicographic order of
+#        # (itype, iatom, l, 2*|m|-(m>0), q)
+#
+#        # permutation
+#        p = perm_zeta_m(index_map(natom, lmax, nbes)[1])
+#        mo_jy = mo_jy[:,:,:,p].copy()
+#        jy_jy = jy_jy[:,:,:,p][:,:,p,:].copy()
+#
+#        #print(f"mo_jy.shape = {mo_jy.shape}")
+#        #print(f"jy_jy.shape = {jy_jy.shape}")
+#        #print(f"mo_mo.shape = {mo_mo.shape}")
+#
+#        # packed data for a configuration
+#        dat = {'ntype': ntype,
+#               'natom': natom,
+#               'lmax': lmax,
+#               'nbes': nbes[0],
+#               'rcut': rcut,
+#               'nbands': nbands,
+#               'nk': nk,
+#               'wk': wk,
+#               'mo_mo': mo_mo,
+#               'mo_jy': mo_jy,
+#               'jy_jy': jy_jy,
+#               }
+#
+#        self.config.append(dat)
+#
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -986,7 +1107,7 @@ class _TestSpillage(unittest.TestCase):
         ibands = range(22)
         nbes_gen = nbes_data
         coef = initgen(nzeta, nbes_gen, nbes_data,
-                       ref_jy[:,ibands,:], wk, True)
+                       ref_jy[:,ibands,:], wk, False)
 
         self.assertEqual(len(coef), len(nzeta))
         self.assertEqual([len(coef_l) for coef_l in coef], nzeta)
@@ -1029,7 +1150,7 @@ class _TestSpillage(unittest.TestCase):
         ibands = range(22)
         nbes_gen = nbes_data
         coef = initgen(nzeta, nbes_gen, nbes_data,
-                       ref_jy[:,ibands,:], wk, True)
+                       ref_jy[:,ibands,:], wk, False)
 
         self.assertEqual(len(coef), len(nzeta))
         self.assertEqual([len(coef_l) for coef_l in coef], nzeta)
@@ -1045,7 +1166,7 @@ class _TestSpillage(unittest.TestCase):
         plt.show()
 
 
-    def est_overlap_spillage_gamma(self):
+    def test_overlap_spillage_gamma(self):
         path = './testgen/Si/jy-7au/dimer-1.8-gamma/OUT.ABACUS/'
         wk = np.array([1.0])
 
@@ -1075,7 +1196,7 @@ class _TestSpillage(unittest.TestCase):
                  for l in range(lmax_t+1)]
                 for lmax_t in lmax]
 
-        spill = _overlap_spillage(natom, lmax, nbes,
+        spill = _overlap_spillage(natom, nbes,
                                   jy_jy, ref_jy, ref_ref, wk,
                                   coef, ibands, None)
 
@@ -1115,9 +1236,16 @@ class _TestSpillage(unittest.TestCase):
                  for l in range(lmax_t+1)]
                 for lmax_t in lmax]
 
-        spill = _overlap_spillage(natom, lmax, nbes,
+        spill = _overlap_spillage(natom, nbes,
                                   jy_jy, ref_jy, ref_ref, wk,
                                   coef, ibands, None)
+
+
+    def test_jy_config_add(self):
+        path = './testgen/Si/jy-7au/dimer-1.8-k/OUT.ABACUS/'
+
+        orbgen = Spillage_jy()
+        orbgen.config_add(path)
 
 
     def setUp(self):
@@ -1226,13 +1354,6 @@ class _TestSpillage(unittest.TestCase):
             self.assertEqual(self.orbgen_nrm.config[iconf]['nbes'],
                              self.orbgen_rdc.config[iconf]['nbes'] + 1)
 
-
-    def est_config_add_jy(self):
-
-        reduced = False
-        orbgen = self.orbgen_rdc if reduced else self.orbgen_nrm
-
-        orbgen.config_add_jy(self.config_jy[0], [[30, 30, 29]], 7.0)
 
 
     def est_tab_frozen(self):

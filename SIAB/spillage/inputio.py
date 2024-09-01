@@ -415,8 +415,8 @@ def read_input(fpath):
     inputs = dict([re.search(_input_pattern, line).group(1, 3)
                    for line in inputs[1:]
                    if line.strip() != '' and line.lstrip()[0] != '#' ])
-    assert all(key in _valid_keys for key in inputs.keys()), \
-            'Invalid INPUT keywords.'
+    #assert all(key in _valid_keys for key in inputs.keys()), \
+    #        'Invalid INPUT keywords.'
 
     return inputs
 

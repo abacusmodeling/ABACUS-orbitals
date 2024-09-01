@@ -3,7 +3,7 @@ from SIAB.spillage.index import index_map
 import numpy as np
 from scipy.linalg import block_diag
 
-def jy2ao(coef, natom, lmax, nbes):
+def jy2ao(coef, natom, nbes):
     '''
     Basis transformation matrix from a spherical wave basis to a pseudo-
     atomic orbital basis.
@@ -29,28 +29,22 @@ def jy2ao(coef, natom, lmax, nbes):
             if len(coef[itype][l][zeta]) < nbes[itype][l].
         natom : list of int
             Number of atoms for each atom type.
-        lmax : list of int
-            Maximum angular momentum for each atom type.
-        nbes : int / list of int / list of list of int
+        nbes : list of int / list of list of int
             Number of spherical wave radial functions.
-            If an integer, the same number is assumed in all cases.
-            If a list, nbes[l] specifies the number for angular momentum l,
-            which is assumed to be the same for different atomic types.
+            If a list, nbes[l] specifies the number for angular momentum l
+            and is assumed to be the same for all atomic types.
             If a nested list, nbes[itype][l] specifies the number for angular
             momentum l of atomic type `itype`.
 
     '''
-    assert len(natom) == len(lmax) == len(coef)
-    lin2comp = index_map(natom, lmax)[1]
-
-    # whatever nbes is given, it is converted to a list of list of int
+    # if a plain list is given, convert to a list of list of int
     # such that nbes[itype][l] gives the corresponding number.
-    if isinstance(nbes, int):
-        nbes = [[nbes] * (lmax_t + 1) for lmax_t in lmax]
-    elif isinstance(nbes[0], int):
+    if isinstance(nbes[0], int):
         nbes = [nbes] * len(natom)
-    else: # nbes[itype][l] -> int
-        assert len(nbes) == len(natom)
+    
+    assert len(natom) == len(coef) == len(nbes) # should all equal ntype
+    assert all(len(nbes_t) >= len(coef_t)
+               for nbes_t, coef_t in zip(nbes, coef))
 
     def _gen_q2zeta(coef, lin2comp, nbes):
         for comp in lin2comp:
@@ -65,6 +59,8 @@ def jy2ao(coef, natom, lmax, nbes):
                 C[:len(coef[itype][l][0])] = np.array(coef[itype][l]).T
                 yield C
 
+    lmax = [len(coef_t) - 1 for coef_t in coef]
+    lin2comp = index_map(natom, lmax)[1]
     return block_diag(*_gen_q2zeta(coef, lin2comp, nbes))
 
 
@@ -74,34 +70,6 @@ def jy2ao(coef, natom, lmax, nbes):
 import unittest
 
 class _TestBasisTrans(unittest.TestCase):
-
-    def test_jy2ao_nbes0(self):
-        '''
-        Test the case where nbes is an int.
-
-        '''
-        nbes = 7
-
-        nzeta = [[3, 2, 0], [0, 1], [4]] # nzeta[itype][l]
-        lmax = [len(nzt) - 1 for nzt in nzeta]
-        coef = [[np.random.randn(nzeta_tl, nbes).tolist()
-                 for nzeta_tl in nzeta_t]
-                for nzeta_t in nzeta]
-
-        natom = [2, 3, 5]
-        M = jy2ao(coef, natom, lmax, nbes)
-
-        irow = 0
-        icol = 0
-        for (itype, iatom, l, m) in index_map(natom, lmax)[1]:
-            nz = nzeta[itype][l]
-            self.assertTrue(np.allclose(
-                M[irow:irow+nbes, icol:icol+nz],
-                np.array(coef[itype][l]).T
-            ))
-            irow += nbes
-            icol += nz
-
 
     def test_jy2ao_nbes1(self):
         '''
@@ -117,7 +85,7 @@ class _TestBasisTrans(unittest.TestCase):
                 for nzeta_t in nzeta]
 
         natom = [1, 2, 3]
-        M = jy2ao(coef, natom, lmax, nbes)
+        M = jy2ao(coef, natom, nbes)
 
         irow = 0
         icol = 0
@@ -145,7 +113,7 @@ class _TestBasisTrans(unittest.TestCase):
                 for it, nzeta_t in enumerate(nzeta)]
 
         natom = [1, 2, 3]
-        M = jy2ao(coef, natom, lmax, nbes)
+        M = jy2ao(coef, natom, nbes)
 
         irow = 0
         icol = 0
