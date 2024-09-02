@@ -215,8 +215,9 @@ class Spillage:
                 Overlap between spherical waves (jy). The order of jy must
                 be lexicographic in terms of (itype, iatom, l, mm, q).
             ref_jy : ndarray, shape (nk, nbands, njy)
-                Overlap between reference states and spherical waves. The order
-                of jy must be lexicographic in terms of (itype, iatom, l, mm, q).
+                Overlap between reference states and spherical waves. The
+                order of jy must be lexicographic in terms of
+                (itype, iatom, l, mm, q).
             ref_ref : ndarray, shape (nk, nbands)
                 Overlap between reference states (diagonal terms only).
             wk : ndarray, shape (nk,)
@@ -471,6 +472,55 @@ class Spillage:
                  for coef_tl in coef_t] for coef_t in coef_opt]
 
 
+def _jy_data_extract(outdir):
+    '''
+    Extracts the data for spillage optimization with spherical-wave
+    reference state from an OUT.{suffix} directory.
+
+    This function looks for certain data from the following files:
+
+        running_scf.log: natom, nzeta, wk, nspin
+        data-*-S: overlap matrices
+        data-*-T: kinetic energy matrices
+        WFC_NAO-*.txt: LCAO wavefunction coefficients
+
+    The extracted data is packed to a dict with the following key-value pairs:
+        natom : list of int
+            Number of atoms for each atom type.
+        nzeta : list of list of int
+            Number of zeta for each l of each atom type.
+            nzeta[itype][l] -> int.
+        wk : ndarray, shape (nk,)
+            k-point weights. For nspin = 2, the weights are replicated
+            for spin-down (so nk is doubled).
+        S : ndarray, shape (nk, nao, nao)
+            Basis overlap matrices.
+        T : ndarray, shape (nk, nao, nao)
+            Kinetic energy matrices.
+        C : ndarray, shape (nk, nao, nbands)
+            LCAO wavefunction coefficients.
+
+    '''
+    info = read_running_scf_log(outdir + '/running_scf.log')
+    nspin, wk, natom, nzeta = [info[key] for key in
+                               ['nspin', 'wk', 'natom', 'nzeta']]
+
+    nk = len(wk)
+    S = [read_abacus_tri(f'{outdir}/data-{ik}-S') for ik in range(nk)]
+    T = [read_abacus_tri(f'{outdir}/data-{ik}-T') for ik in range(nk)]
+
+    wfc_suffix = 'GAMMA' if nk == 1 else 'K'
+    C = [read_wfc_lcao_txt(f'{outdir}/WFC_NAO_{wfc_suffix}{ik+1}.txt')[0]
+         for ik in range(nspin * nk)]
+
+    if nspin == 2: # replicate for spin-down
+        S = [*S, *S]
+        T = [*T, *T]
+        wk = [*wk, *wk]
+
+    return {'natom': natom, 'nzeta': nzeta, 'wk': wk,
+            'S': np.array(S), 'T': np.array(T), 'C': np.array(C)}
+
 
 class Spillage_jy(Spillage):
     '''
@@ -478,51 +528,17 @@ class Spillage_jy(Spillage):
     with spherical-wave reference states.
 
     '''
-
     def config_add(self, outdir, weight=(0.0, 1.0)):
         '''
-        Adds a configuration by loading data from an OUT.{suffix} dir.
-
-        This function looks for necessary data from the following files:
-        running_scf.log: natom, nzeta (nbes), wk, nspin
-        data-*-S: <jy|jy>
-        data-*-T: <jy|p^2|jy>
-        WFC_NAO-*.txt: reference states coefficients in jy basis
+        Adds a configuration by loading data from an OUT.{suffix} directory.
 
         The data will be processed and packed to a dict which is then
         appended to the config list. See the docstring of Spillage
         for details of the dict.
 
         '''
-
-        dat = read_running_scf_log(outdir + '/running_scf.log')
-        nspin, wk, natom, nbes = [dat[key] for key in
-                                  ['nspin', 'wk', 'natom', 'nzeta']]
-
-        print(f'wk = {wk}')
-        print(f'nspin = {nspin}')
-
-        nk = len(wk)
-        S = [read_abacus_tri(f'{outdir}/data-{ik}-S') for ik in range(nk)]
-        T = [read_abacus_tri(f'{outdir}/data-{ik}-T') for ik in range(nk)]
-
-        wfc_suffix = 'GAMMA' if nk == 1 else 'K'
-        C = [read_wfc_lcao_txt(f'{outdir}/WFC_NAO_{wfc_suffix}{ik+1}.txt')[0]
-             for ik in range(nspin * nk)]
-
-        if nspin == 2:
-            # replicate S & T for spin-up and spin-down
-            S = [*S, *S]
-            T = [*T, *T]
-            wk = [*wk, *wk]
-
-        S = np.array(S)
-        T = np.array(T)
-        C = np.array(C)
-
-        print(f'S.shape = {S.shape}')
-        print(f'T.shape = {T.shape}')
-        print(f'C.shape = {C.shape}')
+        raw = _jy_data_extract(outdir)
+        C, S, T = raw['C'], raw['S'], raw['T']
 
         wov, wop = weight
         ref_ov_ref = np.sum(C.conj() * (S @ C), -2)
@@ -538,26 +554,18 @@ class Spillage_jy(Spillage):
         # NOTE: The LCAO basis in ABACUS follows a lexicographic order of
         # (itype, iatom, l, q, mm) where mm = 2*|m|-(m>0), which will be
         # transformed to a lexicographic order of (itype, iatom, l, mm, q)
-        lmax = [len(nbes_t) - 1 for nbes_t in nbes]
-        p = perm_zeta_m(index_map(natom, lmax, nbes)[1])
+        p = perm_zeta_m(index_map(raw['natom'], nzeta=raw['nzeta'])[1])
         ref_jy = ref_jy[:,:,:,p].copy()
         jy_jy = jy_jy[:,:,:,p][:,:,p,:].copy()
 
-        print(f"mo_jy.shape = {ref_jy.shape}")
-        print(f"jy_jy.shape = {jy_jy.shape}")
-        print(f"mo_mo.shape = {ref_ref.shape}")
-
-        # packed data for a configuration
-        dat = {
-                'natom': natom,
-                'nbes': nbes,
-                'wk': wk,
-                'ref_ref': ref_ref,
-                'ref_jy': ref_jy,
-                'jy_jy': jy_jy,
-                }
-
-        self.config.append(dat)
+        self.config.append({
+            'natom': raw['natom'],
+            'nbes': raw['nzeta'],
+            'wk': raw['wk'],
+            'ref_ref': ref_ref,
+            'ref_jy': ref_jy,
+            'jy_jy': jy_jy,
+            })
 
 
 #class Spillage:
@@ -717,7 +725,11 @@ class _TestSpillage(unittest.TestCase):
 
     def test_initgen_gamma(self):
         path = './testgen/Si/jy-7au/monomer-gamma/OUT.ABACUS/'
-        wk = np.array([1.0])
+
+        dat = read_running_scf_log(path + '/running_scf.log')
+        nspin, wk, natom, nbes_data = [dat[key] for key in
+                                       ['nspin', 'wk', 'natom', 'nzeta']]
+        assert natom == [1]
 
         file_Sk = f'{path}/data-0-S'
         file_wfc = f'{path}/WFC_NAO_GAMMA1.txt'
@@ -730,14 +742,13 @@ class _TestSpillage(unittest.TestCase):
 
         ref_jy = wfc.swapaxes(-2, -1).conj() @ S
 
-        nbes_data = [21, 20, 20]
-        p = perm_zeta_m(index_map([1], [2], [nbes_data])[1])
+        p = perm_zeta_m(index_map(natom, nzeta=nbes_data)[1])
         ref_jy = ref_jy[:,:,p]
 
         nzeta = [3, 3, 2]
         ibands = range(22)
         nbes_gen = nbes_data
-        coef = initgen(nzeta, nbes_gen, nbes_data,
+        coef = initgen(nzeta, nbes_gen[0], nbes_data[0],
                        ref_jy[:,ibands,:], wk, False)
 
         self.assertEqual(len(coef), len(nzeta))
@@ -774,7 +785,7 @@ class _TestSpillage(unittest.TestCase):
         ref_jy = wfc.swapaxes(-2, -1).conj() @ S
 
         nbes_data = [21, 20, 20]
-        p = perm_zeta_m(index_map([1], [2], [nbes_data])[1])
+        p = perm_zeta_m(index_map([1], nzeta=[nbes_data])[1])
         ref_jy = ref_jy[:,:,p]
 
         nzeta = [3, 3, 2]
@@ -817,7 +828,7 @@ class _TestSpillage(unittest.TestCase):
         natom = [2]
         lmax = [2]
         nbes = [21, 20, 20]
-        p = perm_zeta_m(index_map(natom, lmax, [nbes])[1])
+        p = perm_zeta_m(index_map(natom, nzeta=[nbes])[1])
         ref_jy = ref_jy[:,:,p].copy()
         jy_jy = jy_jy[:,:,p][:,p,:].copy()
 
@@ -857,7 +868,7 @@ class _TestSpillage(unittest.TestCase):
         natom = [2]
         lmax = [2]
         nbes = [21, 20, 20]
-        p = perm_zeta_m(index_map(natom, lmax, [nbes])[1])
+        p = perm_zeta_m(index_map(natom, nzeta=[nbes])[1])
         ref_jy = ref_jy[:,:,p].copy()
         jy_jy = jy_jy[:,:,p][:,p,:].copy()
 
@@ -878,6 +889,7 @@ class _TestSpillage(unittest.TestCase):
         orbgen = Spillage_jy()
         orbgen.config_add(path)
 
+        #return
         nthreads = 2
         options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': 2000,
                    'disp': True, 'maxcor': 20}
@@ -975,7 +987,7 @@ class _TestSpillage(unittest.TestCase):
             for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
 
                 dat = orbgen.config[iconf]
-                njy = _nao(dat['natom'], dat['lmax']) * dat['nbes']
+                njy = _nao(dat['natom'], lmax=dat['lmax']) * dat['nbes']
 
                 self.assertEqual(dat['mo_mo'].shape,
                                  (2, dat['nk'], dat['nbands']))
@@ -1016,7 +1028,7 @@ class _TestSpillage(unittest.TestCase):
 
             for iconf, config in enumerate(self.config_pw):
                 dat = orbgen.config[iconf]
-                njy = _nao(dat['natom'], dat['lmax']) * dat['nbes']
+                njy = _nao(dat['natom'], lmax=dat['lmax']) * dat['nbes']
                 self.assertEqual(orbgen.spill_frozen[iconf].shape,
                                  (dat['nbands'],))
                 self.assertEqual(orbgen.mo_Pfrozen_jy[iconf].shape,
@@ -1052,7 +1064,7 @@ class _TestSpillage(unittest.TestCase):
             for iconf, config in enumerate(self.config_pw):
                 dat = orbgen.config[iconf]
                 n_dao = np.dot(njy_ao, dat['natom'])
-                njy = _nao(dat['natom'], dat['lmax']) * dat['nbes']
+                njy = _nao(dat['natom'], lmax=dat['lmax']) * dat['nbes']
                 self.assertEqual(orbgen.dao_jy[iconf].shape,
                                  (2, ncoef, dat['nk'], n_dao, njy))
 

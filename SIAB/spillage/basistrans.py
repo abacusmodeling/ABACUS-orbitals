@@ -60,7 +60,7 @@ def jy2ao(coef, natom, nbes):
                 yield C
 
     lmax = [len(coef_t) - 1 for coef_t in coef]
-    lin2comp = index_map(natom, lmax)[1]
+    lin2comp = index_map(natom, lmax=lmax)[1]
     return block_diag(*_gen_q2zeta(coef, lin2comp, nbes))
 
 
@@ -89,7 +89,7 @@ class _TestBasisTrans(unittest.TestCase):
 
         irow = 0
         icol = 0
-        for (itype, iatom, l, m) in index_map(natom, lmax)[1]:
+        for (itype, iatom, l, m) in index_map(natom, lmax=lmax)[1]:
             nz = nzeta[itype][l]
             self.assertTrue(np.allclose(
                 M[irow:irow+nbes[l], icol:icol+nz],
@@ -117,7 +117,7 @@ class _TestBasisTrans(unittest.TestCase):
 
         irow = 0
         icol = 0
-        for (itype, iatom, l, m) in index_map(natom, lmax)[1]:
+        for (itype, iatom, l, m) in index_map(natom, lmax=lmax)[1]:
             nz = nzeta[itype][l]
             self.assertTrue(np.allclose(
                 M[irow:irow+nbes[itype][l], icol:icol+nz],
