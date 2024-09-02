@@ -9,26 +9,71 @@ from SIAB.spillage.datparse import read_orb_mat, _assert_consistency, \
         read_wfc_lcao_txt, read_abacus_tri, read_running_scf_log, \
         read_abacus_kpoints
 
-import glob
 import numpy as np
 from scipy.optimize import minimize, basinhopping
 from copy import deepcopy
 
 
-def initgen(nzeta_gen, nbes_gen, nbes_data, ref_jy, wk, diagosis=False):
+def _jy_data_extract(outdir):
     '''
-    Generates an initial guess of the spherical Bessel coefficients from
+    Extracts the data for spillage optimization with spherical-wave
+    reference states from an OUT.{suffix} directory.
+
+    This function looks for certain data from the following files:
+
+        running_scf.log: natom, nzeta, wk, nspin
+        data-*-S: overlap matrices
+        data-*-T: kinetic energy matrices
+        WFC_NAO-*.txt: LCAO wavefunction coefficients
+
+    The extracted data is packed to a dict with the following key-value pairs:
+
+        natom : list of int
+            Number of atoms for each atom type.
+        nzeta : list of list of int
+            Number of zeta for each l of each atom type.
+            nzeta[itype][l] -> int.
+        wk : ndarray, shape (nk,)
+            k-point weights. For nspin = 2, the weights are replicated
+            for spin-down (so the first and second halves are the same).
+        S : ndarray, shape (nk, nao, nao)
+            Basis overlap matrices.
+        T : ndarray, shape (nk, nao, nao)
+            Kinetic energy matrices.
+        C : ndarray, shape (nk, nao, nbands)
+            LCAO wavefunction coefficients.
+
+    '''
+    info = read_running_scf_log(outdir + '/running_scf.log')
+    nspin, wk, natom, nzeta = [info[key] for key in
+                               ['nspin', 'wk', 'natom', 'nzeta']]
+
+    nk = len(wk)
+    S = [read_abacus_tri(f'{outdir}/data-{ik}-S') for ik in range(nk)]
+    T = [read_abacus_tri(f'{outdir}/data-{ik}-T') for ik in range(nk)]
+
+    wfc_suffix = 'GAMMA' if nk == 1 else 'K'
+    C = [read_wfc_lcao_txt(f'{outdir}/WFC_NAO_{wfc_suffix}{ik+1}.txt')[0]
+         for ik in range(nspin * nk)]
+
+    if nspin == 2: # replicate for spin-down
+        S = [*S, *S]
+        T = [*T, *T]
+        wk = [*wk, *wk]
+
+    return {'natom': natom, 'nzeta': nzeta, 'wk': wk,
+            'S': np.array(S), 'T': np.array(T), 'C': np.array(C)}
+
+
+def initgen(nzeta_gen, nbes_data, ref_jy, wk, nbes_gen=None, diagosis=False):
+    '''
+    Generates an initial guess for the spherical Bessel coefficients from
     single-atom overlap data.
 
     Parameters
     ----------
         nzeta_gen : list of int
             Target number of zeta for each l.
-        nbes_gen : int or list of int
-            Number of spherical Bessel components for each l to generate.
-            If a list, nbes_gen[l] is the number corresponding to l.
-            If an int, the same number of spherical Bessel components
-            is assumed for each l.
         nbes_data : list of int or a 2-tuple of int
             Number of spherical Bessel components for each l of the
             single-atom overlap data (ref_jy).
@@ -42,6 +87,12 @@ def initgen(nzeta_gen, nbes_gen, nbes_data, ref_jy, wk, diagosis=False):
             and q is the radial index.
         wk : ndarray, shape (nk,)
             Weights of k points.
+        nbes_gen : int or list of int or None
+            Number of spherical Bessel components for each l to generate.
+            If a list, nbes_gen[l] is the number corresponding to l.
+            If an int, the same number of spherical Bessel components
+            is assumed for each l.
+            If None, nbes_gen is assumed to be the same as nbes_data.
         diagosis : bool
             If true, print for each l the largest nzeta_gen[l] eigenvalues of
 
@@ -78,8 +129,14 @@ def initgen(nzeta_gen, nbes_gen, nbes_data, ref_jy, wk, diagosis=False):
         lmax_data = len(nbes_data) - 1
 
     lmax_gen = len(nzeta_gen) - 1
+
+    if nbes_gen is None:
+        nbes_gen = [nbes_data[l] for l in range(lmax_gen + 1)]
+    elif isinstance(nbes_gen, int):
+        nbes_gen = [nbes_gen] * (lmax_gen + 1)
+
     assert lmax_gen <= lmax_data
-    assert all(nbes_gen[l] <= nbes_data[l] for l in range(lmax_gen+1))
+    assert all(nbes_gen[l] <= nbes_data[l] for l in range(lmax_gen + 1))
 
     # number of spherical waves per l
     njy_l = [(2*l+1) * nbes_data[l] for l in range(lmax_data+1)]
@@ -91,7 +148,7 @@ def initgen(nzeta_gen, nbes_gen, nbes_data, ref_jy, wk, diagosis=False):
     Y = [ref_jy[:,:,range(index_l_start[l], index_l_start[l+1])]
          .reshape(nk, -1, nbes_data[l]) # (nk, nbands*(2*l+1), nbes_data[l])
          [:,:,:nbes_gen[l]]
-         for l in range(lmax_data+1)]
+         for l in range(lmax_gen + 1)]
 
     coef = []
     for l in range(lmax_gen + 1):
@@ -100,7 +157,7 @@ def initgen(nzeta_gen, nbes_gen, nbes_data, ref_jy, wk, diagosis=False):
             continue
 
         YdaggerY = ((Y[l].swapaxes(-2, -1).conj() @ Y[l])
-                    * np.array(wk).reshape(-1, 1, 1)).sum(0).real
+                    * wk.reshape(-1, 1, 1)).sum(0).real
         val, vec = np.linalg.eigh(YdaggerY)
 
         # eigenvectors corresponding to the largest nzeta_gen eigenvalues
@@ -350,6 +407,10 @@ class Spillage:
 
         '''
         dat = self.config[iconf]
+
+        if ibands == 'all':
+            ibands = range(dat['ref_ref'][1].shape[1])
+
         spill = (dat['wk'] @ dat['ref_ref'][1][:,ibands]).real.sum()
         _jy2ao = jy2ao(coef, dat['natom'], dat['nbes'])
 
@@ -471,55 +532,6 @@ class Spillage:
                  if coef_tl else []
                  for coef_tl in coef_t] for coef_t in coef_opt]
 
-
-def _jy_data_extract(outdir):
-    '''
-    Extracts the data for spillage optimization with spherical-wave
-    reference state from an OUT.{suffix} directory.
-
-    This function looks for certain data from the following files:
-
-        running_scf.log: natom, nzeta, wk, nspin
-        data-*-S: overlap matrices
-        data-*-T: kinetic energy matrices
-        WFC_NAO-*.txt: LCAO wavefunction coefficients
-
-    The extracted data is packed to a dict with the following key-value pairs:
-        natom : list of int
-            Number of atoms for each atom type.
-        nzeta : list of list of int
-            Number of zeta for each l of each atom type.
-            nzeta[itype][l] -> int.
-        wk : ndarray, shape (nk,)
-            k-point weights. For nspin = 2, the weights are replicated
-            for spin-down (so nk is doubled).
-        S : ndarray, shape (nk, nao, nao)
-            Basis overlap matrices.
-        T : ndarray, shape (nk, nao, nao)
-            Kinetic energy matrices.
-        C : ndarray, shape (nk, nao, nbands)
-            LCAO wavefunction coefficients.
-
-    '''
-    info = read_running_scf_log(outdir + '/running_scf.log')
-    nspin, wk, natom, nzeta = [info[key] for key in
-                               ['nspin', 'wk', 'natom', 'nzeta']]
-
-    nk = len(wk)
-    S = [read_abacus_tri(f'{outdir}/data-{ik}-S') for ik in range(nk)]
-    T = [read_abacus_tri(f'{outdir}/data-{ik}-T') for ik in range(nk)]
-
-    wfc_suffix = 'GAMMA' if nk == 1 else 'K'
-    C = [read_wfc_lcao_txt(f'{outdir}/WFC_NAO_{wfc_suffix}{ik+1}.txt')[0]
-         for ik in range(nspin * nk)]
-
-    if nspin == 2: # replicate for spin-down
-        S = [*S, *S]
-        T = [*T, *T]
-        wk = [*wk, *wk]
-
-    return {'natom': natom, 'nzeta': nzeta, 'wk': wk,
-            'S': np.array(S), 'T': np.array(T), 'C': np.array(C)}
 
 
 class Spillage_jy(Spillage):
@@ -724,32 +736,21 @@ import matplotlib.pyplot as plt
 class _TestSpillage(unittest.TestCase):
 
     def test_initgen_gamma(self):
-        path = './testgen/Si/jy-7au/monomer-gamma/OUT.ABACUS/'
+        outdir = './testgen/Si/jy-7au/monomer-gamma/OUT.ABACUS/'
 
-        dat = read_running_scf_log(path + '/running_scf.log')
-        nspin, wk, natom, nbes_data = [dat[key] for key in
-                                       ['nspin', 'wk', 'natom', 'nzeta']]
+        dat = _jy_data_extract(outdir)
+        natom, nbes_data, wk, S, T, C = \
+                [dat[key] for key in ['natom', 'nzeta', 'wk', 'S', 'T', 'C']]
         assert natom == [1]
 
-        file_Sk = f'{path}/data-0-S'
-        file_wfc = f'{path}/WFC_NAO_GAMMA1.txt'
-
-        S = read_abacus_tri(file_Sk)
-        S = np.expand_dims(S, axis=0) # (nk, nao, nao)
-
-        wfc = read_wfc_lcao_txt(file_wfc)[0]
-        wfc = np.expand_dims(wfc, axis=0)
-
-        ref_jy = wfc.swapaxes(-2, -1).conj() @ S
-
+        ref_jy = C.swapaxes(-2, -1).conj() @ S
         p = perm_zeta_m(index_map(natom, nzeta=nbes_data)[1])
         ref_jy = ref_jy[:,:,p]
 
         nzeta = [3, 3, 2]
         ibands = range(22)
-        nbes_gen = nbes_data
-        coef = initgen(nzeta, nbes_gen[0], nbes_data[0],
-                       ref_jy[:,ibands,:], wk, False)
+        coef = initgen(nzeta, nbes_data[0], ref_jy[:,ibands,:], wk,
+                       None, False)
 
         self.assertEqual(len(coef), len(nzeta))
         self.assertEqual([len(coef_l) for coef_l in coef], nzeta)
@@ -766,33 +767,21 @@ class _TestSpillage(unittest.TestCase):
 
 
     def test_initgen_k(self):
-        path = './testgen/Si/jy-7au/monomer-k/OUT.ABACUS/'
-        k, wk = read_abacus_kpoints(f'{path}/kpoints')
-        nk = len(k)
+        outdir = './testgen/Si/jy-7au/monomer-k/OUT.ABACUS/'
 
-        S = []
-        wfc = []
-        for ik in range(nk):
-            file_Sk = f'{path}/data-{ik}-S'
-            file_wfc = f'{path}/WFC_NAO_K{ik+1}.txt'
+        dat = _jy_data_extract(outdir)
+        natom, nbes_data, wk, S, T, C = \
+                [dat[key] for key in ['natom', 'nzeta', 'wk', 'S', 'T', 'C']]
+        assert natom == [1]
 
-            S.append(read_abacus_tri(file_Sk))
-            wfc.append(read_wfc_lcao_txt(file_wfc)[0])
-
-        S = np.array(S)
-        wfc = np.array(wfc)
-
-        ref_jy = wfc.swapaxes(-2, -1).conj() @ S
-
-        nbes_data = [21, 20, 20]
-        p = perm_zeta_m(index_map([1], nzeta=[nbes_data])[1])
+        ref_jy = C.swapaxes(-2, -1).conj() @ S
+        p = perm_zeta_m(index_map(natom, nzeta=nbes_data)[1])
         ref_jy = ref_jy[:,:,p]
 
         nzeta = [3, 3, 2]
         ibands = range(22)
-        nbes_gen = nbes_data
-        coef = initgen(nzeta, nbes_gen, nbes_data,
-                       ref_jy[:,ibands,:], wk, False)
+        coef = initgen(nzeta, nbes_data[0], ref_jy[:,ibands,:], wk,
+                       None, False)
 
         self.assertEqual(len(coef), len(nzeta))
         self.assertEqual([len(coef_l) for coef_l in coef], nzeta)
@@ -809,78 +798,148 @@ class _TestSpillage(unittest.TestCase):
 
 
     def test_overlap_spillage_gamma(self):
-        path = './testgen/Si/jy-7au/dimer-1.8-gamma/OUT.ABACUS/'
-        wk = np.array([1.0])
+        '''
+        Verifies that generalized spillage with op = I
+        recovers the overlap spillage.
 
-        file_Sk = f'{path}/data-0-S'
-        file_wfc = f'{path}/WFC_NAO_GAMMA1.txt'
+        '''
+        outdir = './testgen/Si/jy-7au/dimer-1.8-gamma/OUT.ABACUS/'
 
-        S = read_abacus_tri(file_Sk)
-        S = np.expand_dims(S, axis=0) # (nk, nao, nao)
-
-        wfc = read_wfc_lcao_txt(file_wfc)[0]
-        wfc = np.expand_dims(wfc, axis=0)
+        dat = _jy_data_extract(outdir)
+        natom, nbes_data, wk, S, C = \
+                [dat[key] for key in ['natom', 'nzeta', 'wk', 'S', 'C']]
 
         jy_jy = S
-        ref_jy = wfc.swapaxes(-2, -1).conj() @ S
-        ref_ref = np.sum(wfc.conj() * (S @ wfc), axis=1).real
+        ref_jy = C.swapaxes(-2, -1).conj() @ S
+        ref_ref = np.sum(C.conj() * (S @ C), axis=1).real
 
-        natom = [2]
-        lmax = [2]
-        nbes = [21, 20, 20]
-        p = perm_zeta_m(index_map(natom, nzeta=[nbes])[1])
+        p = perm_zeta_m(index_map(natom, nzeta=nbes_data)[1])
         ref_jy = ref_jy[:,:,p].copy()
         jy_jy = jy_jy[:,:,p][:,p,:].copy()
 
         nzeta = [3, 3, 2]
         ibands = 'all'
-        coef = [[np.random.randn(nzeta[l], nbes[l]).tolist()
-                 for l in range(lmax_t+1)]
-                for lmax_t in lmax]
+        coef = [[np.random.randn(nzeta[l], nbes_tl).tolist()
+                 for l, nbes_tl in enumerate(nbes_t)]
+                for nbes_t in nbes_data]
 
-        spill = _overlap_spillage(natom, nbes,
+        spill = _overlap_spillage(natom, nbes_data,
                                   jy_jy, ref_jy, ref_ref, wk,
                                   coef, ibands, None)
+
+        orbgen = Spillage_jy()
+        orbgen.config_add(outdir, (1.0, 0.0))
+        spill2 = orbgen._generalized_spillage(0, coef, ibands)
+        self.assertAlmostEqual(spill, spill2)
+
+        # verifies in the presence of frozen orbitals
+        coef_frozen = [[np.random.randn(nzeta[l], nbes_tl).tolist()
+                        for l, nbes_tl in enumerate(nbes_t)]
+                       for nbes_t in nbes_data]
+
+        spill = _overlap_spillage(natom, nbes_data,
+                                  jy_jy, ref_jy, ref_ref, wk,
+                                  coef, ibands, coef_frozen)
+        orbgen._tab_frozen(coef_frozen)
+        spill2 = orbgen._generalized_spillage(0, coef, ibands)
+        self.assertAlmostEqual(spill, spill2)
 
 
     def test_overlap_spillage_k(self):
-        path = './testgen/Si/jy-7au/dimer-1.8-k/OUT.ABACUS/'
+        '''
+        Verifies that generalized spillage with op = I
+        recovers the overlap spillage.
 
-        wk = np.array(read_abacus_kpoints(f'{path}/kpoints')[1])
-        nk = len(wk)
+        '''
+        outdir = './testgen/Si/jy-7au/dimer-1.8-k/OUT.ABACUS/'
 
-        S = []
-        wfc = []
-        for ik in range(nk):
-            file_Sk = f'{path}/data-{ik}-S'
-            file_wfc = f'{path}/WFC_NAO_K{ik+1}.txt'
-
-            S.append(read_abacus_tri(file_Sk))
-            wfc.append(read_wfc_lcao_txt(file_wfc)[0])
-
-        S = np.array(S)
-        wfc = np.array(wfc)
+        dat = _jy_data_extract(outdir)
+        natom, nbes_data, wk, S, C = \
+                [dat[key] for key in ['natom', 'nzeta', 'wk', 'S', 'C']]
 
         jy_jy = S
-        ref_jy = wfc.swapaxes(-2, -1).conj() @ S
-        ref_ref = np.sum(wfc.conj() * (S @ wfc), axis=1).real
+        ref_jy = C.swapaxes(-2, -1).conj() @ S
+        ref_ref = np.sum(C.conj() * (S @ C), axis=1).real
 
-        natom = [2]
-        lmax = [2]
-        nbes = [21, 20, 20]
-        p = perm_zeta_m(index_map(natom, nzeta=[nbes])[1])
+        p = perm_zeta_m(index_map(natom, nzeta=nbes_data)[1])
         ref_jy = ref_jy[:,:,p].copy()
         jy_jy = jy_jy[:,:,p][:,p,:].copy()
 
         nzeta = [3, 3, 2]
         ibands = 'all'
-        coef = [[np.random.randn(nzeta[l], nbes[l]).tolist()
-                 for l in range(lmax_t+1)]
-                for lmax_t in lmax]
+        coef = [[np.random.randn(nzeta[l], nbes_tl).tolist()
+                 for l, nbes_tl in enumerate(nbes_t)]
+                for nbes_t in nbes_data]
 
-        spill = _overlap_spillage(natom, nbes,
+        spill = _overlap_spillage(natom, nbes_data,
                                   jy_jy, ref_jy, ref_ref, wk,
                                   coef, ibands, None)
+
+        orbgen = Spillage_jy()
+        orbgen.config_add(outdir, (1.0, 0.0))
+        spill2 = orbgen._generalized_spillage(0, coef, ibands)
+        self.assertAlmostEqual(spill, spill2)
+
+        # verifies in the presence of frozen orbitals
+        coef_frozen = [[np.random.randn(nzeta[l], nbes_tl).tolist()
+                        for l, nbes_tl in enumerate(nbes_t)]
+                       for nbes_t in nbes_data]
+
+        spill = _overlap_spillage(natom, nbes_data,
+                                  jy_jy, ref_jy, ref_ref, wk,
+                                  coef, ibands, coef_frozen)
+        orbgen._tab_frozen(coef_frozen)
+        spill2 = orbgen._generalized_spillage(0, coef, ibands)
+        self.assertAlmostEqual(spill, spill2)
+
+
+    def test_finite_difference(self):
+        '''
+        Checks the gradient of the generalized spillage
+        with finite difference.
+
+        '''
+        outdir = './testgen/Si/jy-7au/dimer-1.8-gamma/OUT.ABACUS/'
+        orbgen = Spillage_jy()
+        orbgen.config_add(outdir, (0.0, 1.0))
+
+        nbes_data = read_running_scf_log(outdir + 'running_scf.log')['nzeta']
+
+        nzeta = [2, 2, 1]
+        ibands = 'all'
+        coef = [[np.random.randn(nzeta[l], nbes_tl).tolist()
+                 for l, nbes_tl in enumerate(nbes_t)]
+                for nbes_t in nbes_data]
+
+        coef_frozen = [[np.random.randn(nzeta[l], nbes_tl).tolist()
+                        for l, nbes_tl in enumerate(nbes_t)]
+                       for nbes_t in nbes_data]
+
+        orbgen._tab_frozen(coef_frozen)
+        orbgen._tab_deriv(coef)
+
+        dspill = orbgen._generalized_spillage(0, coef, ibands, True)[1]
+        dspill = np.array(flatten(dspill))
+
+        pat = nestpat(coef)
+        sz = len(flatten(coef))
+
+        dspill_fd = np.zeros(sz)
+        dc = 1e-6
+        for i in range(sz):
+            coef_p = flatten(deepcopy(coef))
+            coef_p[i] += dc
+            coef_p = nest(coef_p, pat)
+            spill_p = orbgen._generalized_spillage(0, coef_p, ibands)
+
+            coef_m = flatten(deepcopy(coef))
+            coef_m[i] -= dc
+            coef_m = nest(coef_m, pat)
+            spill_m = orbgen._generalized_spillage(0, coef_m, ibands)
+
+            dspill_fd[i] = (spill_p - spill_m) / (2 * dc)
+
+        self.assertTrue(np.allclose(dspill, dspill_fd, atol=1e-7))
 
 
     def test_jy_config_add(self):
@@ -889,7 +948,7 @@ class _TestSpillage(unittest.TestCase):
         orbgen = Spillage_jy()
         orbgen.config_add(path)
 
-        #return
+        return
         nthreads = 2
         options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': 2000,
                    'disp': True, 'maxcor': 20}
@@ -1068,93 +1127,6 @@ class _TestSpillage(unittest.TestCase):
                 self.assertEqual(orbgen.dao_jy[iconf].shape,
                                  (2, ncoef, dat['nk'], n_dao, njy))
 
-
-    def est_overlap_spillage(self):
-        '''
-        Verifies that generalized spillage with op = I
-        recovers the overlap spillage.
-
-        '''
-        for conf in self.config_pw:
-            for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
-                orbgen.config_add_pw((conf + '/orb_matrix.0.dat',
-                                      conf + '/orb_matrix.0.dat'))
-
-        ibands = range(5)
-        nbes_min = min(dat['nbes'] for dat in self.orbgen_rdc.config)
-
-        coef = self.randcoef([[2, 2, 1]], nbes_min)
-        coef_frozen_list = [
-                None,
-                self.randcoef([[1, 1]], nbes_min),
-                self.randcoef([[2, 1, 0]], nbes_min),
-                self.randcoef([[0, 1, 1]], nbes_min),
-                ]
-
-        for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
-            for coef_frozen in coef_frozen_list:
-                orbgen._tab_frozen(coef_frozen)
-                for iconf, config in enumerate(self.config_pw):
-                    dat = orbgen.config[iconf]
-                    spill_ref = _overlap_spillage(dat['natom'],
-                                                  dat['lmax'],
-                                                  dat['nbes'],
-                                                  dat['jy_jy'][0],
-                                                  dat['mo_jy'][0],
-                                                  dat['mo_mo'][0],
-                                                  dat['wk'],
-                                                  coef, ibands, coef_frozen)
-                    spill = orbgen._generalized_spillage(iconf, coef, ibands)
-                    self.assertAlmostEqual(spill, spill_ref, places=10)
-
-
-    def est_finite_difference(self):
-        '''
-        Checks the gradient of the generalized spillage
-        with finite difference.
-
-        '''
-        for conf in self.config_pw:
-            for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
-                orbgen.config_add_pw(conf)
-
-        ibands = range(6)
-        nbes_min = min(dat['nbes'] for dat in self.orbgen_rdc.config)
-
-        coef = self.randcoef([[2, 1, 1]], nbes_min)
-        coef_frozen_list = [None, self.randcoef([[1, 1]], nbes_min)]
-
-        for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
-            for coef_frozen in coef_frozen_list:
-                orbgen._tab_frozen(coef_frozen)
-                orbgen._tab_deriv(coef)
-
-                for iconf, _ in enumerate(orbgen.config):
-                    dspill = orbgen._generalized_spillage(iconf, coef,
-                                                         ibands, True)[1]
-                    dspill = np.array(flatten(dspill))
-
-                    pat = nestpat(coef)
-                    sz = len(flatten(coef))
-
-                    dspill_fd = np.zeros(sz)
-                    dc = 1e-6
-                    for i in range(sz):
-                        coef_p = flatten(deepcopy(coef))
-                        coef_p[i] += dc
-                        coef_p = nest(coef_p, pat)
-                        spill_p = orbgen._generalized_spillage(iconf, coef_p,
-                                                              ibands)
-
-                        coef_m = flatten(deepcopy(coef))
-                        coef_m[i] -= dc
-                        coef_m = nest(coef_m, pat)
-                        spill_m = orbgen._generalized_spillage(iconf, coef_m,
-                                                              ibands)
-
-                        dspill_fd[i] = (spill_p - spill_m) / (2 * dc)
-
-                    self.assertTrue(np.allclose(dspill, dspill_fd, atol=1e-7))
 
 
     def est_opt_pw(self):

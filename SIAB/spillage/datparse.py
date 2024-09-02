@@ -406,6 +406,7 @@ def read_running_scf_log(fname):
                 nk = int(line.split()[-1])
                 next(f); next(f)
                 wk = [float(next(f).split()[-1]) for _ in range(nk)]
+                wk = np.array(wk)
                 status['wk'] = True
 
             if all(status.values()):
