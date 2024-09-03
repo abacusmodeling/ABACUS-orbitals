@@ -65,21 +65,17 @@ def _jy_data_extract(outdir):
             'S': np.array(S), 'T': np.array(T), 'C': np.array(C)}
 
 
-def initgen(nzeta_gen, nbes_data, ref_jy, wk, nbes_gen=None, diagosis=False):
+def _initgen_core(nzeta, nbes_data, ref_jy, wk, nbes_gen, diagosis):
     '''
-    Generates an initial guess for the spherical Bessel coefficients from
-    single-atom overlap data.
+    Computational core of initgen.
 
     Parameters
     ----------
-        nzeta_gen : list of int
+        nzeta : list of int
             Target number of zeta for each l.
-        nbes_data : list of int or a 2-tuple of int
+        nbes_data : list of int
             Number of spherical Bessel components for each l of the
             single-atom overlap data (ref_jy).
-            If a list, nbes_data[l] is the number corresponding to l.
-            If a 2-tuple, it is taken as (lmax, nbes_each) and the same
-            number of spherical Bessel components is assumed for each l.
         ref_jy : ndarray, shape (nk, nbands, njy)
             Overlap between single-atom reference states and spherical
             waves (jy). The order of jy must be lexicographic in terms
@@ -87,14 +83,10 @@ def initgen(nzeta_gen, nbes_data, ref_jy, wk, nbes_gen=None, diagosis=False):
             and q is the radial index.
         wk : ndarray, shape (nk,)
             Weights of k points.
-        nbes_gen : int or list of int or None
+        nbes_gen : list of int
             Number of spherical Bessel components for each l to generate.
-            If a list, nbes_gen[l] is the number corresponding to l.
-            If an int, the same number of spherical Bessel components
-            is assumed for each l.
-            If None, nbes_gen is assumed to be the same as nbes_data.
         diagosis : bool
-            If true, print for each l the largest nzeta_gen[l] eigenvalues of
+            If true, print for each l the largest nzeta[l] eigenvalues of
 
                     sum_k wk * Y[l,k].T.conj() @ Y[l,k]
 
@@ -108,70 +100,124 @@ def initgen(nzeta_gen, nbes_data, ref_jy, wk, nbes_gen=None, diagosis=False):
     -------
         A nested list. coef[l][zeta][q] -> float.
 
-    Note
-    ----
-    This function does not discriminate various types of spherical waves
-    radial functions (raw/normalized/reduced). The coefficients are generated
-    in terms of that of the input data (ref_jy).
-
-    The resulting coefficients are always "normalized" in the sense that
-    norm(coef[l][zeta]) = 1 for any l and zeta, which means they yield
-    normalized orbitals in the case of normalized/reduced spherical waves,
-    but not for raw spherical waves. However, since ABACUS always normalizes
-    the numerical atomic orbitals in LCAO calculations, raw spherical wave
-    radial functions should never occur in practice.
-
     '''
-    if isinstance(nbes_data, tuple):
-        lmax_data, nbes_each = nbes_data
-        nbes_data = [nbes_each] * (lmax_data + 1)
-    else:
-        lmax_data = len(nbes_data) - 1
-
-    lmax_gen = len(nzeta_gen) - 1
-
-    if nbes_gen is None:
-        nbes_gen = [nbes_data[l] for l in range(lmax_gen + 1)]
-    elif isinstance(nbes_gen, int):
-        nbes_gen = [nbes_gen] * (lmax_gen + 1)
-
-    assert lmax_gen <= lmax_data
-    assert all(nbes_gen[l] <= nbes_data[l] for l in range(lmax_gen + 1))
-
     # number of spherical waves per l
-    njy_l = [(2*l+1) * nbes_data[l] for l in range(lmax_data+1)]
-    nk, nbands, njy = ref_jy.shape
-    assert(sum(njy_l) == njy)
+    njy_l = [(2*l+1) * nbes_l for l, nbes_l in enumerate(nbes_data)]
 
-    # reorganize ref_jy to Y[l,k] for each l
-    index_l_start = [0] + np.cumsum(njy_l).tolist()
-    Y = [ref_jy[:,:,range(index_l_start[l], index_l_start[l+1])]
-         .reshape(nk, -1, nbes_data[l]) # (nk, nbands*(2*l+1), nbes_data[l])
-         [:,:,:nbes_gen[l]]
-         for l in range(lmax_gen + 1)]
+    # delimiting indices for each l
+    delim = [0] + np.cumsum(njy_l).tolist()
+
+    nk, nbands, _ = ref_jy.shape
 
     coef = []
-    for l in range(lmax_gen + 1):
-        if nzeta_gen[l] == 0:
+    for l, nzeta_l in enumerate(nzeta):
+        if nzeta_l == 0:
             coef.append([])
             continue
 
-        YdaggerY = ((Y[l].swapaxes(-2, -1).conj() @ Y[l])
+        Y = ref_jy[:,:,range(delim[l], delim[l+1])] \
+            .reshape(nk, nbands*(2*l+1), nbes_data[l]) \
+            [:,:,:nbes_gen[l]]
+
+        YdaggerY = ((Y.swapaxes(-2, -1).conj() @ Y)
                     * wk.reshape(-1, 1, 1)).sum(0).real
+
         val, vec = np.linalg.eigh(YdaggerY)
 
-        # eigenvectors corresponding to the largest nzeta_gen eigenvalues
-        coef.append(vec[:,-nzeta_gen[l]:][:,::-1].T.tolist())
+        # eigenvectors corresponding to the largest nzeta eigenvalues
+        coef.append(vec[:,-nzeta_l:][:,::-1].T.tolist())
 
         if diagosis:
-            print( "ORBGEN: <jy|ref><ref|jy> eigval diagnosis:")
-            print(f"        l = {l}: {val[-nzeta_gen[l]:][::-1]}")
+            print( "initgen: <jy|ref><ref|jy> eigval diagnosis:")
+            print(f"         l = {l}: {val[-nzeta_l:][::-1]}")
 
     return coef
 
 
-def _overlap_spillage(natom, nbes,
-                      jy_jy, ref_jy, ref_ref, wk,
+def initgen(outdir, nzeta, ibands='all', nbes_gen=None, diagosis=False):
+    '''
+    Generates an initial guess of the spherical Bessel coefficients from
+    single-atom overlap data.
+
+    Parameters
+    ----------
+        outdir : str
+            Path to the OUT.{suffix} directory generated by ABACUS.
+        nzeta : list of int
+            Target number of zeta for each l.
+        ibands : list of int or range or 'all'
+            Band indices to be included.
+        nbes_gen : int or list of int or None
+            Number of spherical Bessel components for each l to generate.
+            This allows the user to generate a set of coefficients with
+            smaller cutoff energy than the input data. For example, suppose
+            the data has [21, 20, 20] spherical waves for l = 0, 1, 2,
+            a user may specify a smaller nbes_gen like [16, 15, 15].
+            If an int, the same number of spherical Bessel components
+            is assumed for each l;
+            If a list, nbes_gen[l] is the number corresponding to l;
+            If None, nbes_gen is assumed to be the same as what is given
+            in the single-atom data.
+        diagosis : bool
+            See _initgen_core for details.
+
+    Returns
+    -------
+        A nested list. coef[l][zeta][q] -> float.
+
+    Note
+    ----
+    This function does not discriminate normalized or reduced spherical wave
+    radial functions. The coefficients are generated in terms of whatever
+    used to generate the reference state.
+
+    The resulting coefficients are always "normalized" in the sense that
+    norm(coef[l][zeta]) = 1 for any l and zeta. Since ABACUS always
+    normalizes the numerical atomic orbitals in LCAO calculations,
+    this should yield normalized orbitals in practice.
+
+    '''
+    dat = _jy_data_extract(outdir)
+    natom, nbes_data, wk, S, T, C = \
+            [dat[key] for key in ['natom', 'nzeta', 'wk', 'S', 'T', 'C']]
+
+    ref_jy = C.swapaxes(-2, -1).conj() @ S
+    p = perm_zeta_m(index_map(natom, nzeta=nbes_data)[1])
+    ref_jy = ref_jy[:,:,p]
+
+    # remove the 'itype' layer
+    nbes_data = nbes_data[0]
+
+    if nbes_gen is None:
+        nbes_gen = nbes_data
+    elif isinstance(nbes_gen, int):
+        nbes_gen = [nbes_gen] * len(nzeta)
+
+    if ibands == 'all':
+        ibands = range(ref_jy.shape[1])
+
+    # some sanity checks
+    # 1. the data is indeed from a single atom
+    assert natom == [1]
+    assert(sum((2*l+1) * nbes_l for l, nbes_l in enumerate(nbes_data))
+           == ref_jy.shape[-1])
+
+    # 2. nzeta must not exceed nbes_gen
+    assert len(nzeta) <= len(nbes_gen)
+    assert all(nzeta[l] <= nbes_gen[l] for l in range(len(nzeta)))
+
+    # 3. nbes_gen must not exceed nbes_data
+    assert len(nbes_gen) <= len(nbes_data)
+    assert all(nbes_gen[l] <= nbes_data[l] for l in range(len(nbes_gen)))
+
+    # 4. band indices must be within the range
+    assert all(0 <= ib < ref_jy.shape[1] for ib in ibands)
+
+    return _initgen_core(nzeta, nbes_data, ref_jy[:,ibands,:],
+                         wk, nbes_gen, diagosis)
+
+
+def _overlap_spillage(natom, nbes, jy_jy, ref_jy, ref_ref, wk,
                       coef, ibands, coef_frozen=None):
     '''
     Standard spillage function (overlap spillage).
@@ -249,7 +295,6 @@ def _overlap_spillage(natom, nbes,
     return spill / len(ibands)
 
 
-
 class Spillage:
     '''
     Generalized spillage function and its optimization.
@@ -268,24 +313,26 @@ class Spillage:
                 l, which is assumed to be the same for all atomic types.
                 If a nested list, nbes[itype][l] specifies the number for
                 angular momentum l of atomic type `itype`.
-            jy_jy : ndarray, shape (nk, njy, njy)
-                Overlap between spherical waves (jy). The order of jy must
-                be lexicographic in terms of (itype, iatom, l, mm, q).
-            ref_jy : ndarray, shape (nk, nbands, njy)
-                Overlap between reference states and spherical waves. The
-                order of jy must be lexicographic in terms of
-                (itype, iatom, l, mm, q).
-            ref_ref : ndarray, shape (nk, nbands)
-                Overlap between reference states (diagonal terms only).
+            jy_jy   : ndarray, shape (2, nk, njy, njy)
+            ref_jy  : ndarray, shape (2, nk, nbands, njy)
+            ref_ref : ndarray, shape (2, nk, nbands) (diagonal only!)
+                Matrix elements between spherical waves (jy) or reference
+                states. The overlap and operator matrix elements are stacked
+                such that, e.g., jy_jy[0] refers to <jy|jy> and jy_jy[1]
+                refers to <jy|op|jy>. The order of jy must be lexicographic
+                in terms of (itype, iatom, l, mm, q).
             wk : ndarray, shape (nk,)
                 k-point weights.
 
-        spill_frozen : list of array
-            Band-wise spillage contribution from frozen orbitals.
+        spill_frozen : list of array of shape (nbands,)
+            Band-wise spillage contribution from frozen orbitals. The shapes
+            of arrays may vary among configurations due to different numbers
+            of bands.
             spill_frozen[iconf][iband] -> float.
-        ref_Pfrozen_jy : list of ndarray
-            <ref|P_frozen|jy> and <ref|P_frozen op|jy> for each configuration
-            (P_frozen is the projection operator onto the frozen subspace).
+        ref_Pfrozen_jy : list of ndarray of shape (2, nk, nbands, njy)
+            Stacked <ref|P_frozen|jy> and <ref|P_frozen op|jy> for each
+            configuration, where P_frozen is the projection operator onto
+            the frozen subspace.
             ref_Pfrozen_jy[iconf][0] and ref_Pfrozen_jy[iconf][1] correspond
             to <ref|P_frozen|jy> and <ref|P_frozen op|jy> respectively. Each
             of them has a shape of (nk, nbands, njy).
@@ -403,7 +450,8 @@ class Spillage:
 
     def _generalized_spillage(self, iconf, coef, ibands, with_grad=False):
         '''
-        Generalized spillage function and its gradient.
+        Generalized spillage function and its gradient with respect to
+        spherical Bessel coefficients of a single configuration.
 
         '''
         dat = self.config[iconf]
@@ -738,19 +786,9 @@ class _TestSpillage(unittest.TestCase):
     def test_initgen_gamma(self):
         outdir = './testgen/Si/jy-7au/monomer-gamma/OUT.ABACUS/'
 
-        dat = _jy_data_extract(outdir)
-        natom, nbes_data, wk, S, T, C = \
-                [dat[key] for key in ['natom', 'nzeta', 'wk', 'S', 'T', 'C']]
-        assert natom == [1]
-
-        ref_jy = C.swapaxes(-2, -1).conj() @ S
-        p = perm_zeta_m(index_map(natom, nzeta=nbes_data)[1])
-        ref_jy = ref_jy[:,:,p]
-
         nzeta = [3, 3, 2]
         ibands = range(22)
-        coef = initgen(nzeta, nbes_data[0], ref_jy[:,ibands,:], wk,
-                       None, False)
+        coef = initgen(outdir, nzeta, ibands=ibands, diagosis=False)
 
         self.assertEqual(len(coef), len(nzeta))
         self.assertEqual([len(coef_l) for coef_l in coef], nzeta)
@@ -769,19 +807,9 @@ class _TestSpillage(unittest.TestCase):
     def test_initgen_k(self):
         outdir = './testgen/Si/jy-7au/monomer-k/OUT.ABACUS/'
 
-        dat = _jy_data_extract(outdir)
-        natom, nbes_data, wk, S, T, C = \
-                [dat[key] for key in ['natom', 'nzeta', 'wk', 'S', 'T', 'C']]
-        assert natom == [1]
-
-        ref_jy = C.swapaxes(-2, -1).conj() @ S
-        p = perm_zeta_m(index_map(natom, nzeta=nbes_data)[1])
-        ref_jy = ref_jy[:,:,p]
-
         nzeta = [3, 3, 2]
         ibands = range(22)
-        coef = initgen(nzeta, nbes_data[0], ref_jy[:,ibands,:], wk,
-                       None, False)
+        coef = initgen(outdir, nzeta, ibands=ibands, diagosis=False)
 
         self.assertEqual(len(coef), len(nzeta))
         self.assertEqual([len(coef_l) for coef_l in coef], nzeta)
@@ -795,6 +823,102 @@ class _TestSpillage(unittest.TestCase):
 
         plot_chi(chi, r)
         plt.show()
+
+
+    def test_jy_config_add(self):
+        outdirs = [
+                './testgen/Si/jy-7au/monomer-gamma/OUT.ABACUS/',
+                './testgen/Si/jy-7au/dimer-1.8-k/OUT.ABACUS/',
+                ]
+
+        orbgen = Spillage_jy()
+
+        for outdir in outdirs:
+            orbgen.config_add(outdir)
+
+        self.assertEqual(len(orbgen.config), 2)
+
+        self.assertEqual(orbgen.config[0]['natom'], [1])
+        self.assertEqual(len(orbgen.config[0]['nbes']), 1)
+        self.assertEqual(len(orbgen.config[0]['nbes'][0]), 3)
+
+        self.assertEqual(orbgen.config[1]['natom'], [2])
+        self.assertEqual(len(orbgen.config[1]['nbes']), 1)
+        self.assertEqual(len(orbgen.config[1]['nbes'][0]), 3)
+
+        for conf in orbgen.config:
+            njy = _nao(conf['natom'], conf['nbes'])
+            nk = len(conf['wk'])
+            nbands = conf['ref_ref'].shape[-1]
+
+            self.assertEqual(conf['ref_ref'].shape, (2, nk, nbands))
+            self.assertEqual(conf['ref_jy'].shape, (2, nk, nbands, njy))
+            self.assertEqual(conf['jy_jy'].shape, (2, nk, njy, njy))
+
+
+    def test_tab_frozen(self):
+        outdirs = [
+                './testgen/Si/jy-7au/monomer-gamma/OUT.ABACUS/',
+                './testgen/Si/jy-7au/dimer-1.8-k/OUT.ABACUS/',
+                ]
+
+        orbgen = Spillage_jy()
+
+        for outdir in outdirs:
+            orbgen.config_add(outdir)
+
+        coef_frozen = [[np.eye(3, 5).tolist(),
+                        np.eye(3, 5).tolist(),
+                        np.eye(2, 5).tolist()]]
+
+        orbgen._tab_frozen(coef_frozen)
+
+        self.assertEqual(len(orbgen.spill_frozen), len(outdirs))
+        self.assertEqual(len(orbgen.ref_Pfrozen_jy), len(outdirs))
+
+        for iconf, conf in enumerate(orbgen.config):
+            njy = _nao(conf['natom'], conf['nbes'])
+            nk = len(conf['wk'])
+            nbands = conf['ref_ref'].shape[-1]
+
+            self.assertEqual(orbgen.spill_frozen[iconf].shape,
+                             (nbands,))
+            self.assertEqual(orbgen.ref_Pfrozen_jy[iconf].shape,
+                             (2, nk, nbands, njy))
+
+
+    def test_tab_deriv(self):
+        outdirs = [
+                './testgen/Si/jy-7au/monomer-gamma/OUT.ABACUS/',
+                './testgen/Si/jy-7au/dimer-1.8-k/OUT.ABACUS/',
+                ]
+
+        orbgen = Spillage_jy()
+
+        for outdir in outdirs:
+            orbgen.config_add(outdir)
+
+        coef = [[np.eye(3, 5).tolist(),
+                 np.eye(3, 5).tolist(),
+                 np.eye(2, 5).tolist()]]
+
+        orbgen._tab_deriv(coef)
+
+        # verifies in the presence of frozen orbitals
+        coef_frozen = [[np.eye(3, 5).tolist(),
+                        np.eye(3, 5).tolist(),
+                        np.eye(2, 5).tolist()]]
+        orbgen._tab_frozen(coef_frozen)
+        orbgen._tab_deriv(coef)
+
+        #return
+        #nthreads = 2
+        #options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': 2000,
+        #           'disp': True, 'maxcor': 20}
+
+
+        #orbgen.opt(coef_init, None,
+        #           'all', range(8), options, nthreads)
 
 
     def test_overlap_spillage_gamma(self):
@@ -888,6 +1012,7 @@ class _TestSpillage(unittest.TestCase):
         spill = _overlap_spillage(natom, nbes_data,
                                   jy_jy, ref_jy, ref_ref, wk,
                                   coef, ibands, coef_frozen)
+
         orbgen._tab_frozen(coef_frozen)
         spill2 = orbgen._generalized_spillage(0, coef, ibands)
         self.assertAlmostEqual(spill, spill2)
@@ -940,24 +1065,6 @@ class _TestSpillage(unittest.TestCase):
             dspill_fd[i] = (spill_p - spill_m) / (2 * dc)
 
         self.assertTrue(np.allclose(dspill, dspill_fd, atol=1e-7))
-
-
-    def test_jy_config_add(self):
-        path = './testgen/Si/jy-7au/dimer-1.8-gamma/OUT.ABACUS/'
-
-        orbgen = Spillage_jy()
-        orbgen.config_add(path)
-
-        return
-        nthreads = 2
-        options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': 2000,
-                   'disp': True, 'maxcor': 20}
-
-        coef_init = [[np.eye(3,21).tolist(),
-                      np.eye(3,20).tolist(),
-                      np.eye(2,20).tolist()]]
-        orbgen.opt(coef_init, None,
-                   'all', range(8), options, nthreads)
 
 
     def setUp(self):
@@ -1033,38 +1140,38 @@ class _TestSpillage(unittest.TestCase):
 
 
     
-    def est_config_add_pw(self):
-        '''
-        Checks if config_add_pw loads & transforms data correctly.
+    #def est_config_add_pw(self):
+    #    '''
+    #    Checks if config_add_pw loads & transforms data correctly.
 
-        '''
-        for conf in self.config_pw:
-            for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
-                orbgen.config_add_pw(conf)
+    #    '''
+    #    for conf in self.config_pw:
+    #        for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
+    #            orbgen.config_add_pw(conf)
 
-        for iconf, config in enumerate(self.config_pw):
-            for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
+    #    for iconf, config in enumerate(self.config_pw):
+    #        for orbgen in [self.orbgen_nrm, self.orbgen_rdc]:
 
-                dat = orbgen.config[iconf]
-                njy = _nao(dat['natom'], lmax=dat['lmax']) * dat['nbes']
+    #            dat = orbgen.config[iconf]
+    #            njy = _nao(dat['natom'], lmax=dat['lmax']) * dat['nbes']
 
-                self.assertEqual(dat['mo_mo'].shape,
-                                 (2, dat['nk'], dat['nbands']))
-                self.assertEqual(dat['mo_jy'].shape,
-                                 (2, dat['nk'], dat['nbands'], njy))
-                self.assertEqual(dat['jy_jy'].shape,
-                                 (2, dat['nk'], njy, njy))
+    #            self.assertEqual(dat['mo_mo'].shape,
+    #                             (2, dat['nk'], dat['nbands']))
+    #            self.assertEqual(dat['mo_jy'].shape,
+    #                             (2, dat['nk'], dat['nbands'], njy))
+    #            self.assertEqual(dat['jy_jy'].shape,
+    #                             (2, dat['nk'], njy, njy))
 
-                # config_add_pw not only load data, but also performs
-                # normalization/reduction. Here we check them by looking
-                # at the overlap matrix on the first atom. Either way,
-                # the overlap block should be close to the identity matrix.
-                nao_0 = njy // dat['natom'][0]
-                S = dat['jy_jy'][0, 0][:nao_0, :nao_0]
-                self.assertTrue(np.allclose(S, np.eye(nao_0), atol=1e-6))
+    #            # config_add_pw not only load data, but also performs
+    #            # normalization/reduction. Here we check them by looking
+    #            # at the overlap matrix on the first atom. Either way,
+    #            # the overlap block should be close to the identity matrix.
+    #            nao_0 = njy // dat['natom'][0]
+    #            S = dat['jy_jy'][0, 0][:nao_0, :nao_0]
+    #            self.assertTrue(np.allclose(S, np.eye(nao_0), atol=1e-6))
 
-            self.assertEqual(self.orbgen_nrm.config[iconf]['nbes'],
-                             self.orbgen_rdc.config[iconf]['nbes'] + 1)
+    #        self.assertEqual(self.orbgen_nrm.config[iconf]['nbes'],
+    #                         self.orbgen_rdc.config[iconf]['nbes'] + 1)
 
 
 
@@ -1129,76 +1236,76 @@ class _TestSpillage(unittest.TestCase):
 
 
 
-    def est_opt_pw(self):
-        from listmanip import merge
+    #def est_opt_pw(self):
+    #    from listmanip import merge
 
-        reduced = True
-        orbgen = self.orbgen_rdc if reduced else self.orbgen_nrm
+    #    reduced = True
+    #    orbgen = self.orbgen_rdc if reduced else self.orbgen_nrm
 
-        for conf in self.config_pw:
-            orbgen.config_add_pw(conf)
+    #    for conf in self.config_pw:
+    #        orbgen.config_add_pw(conf)
 
-        nthreads = 2
-        options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': 2000,
-                   'disp': True, 'maxcor': 20}
+    #    nthreads = 2
+    #    options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': 2000,
+    #               'disp': True, 'maxcor': 20}
 
-        # initial guess
-        ov = read_orb_mat(self.config0_pw + '/orb_matrix.0.dat')
-        nzeta = [3, 3, 2]
-        rcut = ov['rcut']
-        ecut = ov['ecutjlq']
+    #    # initial guess
+    #    ov = read_orb_mat(self.config0_pw + '/orb_matrix.0.dat')
+    #    nzeta = [3, 3, 2]
+    #    rcut = ov['rcut']
+    #    ecut = ov['ecutjlq']
 
-        coef_init = initgen_pw(nzeta, ecut, len(nzeta)-1, rcut, ov['nbes'],
-                               ov['mo_jy'], ov['wk'], reduced)
+    #    coef_init = initgen_pw(nzeta, ecut, len(nzeta)-1, rcut, ov['nbes'],
+    #                           ov['mo_jy'], ov['wk'], reduced)
 
 
-        nbes = [_nbes(l, rcut, ecut) for l in range(len(nzeta))]
-        if reduced:
-            nbes = [n - 1 for n in nbes]
+    #    nbes = [_nbes(l, rcut, ecut) for l in range(len(nzeta))]
+    #    if reduced:
+    #        nbes = [n - 1 for n in nbes]
 
-        coef_init = [np.eye(nz, nbes[l]).tolist()
-                     for l, nz in enumerate(nzeta)]
+    #    coef_init = [np.eye(nz, nbes[l]).tolist()
+    #                 for l, nz in enumerate(nzeta)]
 
-        ibands = range(4)
-        iconfs = [0, 1, 2]
-        # coef_lvl1_init: [t][l][z][q]
-        coef_lvl1_init = [[[coef_init[0][0]],
-                           [coef_init[1][0]]]]
-        coef_lvl1 = orbgen.opt(coef_lvl1_init, None, iconfs, ibands,
-                               options, nthreads)
-        coef_tot = coef_lvl1
+    #    ibands = range(4)
+    #    iconfs = [0, 1, 2]
+    #    # coef_lvl1_init: [t][l][z][q]
+    #    coef_lvl1_init = [[[coef_init[0][0]],
+    #                       [coef_init[1][0]]]]
+    #    coef_lvl1 = orbgen.opt(coef_lvl1_init, None, iconfs, ibands,
+    #                           options, nthreads)
+    #    coef_tot = coef_lvl1
 
-        ibands = range(4)
-        iconfs = [0, 1, 2]
-        coef_lvl2_init = [[[coef_init[0][1]],
-                           [coef_init[1][1]],
-                           [coef_init[2][0]]]]
-        coef_lvl2 = orbgen.opt(coef_lvl2_init, coef_lvl1, iconfs, ibands,
-                               options, nthreads)
-        coef_tot = merge(coef_tot, coef_lvl2, 2)
+    #    ibands = range(4)
+    #    iconfs = [0, 1, 2]
+    #    coef_lvl2_init = [[[coef_init[0][1]],
+    #                       [coef_init[1][1]],
+    #                       [coef_init[2][0]]]]
+    #    coef_lvl2 = orbgen.opt(coef_lvl2_init, coef_lvl1, iconfs, ibands,
+    #                           options, nthreads)
+    #    coef_tot = merge(coef_tot, coef_lvl2, 2)
 
-        ibands = range(8)
-        iconfs = [3, 4]
-        coef_lvl3_init = [[[coef_init[0][2]],
-                           [coef_init[1][2]],
-                           [coef_init[2][1]]]]
-        coef_lvl3 = orbgen.opt(coef_lvl3_init, coef_tot, iconfs, ibands,
-                               options, nthreads)
-        coef_tot = merge(coef_tot, coef_lvl3, 2)
+    #    ibands = range(8)
+    #    iconfs = [3, 4]
+    #    coef_lvl3_init = [[[coef_init[0][2]],
+    #                       [coef_init[1][2]],
+    #                       [coef_init[2][1]]]]
+    #    coef_lvl3 = orbgen.opt(coef_lvl3_init, coef_tot, iconfs, ibands,
+    #                           options, nthreads)
+    #    coef_tot = merge(coef_tot, coef_lvl3, 2)
 
-        #return # supress the plot 
+    #    #return # supress the plot 
 
-        dr = 0.01
-        r = np.linspace(0, rcut, int(rcut/dr)+1)
+    #    dr = 0.01
+    #    r = np.linspace(0, rcut, int(rcut/dr)+1)
 
-        if reduced:
-            chi = build_reduced(coef_tot[0], rcut, r, True)
-        else:
-            coeff_raw = coeff_normalized2raw(coef_tot, rcut)
-            chi = build_raw(coeff_raw[0], rcut, r, 0.0, True)
+    #    if reduced:
+    #        chi = build_reduced(coef_tot[0], rcut, r, True)
+    #    else:
+    #        coeff_raw = coeff_normalized2raw(coef_tot, rcut)
+    #        chi = build_raw(coeff_raw[0], rcut, r, 0.0, True)
 
-        plot_chi(chi, r)
-        plt.show()
+    #    plot_chi(chi, r)
+    #    plt.show()
 
 
     def est_opt_jy(self):
