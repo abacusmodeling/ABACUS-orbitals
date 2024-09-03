@@ -904,12 +904,46 @@ class _TestSpillage(unittest.TestCase):
 
         orbgen._tab_deriv(coef)
 
+        self.assertEqual(len(orbgen.dao_jy), len(outdirs))
+        self.assertEqual(len(orbgen.ref_Qfrozen_dao), len(outdirs))
+
+        for iconf, conf in enumerate(orbgen.config):
+            ncoef = len(flatten(coef))
+            njy = _nao(conf['natom'], conf['nbes'])
+            nk = len(conf['wk'])
+            nbands = conf['ref_ref'].shape[-1]
+
+            nzeta = [[len(coef_tl) for coef_tl in coef_t] for coef_t in coef]
+            nao = _nao(conf['natom'], nzeta)
+
+            self.assertEqual(orbgen.dao_jy[iconf].shape,
+                             (2, ncoef, nk, nao, njy))
+            self.assertEqual(orbgen.ref_Qfrozen_dao[iconf].shape,
+                             (2, ncoef, nk, nbands, nao))
+
         # verifies in the presence of frozen orbitals
-        coef_frozen = [[np.eye(3, 5).tolist(),
-                        np.eye(3, 5).tolist(),
-                        np.eye(2, 5).tolist()]]
+        coef_frozen = [[np.eye(2, 5).tolist(),
+                        np.eye(2, 5).tolist(),
+                        np.eye(1, 5).tolist()]]
         orbgen._tab_frozen(coef_frozen)
         orbgen._tab_deriv(coef)
+
+        self.assertEqual(len(orbgen.dao_jy), len(outdirs))
+        self.assertEqual(len(orbgen.ref_Qfrozen_dao), len(outdirs))
+
+        for iconf, conf in enumerate(orbgen.config):
+            ncoef = len(flatten(coef))
+            njy = _nao(conf['natom'], conf['nbes'])
+            nk = len(conf['wk'])
+            nbands = conf['ref_ref'].shape[-1]
+
+            nzeta = [[len(coef_tl) for coef_tl in coef_t] for coef_t in coef]
+            nao = _nao(conf['natom'], nzeta)
+
+            self.assertEqual(orbgen.dao_jy[iconf].shape,
+                             (2, ncoef, nk, nao, njy))
+            self.assertEqual(orbgen.ref_Qfrozen_dao[iconf].shape,
+                             (2, ncoef, nk, nbands, nao))
 
         #return
         #nthreads = 2

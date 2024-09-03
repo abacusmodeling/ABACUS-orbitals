@@ -1,4 +1,4 @@
-from SIAB.spillage.index import index_map
+from SIAB.spillage.index import index_map, _nao
 
 import numpy as np
 from scipy.linalg import block_diag
@@ -21,29 +21,39 @@ def jy2ao(coef, natom, nbes):
     ----------
         coef : nested list
             The coefficients of pseudo-atomic orbital basis orbitals
-            in terms of the spherical wave basis. coef[itype][l][zeta]
-            gives a list of spherical wave coefficients that specifies
-            an orbital.
-            Note that len(coef[itype][l][zeta]) must not be larger than
-            nbes[itype][l]; coef[itype][l][zeta] will be padded with zeros
-            if len(coef[itype][l][zeta]) < nbes[itype][l].
+            in terms of the spherical wave basis.
+            coef[itype][l][zeta][q] -> float
         natom : list of int
             Number of atoms for each atom type.
-        nbes : list of int / list of list of int
-            Number of spherical wave radial functions.
-            If a list, nbes[l] specifies the number for angular momentum l
-            and is assumed to be the same for all atomic types.
-            If a nested list, nbes[itype][l] specifies the number for angular
-            momentum l of atomic type `itype`.
+        nbes : list of list of int
+            Number of spherical wave radial functions for a given type
+            and angular momentum l.
+            nbes[itype][l] -> int
+
+    Note
+    ----
+    len(coef) must agree with that of natom and nbes, which is the number
+    of atom types.
+    len(coef[itype]), however, can be less than that of nbes[itype] (i.e.,
+    omitting a few largest l's).
+    There is no restriction on the length of coef[itype][l], so the
+    resulting pseudo-atomic orbital basis may have linear-dependence,
+    if len(coef[itype][l]) > nbes[itype][l] occurs.
+    len(coef[itype][l][zeta]) can be equal or less than nbes[itype][l].
+    If it is less, the remaining elements are assumed to be zero.    
 
     '''
-    # if a plain list is given, convert to a list of list of int
-    # such that nbes[itype][l] gives the corresponding number.
-    if isinstance(nbes[0], int):
-        nbes = [nbes] * len(natom)
-    
-    assert len(natom) == len(coef) == len(nbes) # should all equal ntype
-    assert all(len(nbes_t) >= len(coef_t)
+    # some sanity checks
+    # 1. the length of natom, nbes & coef should all agree (ntype)
+    assert len(natom) == len(nbes) == len(coef)
+
+    # 2. len(coef[itype]) (number of l) should not exceed len(nbes[itype]).
+    assert all(len(coef_t) <= len(nbes_t)
+               for nbes_t, coef_t in zip(nbes, coef))
+
+    # 3. len(coef[itype][l][zeta]) should not exceed nbes[itype][l].
+    assert all(all(all(len(coef_tlz) <= nbes_tl for coef_tlz in coef_tl)
+                   for nbes_tl, coef_tl in zip(nbes_t, coef_t))
                for nbes_t, coef_t in zip(nbes, coef))
 
     def _gen_q2zeta(coef, lin2comp, nbes):
@@ -54,12 +64,12 @@ def jy2ao(coef, natom, nbes):
                 # appropriate size when no coefficient is provided.
                 yield np.zeros((nbes[itype][l], 0))
             else:
-                # zero-padding coef[itype][l] to the specified size
+                # zero-padding the coefficient to nbes[itype][l]
                 C = np.zeros((nbes[itype][l], len(coef[itype][l])))
                 C[:len(coef[itype][l][0])] = np.array(coef[itype][l]).T
                 yield C
 
-    lmax = [len(coef_t) - 1 for coef_t in coef]
+    lmax = [len(nbes_t) - 1 for nbes_t in nbes]
     lin2comp = index_map(natom, lmax=lmax)[1]
     return block_diag(*_gen_q2zeta(coef, lin2comp, nbes))
 
@@ -71,60 +81,33 @@ import unittest
 
 class _TestBasisTrans(unittest.TestCase):
 
-    def test_jy2ao_nbes1(self):
-        '''
-        Test the case where nbes is a list of int.
+    def test_jy2ao_nbes(self):
+        nbes = [[11, 10, 9, 8], [7, 6], [5], [4, 3], [10]]
 
-        '''
-        nbes = [7, 7, 6]
-
-        nzeta = [[3, 1, 4], [0, 5], [9]] # nzeta[itype][l]
-        lmax = [len(nzt) - 1 for nzt in nzeta]
-        coef = [[np.random.randn(nzeta_tl, nbes[l]).tolist()
-                 for l, nzeta_tl in enumerate(nzeta_t)]
-                for nzeta_t in nzeta]
-
-        natom = [1, 2, 3]
-        M = jy2ao(coef, natom, nbes)
-
-        irow = 0
-        icol = 0
-        for (itype, iatom, l, m) in index_map(natom, lmax=lmax)[1]:
-            nz = nzeta[itype][l]
-            self.assertTrue(np.allclose(
-                M[irow:irow+nbes[l], icol:icol+nz],
-                np.array(coef[itype][l]).T
-            ))
-            irow += nbes[l]
-            icol += nz
-
-
-    def test_jy2ao_nbes2(self):
-        '''
-        Test the case where nbes is a list of list of int.
-
-        '''
-        nbes = [[10, 9, 8], [7, 6], [10]]
-
-        nzeta = [[3, 1, 4], [0, 5], [9]] # nzeta[itype][l]
-        lmax = [len(nzt) - 1 for nzt in nzeta]
+        nzeta = [[3, 0, 4], [0, 5], [], [2, 0], [9]] # nzeta[itype][l]
         coef = [[np.random.randn(nzeta_tl, nbes[it][l]).tolist()
                  for l, nzeta_tl in enumerate(nzeta_t)]
                 for it, nzeta_t in enumerate(nzeta)]
 
-        natom = [1, 2, 3]
+        natom = [1, 2, 3, 4, 5]
         M = jy2ao(coef, natom, nbes)
+
+        nrow = _nao(natom, nbes)
+        ncol = _nao(natom, nzeta)
+        self.assertTrue(M.shape == (nrow, ncol))
 
         irow = 0
         icol = 0
+        lmax = [len(nbes_t) - 1 for nbes_t in nbes]
         for (itype, iatom, l, m) in index_map(natom, lmax=lmax)[1]:
-            nz = nzeta[itype][l]
-            self.assertTrue(np.allclose(
-                M[irow:irow+nbes[itype][l], icol:icol+nz],
-                np.array(coef[itype][l]).T
-            ))
+            if l < len(nzeta[itype]):
+                nz = nzeta[itype][l]
+                self.assertTrue(np.allclose(
+                    M[irow:irow+nbes[itype][l], icol:icol+nz],
+                    np.array(coef[itype][l]).T
+                ))
+                icol += nz
             irow += nbes[itype][l]
-            icol += nz
 
 
 if __name__ == '__main__':
