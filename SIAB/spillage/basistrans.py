@@ -1,4 +1,4 @@
-from SIAB.spillage.index import index_map, _nao
+from SIAB.spillage.index import _lin2comp, _nao
 
 import numpy as np
 from scipy.linalg import block_diag
@@ -20,8 +20,8 @@ def jy2ao(coef, natom, nbes):
     Parameters
     ----------
         coef : nested list
-            The coefficients of pseudo-atomic orbital basis orbitals
-            in terms of the spherical wave basis.
+            The coefficients of radial functions of pseudo-atomic orbitals
+            in terms of the spherical wave (jy) radial functions.
             coef[itype][l][zeta][q] -> float
         natom : list of int
             Number of atoms for each atom type.
@@ -35,12 +35,11 @@ def jy2ao(coef, natom, nbes):
     len(coef) must agree with that of natom and nbes, which is the number
     of atom types.
     len(coef[itype]), however, can be less than that of nbes[itype] (i.e.,
-    omitting a few largest l's).
-    There is no restriction on the length of coef[itype][l], so the
-    resulting pseudo-atomic orbital basis may have linear-dependence,
-    if len(coef[itype][l]) > nbes[itype][l] occurs.
+    a few largest l's can be omitted).
+    There is no restriction on the length of coef[itype][l]. The resulting
+    pseudo-atomic orbital basis may have linear dependence.
     len(coef[itype][l][zeta]) can be equal or less than nbes[itype][l].
-    If it is less, the remaining elements are assumed to be zero.    
+    If it is less, the remaining elements are assumed to be zero.
 
     '''
     # some sanity checks
@@ -56,9 +55,9 @@ def jy2ao(coef, natom, nbes):
                    for nbes_tl, coef_tl in zip(nbes_t, coef_t))
                for nbes_t, coef_t in zip(nbes, coef))
 
-    def _gen_q2zeta(coef, lin2comp, nbes):
-        for comp in lin2comp:
-            itype, _, l, _ = comp
+    def _gen_q2zeta(coef, natom, nbes):
+        lmax = [len(nbes_t) - 1 for nbes_t in nbes]
+        for itype, _, l, _ in _lin2comp(natom, lmax=lmax):
             if l >= len(coef[itype]) or len(coef[itype][l]) == 0:
                 # The generator should yield a zero matrix with the
                 # appropriate size when no coefficient is provided.
@@ -69,9 +68,7 @@ def jy2ao(coef, natom, nbes):
                 C[:len(coef[itype][l][0])] = np.array(coef[itype][l]).T
                 yield C
 
-    lmax = [len(nbes_t) - 1 for nbes_t in nbes]
-    lin2comp = index_map(natom, lmax=lmax)[1]
-    return block_diag(*_gen_q2zeta(coef, lin2comp, nbes))
+    return block_diag(*_gen_q2zeta(coef, natom, nbes))
 
 
 ############################################################
@@ -82,9 +79,9 @@ import unittest
 class _TestBasisTrans(unittest.TestCase):
 
     def test_jy2ao_nbes(self):
-        nbes = [[11, 10, 9, 8], [7, 6], [5], [4, 3], [10]]
+        nbes  = [[11, 10, 9, 8], [7, 6], [5], [4, 3], [2]]
 
-        nzeta = [[3, 0, 4], [0, 5], [], [2, 0], [9]] # nzeta[itype][l]
+        nzeta = [[3, 0, 4]     , [0, 9], [] , [2, 0], [1]] # nzeta[itype][l]
         coef = [[np.random.randn(nzeta_tl, nbes[it][l]).tolist()
                  for l, nzeta_tl in enumerate(nzeta_t)]
                 for it, nzeta_t in enumerate(nzeta)]
@@ -99,7 +96,7 @@ class _TestBasisTrans(unittest.TestCase):
         irow = 0
         icol = 0
         lmax = [len(nbes_t) - 1 for nbes_t in nbes]
-        for (itype, iatom, l, m) in index_map(natom, lmax=lmax)[1]:
+        for (itype, iatom, l, m) in _lin2comp(natom, lmax=lmax):
             if l < len(nzeta[itype]):
                 nz = nzeta[itype][l]
                 self.assertTrue(np.allclose(

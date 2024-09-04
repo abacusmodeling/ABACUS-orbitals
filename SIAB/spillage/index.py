@@ -29,20 +29,20 @@ def _nao(natom, nzeta=None, lmax=None):
                    * nat for itype, nat in enumerate(natom))
 
 
-def index_map(natom, nzeta=None, lmax=None):
+def _lin2comp(natom, nzeta=None, lmax=None):
     '''
-    Bijective map between composite and linearized indices.
+    Linearized-to-composite index map.
 
-    An orbital is labeled by its atomic species (type), atomic index within
+    An orbital is indexed by its atomic species (type), atomic index within
     species, angular momentum numbers l & m, and possibly a zeta number.
     Suppose there are a total of N orbitals, each orbital can also be
     assigned a unique index mu in [0, N-1].
 
-    This function returns a bijective map (dict & list) between composite
-    indices (itype, iatom, l[, zeta], m) and linearized indices following
-    the ABACUS convention, in which the composite indices are ordered
-    lexicographically in term of itype-iatom-l[-zeta]-mm where
-    mm = 2*abs(m)-(m>0) (i.e. m is ordered as 0, 1, -1, 2, -2, ..., l, -l)
+    This function returns an index map from linearized indices to composite
+    indices (itype, iatom, l[, zeta], m). The composite indices are ordered
+    lexicographically in term of (itype, iatom, l(, zeta), mm) where
+    mm = 2*abs(m)-(m>0) (i.e. m is ordered as 0, 1, -1, 2, -2, ..., l, -l),
+    in accordance with the ABACUS convention.
 
     Parameters
     ----------
@@ -62,39 +62,34 @@ def index_map(natom, nzeta=None, lmax=None):
 
     Returns
     -------
-        comp2lin : dict
-            A dict with values being the linearized indices. The keys
-            are (itype, iatom, l, m) if nzeta is None, or (itype, iatom,
-            l, zeta, m) if nzeta is not None.
         lin2comp : list
             lin2comp[i] gives the composite index of the orbital with
-            linearized index i.
+            linearized index i. If nzeta is None, composite indices
+            have the form (itype, iatom, l, m); otherwise they have the
+            form (itype, iatom, l, zeta, m).
+
 
     '''
     assert (nzeta is None) != (lmax is None)
 
     if nzeta is None:
         assert len(natom) == len(lmax)
-        lin2comp = [(itype, iatom, l,
-                     -mm // 2 if mm % 2 == 0 else (mm + 1) // 2)
-                    for itype, nat in enumerate(natom)
-                    for iatom in range(nat)
-                    for l in range(lmax[itype]+1)
-                    for mm in range(0, 2*l+1)
-                    ]
+        return [(itype, iatom, l,
+                 -mm // 2 if mm % 2 == 0 else (mm + 1) // 2)
+                for itype, nat in enumerate(natom)
+                for iatom in range(nat)
+                for l in range(lmax[itype]+1)
+                for mm in range(0, 2*l+1)
+                ]
     else:
-        lin2comp = [(itype, iatom, l, zeta,
-                     -mm // 2 if mm % 2 == 0 else (mm + 1) // 2)
-                    for itype, nat in enumerate(natom)
-                    for iatom in range(nat)
-                    for l, nztl in enumerate(nzeta[itype])
-                    for zeta in range(nztl)
-                    for mm in range(0, 2*l+1)
-                    ]
-
-    comp2lin = {comp: i for i, comp in enumerate(lin2comp)}
-
-    return comp2lin, lin2comp
+        return [(itype, iatom, l, zeta,
+                 -mm // 2 if mm % 2 == 0 else (mm + 1) // 2)
+                for itype, nat in enumerate(natom)
+                for iatom in range(nat)
+                for l, nztl in enumerate(nzeta[itype])
+                for zeta in range(nztl)
+                for mm in range(0, 2*l+1)
+                ]
 
 
 def perm_zeta_m(lin2comp):
@@ -115,7 +110,7 @@ def perm_zeta_m(lin2comp):
 ############################################################
 import unittest
 
-class _TestIndexMap(unittest.TestCase):
+class _TestIndex(unittest.TestCase):
 
     def test_nao(self):
         natom = [7]
@@ -134,11 +129,11 @@ class _TestIndexMap(unittest.TestCase):
                          9*(1*1 + 2*3 + 2*5 + 1*7 + 3*9))
 
 
-    def test_index_map(self):
+    def test_lin2comp(self):
         natom = [2, 1, 3]
         lmax = [1, 2, 4]
         nzeta = [[2,3], [1,0,1], [1, 2, 2, 1, 3]]
-        comp2lin, lin2comp = index_map(natom, nzeta=nzeta)
+        lin2comp = _lin2comp(natom, nzeta=nzeta)
 
         # check the total number of orbitals
         nao = _nao(natom, nzeta=nzeta)
@@ -150,12 +145,8 @@ class _TestIndexMap(unittest.TestCase):
                          (len(natom)-1, natom[-1]-1, lmax[-1],
                           nzeta[-1][-1]-1, -lmax[-1]))
 
-        # check bijectivity
-        for mu in range(nao):
-            self.assertEqual(comp2lin[lin2comp[mu]], mu)
-
         # repeat the above checks for nzeta = None
-        comp2lin, lin2comp = index_map(natom, lmax=lmax)
+        lin2comp = _lin2comp(natom, lmax=lmax)
 
         nao = _nao(natom, lmax=lmax)
         self.assertEqual(len(lin2comp), nao)
@@ -164,15 +155,12 @@ class _TestIndexMap(unittest.TestCase):
         self.assertEqual(lin2comp[nao-1],
                          (len(natom)-1, natom[-1]-1, lmax[-1], -lmax[-1]))
 
-        for mu in range(nao):
-            self.assertEqual(comp2lin[lin2comp[mu]], mu)
-
 
     def test_perm_zeta_m(self):
         natom = [2, 1, 3]
         lmax = [1, 2, 4]
         nzeta = [[2,3], [1,0,1], [1, 2, 2, 1, 3]]
-        _, lin2comp = index_map(natom, nzeta=nzeta)
+        lin2comp = _lin2comp(natom, nzeta=nzeta)
 
         p = perm_zeta_m(lin2comp)
         comp = [lin2comp[i] for i in p]
