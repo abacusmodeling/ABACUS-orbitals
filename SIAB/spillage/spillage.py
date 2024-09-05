@@ -1219,11 +1219,8 @@ class _TestSpillage(unittest.TestCase):
 
 
     def test_pw_config_add_gamma(self):
-        '''
-        Only gamma-only calculation is supported at this stage;
-        will be extended to multi-k calculations in the future.
-
-        '''
+        # Only gamma-only calculation is supported at this stage;
+        # will be extended to multi-k calculations in the future.
         outdirs = [
                 './testfiles/Si/pw/dimer-1.8-gamma/',
                 './testfiles/Si/pw/dimer-2.8-gamma/',
