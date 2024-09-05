@@ -80,9 +80,8 @@ def _write_chi(f, l, zeta, chi):
             A radial function on a grid.
 
     '''
-    space = ' ' * 16
-    f.write(f'{space}Type{space}L{space}N\n')
-    f.write(f'{space}   0{space}{l}{space}{zeta}\n')
+    f.write(f"{'Type':>20}{'L':>16}{'N':>16}\n")
+    f.write(f"{'0':>20}{l:>16}{zeta:>16}\n")
 
     for ir, chi_of_r in enumerate(chi):
         f.write(f'{chi_of_r: 23.14e}')

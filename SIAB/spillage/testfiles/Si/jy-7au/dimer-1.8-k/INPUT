@@ -1,5 +1,5 @@
 INPUT_PARAMETERS
-pseudo_dir           /home/zuxin/tmp/nao/sg15_oncv_upf_2020-02-06
+pseudo_dir           ..
 orbital_dir          ..
 calculation          scf
 basis_type           lcao

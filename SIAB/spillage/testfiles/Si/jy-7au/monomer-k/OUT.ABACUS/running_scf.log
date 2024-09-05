@@ -9,14 +9,14 @@
                               https://github.com/deepmodeling/abacus-develop         
                       Commit: 4207c1158 (Fri Aug 30 22:58:56 2024 +0800)
 
-    Start Time is Fri Aug 30 23:03:19 2024
+    Start Time is Thu Sep  5 18:54:31 2024
                                                                                      
  ------------------------------------------------------------------------------------
 
  READING GENERAL INFORMATION
                            global_out_dir = OUT.ABACUS/
                            global_in_card = INPUT
-                               pseudo_dir = /home/zuxin/tmp/nao/sg15_oncv_upf_2020-02-06/
+                               pseudo_dir = ../
                               orbital_dir = ../
                                     DRANK = 1
                                     DSIZE = 8
@@ -174,7 +174,7 @@ mixing_ndim: 8
             electron number of element Si = 4
       total electron number of element Si = 4
             AUTOSET number of electrons:  = 4
- DONE : SETUP UNITCELL Time : 0.0180632 (SEC)
+ DONE : SETUP UNITCELL Time : 0.0206097 (SEC)
 
 
 
@@ -221,7 +221,7 @@ Original cell was already a primitive cell.
                    SPACE GROUP OPERATIONS = 48
                               POINT GROUP = O_h
                POINT GROUP IN SPACE GROUP = O_h
- DONE : SYMMETRY Time : 0.0359935 (SEC)
+ DONE : SYMMETRY Time : 0.0330856 (SEC)
 
 
 
@@ -291,7 +291,7 @@ K-POINTS DIRECT COORDINATES
        3  0.33333333  0.00000000  0.33333333  0.8889
        4 -0.33333333  0.33333333  0.33333333  0.5926
 
- DONE : INIT K-POINTS Time : 0.0869575 (SEC)
+ DONE : INIT K-POINTS Time : 0.0733238 (SEC)
 
 
 
@@ -330,7 +330,7 @@ K-POINTS DIRECT COORDINATES
         8            109           2357
  --------------- sum -------------------
         8            861          18853
- DONE : INIT PLANEWAVE Time : 0.0882718 (SEC)
+ DONE : INIT PLANEWAVE Time : 0.0756134 (SEC)
 
                            occupied bands = 2
                                    NLOCAL = 181
@@ -382,7 +382,7 @@ K-POINTS DIRECT COORDINATES
                                 ParaV.nnr = 104650
                                      nnrg = 229327
                                  init_chg = atomic
- DONE : INIT SCF Time : 1.04636 (SEC)
+ DONE : INIT SCF Time : 1.09153 (SEC)
 
 
  LCAO ALGORITHM --------------- ION=   1  ELEC=   1--------------------------------
@@ -616,7 +616,7 @@ K-POINTS DIRECT COORDINATES
      24        30.3222        0.00000
      25        31.0807        0.00000
 
- Density error is 0.00516889891203
+ Density error is 0.00516889891202
 ----------------------------------------------------------
      Energy           Rydberg                 eV          
 ----------------------------------------------------------
@@ -741,7 +741,7 @@ K-POINTS DIRECT COORDINATES
      24        30.3266        0.00000
      25        31.0859        0.00000
 
- Density error is 0.00127500839905
+ Density error is 0.00127500839904
 ----------------------------------------------------------
      Energy           Rydberg                 eV          
 ----------------------------------------------------------
@@ -866,7 +866,7 @@ K-POINTS DIRECT COORDINATES
      24        30.3232        0.00000
      25        31.0833        0.00000
 
- Density error is 0.000121552700821
+ Density error is 0.000121552700758
 ----------------------------------------------------------
      Energy           Rydberg                 eV          
 ----------------------------------------------------------
@@ -991,7 +991,7 @@ K-POINTS DIRECT COORDINATES
      24        30.3232        0.00000
      25        31.0834        0.00000
 
- Density error is 2.27813579449e-06
+ Density error is 2.27813578965e-06
 ----------------------------------------------------------
      Energy           Rydberg                 eV          
 ----------------------------------------------------------
@@ -1001,7 +1001,7 @@ K-POINTS DIRECT COORDINATES
  E_band         -1.6881280972        -22.9681610765       
  E_one_elec     -2.8143358461        -38.2910035926       
  E_Hartree      1.8438081101         25.0862963159        
- E_xc           -1.9837783452        -26.9906890636       
+ E_xc           -1.9837783452        -26.9906890637       
  E_Ewald        -4.5396759672        -61.7654602272       
  E_entropy(-TS) -0.0106220496        -0.1445203985        
  E_descf        -0.0000001282        -0.0000017438        
@@ -1116,7 +1116,7 @@ K-POINTS DIRECT COORDINATES
      24        30.3232        0.00000
      25        31.0834        0.00000
 
- Density error is 4.64751137314e-07
+ Density error is 4.64751008119e-07
 ----------------------------------------------------------
      Energy           Rydberg                 eV          
 ----------------------------------------------------------
@@ -1249,7 +1249,7 @@ K-POINTS DIRECT COORDINATES
                         Dimension of H :  = 181
                         Dimension of S :  = 181
 
- Density error is 6.82196271734e-09
+ Density error is 6.82192963927e-09
 ----------------------------------------------------------
      Energy           Rydberg                 eV          
 ----------------------------------------------------------
@@ -1388,7 +1388,7 @@ K-POINTS DIRECT COORDINATES
 
 
  --------------------------------------------
- !FINAL_ETOT_IS -102.1053787098943 eV
+ !FINAL_ETOT_IS -102.1053787098851 eV
  --------------------------------------------
 
 
@@ -1396,30 +1396,30 @@ TIME STATISTICS
 --------------------------------------------------------------------------
    CLASS_NAME               NAME            TIME/s  CALLS   AVG/s  PER/%  
 --------------------------------------------------------------------------
-                 total                      5.07   11       0.46   100.00 
- Driver          reading                    0.01   1        0.01   0.18   
- Input_Conv      Convert                    0.00   1        0.00   0.01   
- Driver          driver_line                5.06   1        5.06   99.81  
+                 total                      5.20   11       0.47   100.00 
+ Driver          reading                    0.01   1        0.01   0.26   
+ Input_Conv      Convert                    0.00   1        0.00   0.00   
+ Driver          driver_line                5.19   1        5.19   99.74  
  UnitCell        check_tau                  0.00   1        0.00   0.00   
- ESolver_KS_LCAO before_all_runners         0.98   1        0.98   19.23  
+ ESolver_KS_LCAO before_all_runners         0.96   1        0.96   18.56  
  PW_Basis_Sup    setuptransform             0.00   1        0.00   0.02   
  PW_Basis_Sup    distributeg                0.00   1        0.00   0.02   
  mymath          heapsort                   0.00   3        0.00   0.02   
- Symmetry        analy_sys                  0.02   1        0.02   0.35   
- PW_Basis_K      setuptransform             0.00   1        0.00   0.01   
- PW_Basis_K      distributeg                0.00   1        0.00   0.01   
+ Symmetry        analy_sys                  0.01   1        0.01   0.24   
+ PW_Basis_K      setuptransform             0.00   1        0.00   0.02   
+ PW_Basis_K      distributeg                0.00   1        0.00   0.02   
  PW_Basis        setup_struc_factor         0.00   1        0.00   0.00   
- NOrbital_Lm     extra_uniform              0.02   61       0.00   0.43   
+ NOrbital_Lm     extra_uniform              0.02   61       0.00   0.46   
  Mathzone_Add1   SplineD2                   0.00   61       0.00   0.01   
  Mathzone_Add1   Cubic_Spline_Interpolation 0.01   61       0.00   0.27   
- ppcell_vl       init_vloc                  0.00   1        0.00   0.07   
- Ions            opt_ions                   4.08   1        4.08   80.49  
- ESolver_KS_LCAO runner                     4.08   1        4.08   80.49  
- ESolver_KS_LCAO before_scf                 0.06   1        0.06   1.16   
- ESolver_KS_LCAO beforesolver               0.03   1        0.03   0.52   
- ESolver_KS_LCAO set_matrix_grid            0.03   1        0.03   0.50   
+ ppcell_vl       init_vloc                  0.00   1        0.00   0.09   
+ Ions            opt_ions                   4.22   1        4.22   81.12  
+ ESolver_KS_LCAO runner                     4.22   1        4.22   81.12  
+ ESolver_KS_LCAO before_scf                 0.11   1        0.11   2.15   
+ ESolver_KS_LCAO beforesolver               0.08   1        0.08   1.55   
+ ESolver_KS_LCAO set_matrix_grid            0.08   1        0.08   1.54   
  atom_arrange    search                     0.00   1        0.00   0.00   
- Grid_Technique  init                       0.02   1        0.02   0.31   
+ Grid_Technique  init                       0.04   1        0.04   0.81   
  Grid_BigCell    grid_expansion_index       0.00   2        0.00   0.02   
  Record_adj      for_2d                     0.00   1        0.00   0.00   
  Grid_Driver     Find_atom                  0.00   18       0.00   0.00   
@@ -1429,54 +1429,54 @@ TIME STATISTICS
  EkineticNew     initialize_HR              0.00   2        0.00   0.00   
  NonlocalNew     initialize_HR              0.00   1        0.00   0.00   
  Charge          set_rho_core               0.00   1        0.00   0.00   
- Charge          atomic_rho                 0.01   2        0.01   0.27   
+ Charge          atomic_rho                 0.01   2        0.01   0.25   
  PW_Basis_Sup    recip2real                 0.03   51       0.00   0.60   
  PW_Basis_Sup    gathers_scatterp           0.02   51       0.00   0.31   
- Potential       init_pot                   0.01   1        0.01   0.26   
- Potential       update_from_charge         0.10   8        0.01   2.06   
+ Potential       init_pot                   0.01   1        0.01   0.27   
+ Potential       update_from_charge         0.11   8        0.01   2.10   
  Potential       cal_fixed_v                0.00   1        0.00   0.01   
  PotLocal        cal_fixed_v                0.00   1        0.00   0.01   
- Potential       cal_v_eff                  0.10   8        0.01   2.05   
+ Potential       cal_v_eff                  0.11   8        0.01   2.08   
  H_Hartree_pw    v_hartree                  0.01   8        0.00   0.17   
- PW_Basis_Sup    real2recip                 0.04   57       0.00   0.72   
- PW_Basis_Sup    gatherp_scatters           0.02   57       0.00   0.46   
- PotXC           cal_v_eff                  0.09   8        0.01   1.86   
- XC_Functional   v_xc                       0.09   8        0.01   1.85   
+ PW_Basis_Sup    real2recip                 0.04   57       0.00   0.74   
+ PW_Basis_Sup    gatherp_scatters           0.02   57       0.00   0.48   
+ PotXC           cal_v_eff                  0.10   8        0.01   1.90   
+ XC_Functional   v_xc                       0.10   8        0.01   1.89   
  Potential       interpolate_vrs            0.00   8        0.00   0.00   
- Symmetry        rhog_symmetry              0.07   8        0.01   1.46   
- Symmetry        group fft grids            0.03   8        0.00   0.69   
+ Symmetry        rhog_symmetry              0.07   8        0.01   1.39   
+ Symmetry        group fft grids            0.03   8        0.00   0.63   
  H_Ewald_pw      compute_ewald              0.00   1        0.00   0.01   
  Charge_Mixing   init_mixing                0.00   1        0.00   0.00   
- HSolverLCAO     solve                      3.60   7        0.51   71.08  
- HamiltLCAO      updateHk                   1.36   32       0.04   26.77  
- OperatorLCAO    init                       1.36   100      0.01   26.84  
- Veff            contributeHR               1.29   7        0.18   25.45  
- Gint_interface  cal_gint                   2.09   14       0.15   41.13  
- Gint_interface  cal_gint_vlocal            1.16   7        0.17   22.85  
- Gint_Tools      cal_psir_ylm               0.39   7168     0.00   7.68   
- Gint_k          transfer_pvpR              0.13   7        0.02   2.60   
+ HSolverLCAO     solve                      3.66   7        0.52   70.43  
+ HamiltLCAO      updateHk                   1.37   32       0.04   26.38  
+ OperatorLCAO    init                       1.38   100      0.01   26.58  
+ Veff            contributeHR               1.30   7        0.19   25.08  
+ Gint_interface  cal_gint                   2.09   14       0.15   40.10  
+ Gint_interface  cal_gint_vlocal            1.11   7        0.16   21.27  
+ Gint_Tools      cal_psir_ylm               0.40   7168     0.00   7.67   
+ Gint_k          transfer_pvpR              0.20   7        0.03   3.81   
  OverlapNew      calculate_SR               0.03   1        0.03   0.50   
  OverlapNew      contributeHk               0.00   32       0.00   0.03   
- EkineticNew     contributeHR               0.06   8        0.01   1.13   
- EkineticNew     calculate_HR               0.06   2        0.03   1.12   
+ EkineticNew     contributeHR               0.07   8        0.01   1.25   
+ EkineticNew     calculate_HR               0.06   2        0.03   1.25   
  NonlocalNew     contributeHR               0.01   7        0.00   0.15   
  NonlocalNew     calculate_HR               0.01   1        0.01   0.13   
  OperatorLCAO    contributeHk               0.00   36       0.00   0.08   
- HSolverLCAO     hamiltSolvePsiK            1.10   28       0.04   21.64  
- ElecStateLCAO   psiToRho                   1.15   7        0.16   22.68  
+ HSolverLCAO     hamiltSolvePsiK            1.15   28       0.04   22.05  
+ ElecStateLCAO   psiToRho                   1.15   7        0.16   22.02  
  elecstate       cal_dm                     0.00   7        0.00   0.05   
  psiMulPsiMpi    pdgemm                     0.00   28       0.00   0.05   
- DensityMatrix   cal_DMR                    0.00   7        0.00   0.06   
- Gint            transfer_DMR               0.02   7        0.00   0.40   
- Gint_interface  cal_gint_rho               0.93   7        0.13   18.28  
+ DensityMatrix   cal_DMR                    0.00   7        0.00   0.07   
+ Gint            transfer_DMR               0.02   7        0.00   0.38   
+ Gint_interface  cal_gint_rho               0.98   7        0.14   18.83  
  Charge_Mixing   get_drho                   0.00   7        0.00   0.01   
- Charge          mix_rho                    0.01   6        0.00   0.29   
- Charge          Broyden_mixing             0.01   6        0.00   0.24   
- ModuleIO        save_mat                   0.15   12       0.01   3.05   
- ModuleIO        write_wfc_nao              0.01   1        0.01   0.25   
- ModuleIO        write_wfc_nao_complex      0.01   4        0.00   0.24   
- ESolver_KS_LCAO after_scf                  0.11   1        0.11   2.14   
- ModuleIO        write_rhog                 0.01   1        0.01   0.20   
+ Charge          mix_rho                    0.00   6        0.00   0.09   
+ Charge          Broyden_mixing             0.00   6        0.00   0.04   
+ ModuleIO        save_mat                   0.18   12       0.01   3.38   
+ ModuleIO        write_wfc_nao              0.02   1        0.02   0.29   
+ ModuleIO        write_wfc_nao_complex      0.01   4        0.00   0.28   
+ ESolver_KS_LCAO after_scf                  0.11   1        0.11   2.09   
+ ModuleIO        write_rhog                 0.01   1        0.01   0.21   
  ESolver_KS_LCAO after_all_runners          0.00   1        0.00   0.00   
  ModuleIO        write_istate_info          0.00   1        0.00   0.00   
 --------------------------------------------------------------------------
@@ -1514,6 +1514,6 @@ TIME STATISTICS
  -------------   < 1.0 MB has been ignored ----------------
  ----------------------------------------------------------
 
- Start  Time  : Fri Aug 30 23:03:19 2024
- Finish Time  : Fri Aug 30 23:03:24 2024
- Total  Time  : 0 h 0 mins 5 secs 
+ Start  Time  : Thu Sep  5 18:54:31 2024
+ Finish Time  : Thu Sep  5 18:54:37 2024
+ Total  Time  : 0 h 0 mins 6 secs 

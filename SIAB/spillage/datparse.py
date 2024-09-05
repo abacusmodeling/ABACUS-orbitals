@@ -370,7 +370,7 @@ import unittest
 class _TestDatParse(unittest.TestCase):
 
     def test_read_orb_mat(self):
-        fpath = './testfiles/Si/pw/Si-dimer-1.8/orb_matrix.0.dat'
+        fpath = './testfiles/Si/pw/dimer-1.8-gamma/orb_matrix.0.dat'
         dat = read_orb_mat(fpath)
 
         nbes0 = int(np.sqrt(dat['ecutjlq']) * dat['rcut'] / np.pi)
@@ -397,17 +397,17 @@ class _TestDatParse(unittest.TestCase):
                          (dat['nk'], dat['nbands']))
 
 
-        fpath = './testfiles/Si/pw/Si-trimer-1.7/orb_matrix.1.dat'
+        fpath = './testfiles/Si/pw/trimer-1.7-gamma/orb_matrix.1.dat'
         dat = read_orb_mat(fpath)
 
         nbes0 = int(np.sqrt(dat['ecutjlq']) * dat['rcut'] / np.pi)
 
         self.assertEqual(dat['ntype'], 1)
         self.assertEqual(dat['natom'], [3])
-        self.assertEqual(dat['ecutwfc'], 40.0)
-        self.assertEqual(dat['ecutjlq'], 40.0)
+        self.assertEqual(dat['ecutwfc'], 60.0)
+        self.assertEqual(dat['ecutjlq'], 60.0)
         self.assertEqual(dat['rcut'], 7.0)
-        self.assertEqual(dat['lmax'], [2])
+        self.assertEqual(dat['lmax'], [1])
         self.assertEqual(dat['nbands'], 12)
         self.assertEqual(dat['nbes'], nbes0)
         self.assertEqual(dat['nk'], 2)

@@ -35,7 +35,7 @@ chg_extrap                     atomic #atomic; first-order; second-order; dm:coe
 init_vel                       0 #read velocity from STRU or not
 stru_file                      STRU #the filename of file containing atom positions
 kpoint_file                    KPT #the name of file containing k points
-pseudo_dir                     /home/zuxin/tmp/nao/sg15_oncv_upf_2020-02-06/ #the directory containing pseudo files
+pseudo_dir                     ../ #the directory containing pseudo files
 orbital_dir                    ../ #the directory containing orbital files
 read_file_dir                  OUT.ABACUS/ #directory of files for reading
 restart_load                   0 #restart from disk
