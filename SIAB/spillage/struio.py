@@ -228,7 +228,9 @@ def read_stru(fpath):
                    'LATTICE_VECTORS',
                    'ATOMIC_POSITIONS']
 
-    _trim = lambda line: line.split('#')[0].split('//')[0].strip(' \t\n')
+    def _trim(line):
+        return line.split('#')[0].split('//')[0].strip(' \t\n')
+
     with open(fpath, 'r') as f:
         lines = [_trim(line).replace('\t', ' ')
                  for line in f.readlines() if len(_trim(line)) > 0]

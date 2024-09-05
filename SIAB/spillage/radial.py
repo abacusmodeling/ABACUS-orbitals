@@ -436,6 +436,7 @@ def build_reduced(coeff, rcut, r, orthonormal=False):
 import unittest
 
 from numpy.linalg import norm
+import matplotlib.pyplot as plt
 
 class _TestRadial(unittest.TestCase):
 

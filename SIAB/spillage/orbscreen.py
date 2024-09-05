@@ -25,7 +25,7 @@ def screen(fnao, item="T"):
 ############################################################
 import unittest
 
-class _TestKinetic(unittest.TestCase):
+class _TestScreen(unittest.TestCase):
 
 
     def test_screen(self):
