@@ -1,0 +1,25 @@
+INPUT_PARAMETERS
+pseudo_dir           /home/zuxin/tmp/nao/sg15_oncv_upf_2020-02-06
+orbital_dir          ..
+calculation          scf
+basis_type           lcao
+ecutwfc              100
+ks_solver            scalapack_gvx
+nbands               50
+scf_thr              1.0e-8
+scf_nmax             100
+ntype                1
+nspin                2
+lmaxmax              2
+smearing_method      gauss
+smearing_sigma       0.01
+mixing_type          broyden
+mixing_beta          0.8
+mixing_ndim          8
+mixing_gg0           0
+#gamma_only           1
+printe               1
+
+out_mat_hs 1
+out_mat_tk 1
+out_wfc_lcao 1

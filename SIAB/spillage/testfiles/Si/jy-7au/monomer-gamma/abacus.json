@@ -1,0 +1,151 @@
+{
+    "comment": "Unless otherwise specified, the unit of energy is eV and the unit of length is Angstrom",
+    "init": {
+        "element": {
+            "Si": "Si"
+        },
+        "orb": {
+            "Si": "../jy_reduced_7au_100Ry_21s20p20d.orb"
+        },
+        "pp": {
+            "Si": "Si_ONCV_PBE-1.0.upf"
+        },
+        "coordinate": [
+            [
+                0.0,
+                0.0,
+                0.0
+            ]
+        ],
+        "mag": [
+            0.0
+        ],
+        "label": [
+            "Si"
+        ],
+        "cell": [
+            [
+                1.0,
+                0.0,
+                0.0
+            ],
+            [
+                0.0,
+                1.0,
+                0.0
+            ],
+            [
+                0.0,
+                0.0,
+                1.0
+            ]
+        ],
+        "nkstot": 1,
+        "point_group": "",
+        "point_group_in_space": "",
+        "natom": 1,
+        "nband": 25,
+        "natom_each_type": {
+            "Si": 1
+        },
+        "nelectron_each_type": {
+            "Si": 4.0
+        },
+        "nelectron": 4
+    },
+    "output": [
+        {
+            "e_fermi": -3.5104125726762898,
+            "energy": -101.74785295146102,
+            "scf_converge": true,
+            "force": null,
+            "stress": null,
+            "coordinate": [
+                [
+                    0.0,
+                    0.0,
+                    0.0
+                ]
+            ],
+            "mag": [
+                0.0
+            ],
+            "cell": [
+                [
+                    1.0,
+                    0.0,
+                    0.0
+                ],
+                [
+                    0.0,
+                    1.0,
+                    0.0
+                ],
+                [
+                    0.0,
+                    0.0,
+                    1.0
+                ]
+            ],
+            "total_mag": 0.0,
+            "absolute_mag": 0.0,
+            "scf": [
+                {
+                    "energy": -101.74698911507596,
+                    "ediff": 0.0,
+                    "drho": 0.025740067920035329,
+                    "time": 0.8363997759999999
+                },
+                {
+                    "energy": -101.74783690680279,
+                    "ediff": -0.0008477917268327399,
+                    "drho": 0.006493217098190407,
+                    "time": 0.8365688119999999
+                },
+                {
+                    "energy": -101.74785269110224,
+                    "ediff": -0.00001578429945082447,
+                    "drho": 0.0017706297165912243,
+                    "time": 0.8113248660000001
+                },
+                {
+                    "energy": -101.7478529502814,
+                    "ediff": -2.59179154685512e-7,
+                    "drho": 0.000038033477947850469,
+                    "time": 0.8140800000000006
+                },
+                {
+                    "energy": -101.74785295147274,
+                    "ediff": -1.1913415525448558e-9,
+                    "drho": 0.0000017913859253761729,
+                    "time": 0.7984129959999997
+                },
+                {
+                    "energy": -101.74785295139646,
+                    "ediff": 7.628810603144133e-11,
+                    "drho": 2.3335008947994946e-7,
+                    "time": 0.837130953
+                },
+                {
+                    "energy": -101.74785295146102,
+                    "ediff": -6.456634730334088e-11,
+                    "drho": 8.348538307456032e-9,
+                    "time": 0.8842169690000006
+                }
+            ]
+        }
+    ],
+    "general_info": {
+        "version": "v3.7.4",
+        "commit": "4207c1158 (Fri Aug 30 22:58:56 2024 +0800)",
+        "device": "cpu",
+        "mpi_num": 8,
+        "omp_num": 1,
+        "pseudo_dir": "/home/zuxin/tmp/nao/sg15_oncv_upf_2020-02-06/",
+        "orbital_dir": "../",
+        "stru_file": "STRU",
+        "kpt_file": "KPT",
+        "start_time": "2024-08-30 23:03:33",
+        "end_time": "2024-08-30 23:03:41"
+    }
+}

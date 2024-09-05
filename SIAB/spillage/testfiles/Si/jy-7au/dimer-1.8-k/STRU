@@ -1,0 +1,21 @@
+ATOMIC_SPECIES
+Si 1.000000 Si_ONCV_PBE-1.0.upf
+
+NUMERICAL_ORBITAL
+jy_reduced_7au_100Ry_21s20p20d.orb
+
+LATTICE_CONSTANT
+20.000000  // add lattice constant(a.u.)
+
+LATTICE_VECTORS
+1.00000000 0.00000000 0.00000000
+0.00000000 1.00000000 0.00000000
+0.00000000 0.00000000 1.00000000
+
+ATOMIC_POSITIONS
+Cartesian_angstrom  //Cartesian or Direct coordinate.
+Si      //Element Label
+0.00     //starting magnetism
+2       //number of atoms
+5.29177249 5.29177249 5.29177249 0 0 0
+5.29177249 5.29177249 7.09177249 0 0 0
