@@ -13,10 +13,8 @@ reference wavefunctions.
 Physical Review B, 103(23), 235131.
 
 '''
-from SIAB.spillage.radial import _nbes, jl_reduce, jl_raw_norm,\
-        coeff_normalized2raw, coeff_reduced2raw
+from SIAB.spillage.radial import jl_reduce
 from SIAB.spillage.listmanip import flatten, nest, nestpat
-from SIAB.spillage.jlzeros import JLZEROS
 from SIAB.spillage.index import _lin2comp, perm_zeta_m, _nao
 from SIAB.spillage.linalg_helper import mrdiv, rfrob
 from SIAB.spillage.basistrans import jy2ao
@@ -24,7 +22,7 @@ from SIAB.spillage.datparse import read_orb_mat, \
         read_wfc_lcao_txt, read_triu, read_running_scf_log
 
 import numpy as np
-from scipy.optimize import minimize, basinhopping
+from scipy.optimize import minimize
 from copy import deepcopy
 
 
@@ -669,6 +667,7 @@ class Spillage:
                        bounds=bounds, options=options)
 
         # to use basinhopping:
+        #from scipy.optimize import basinhopping
         #minimizer_kwargs = {"method": "L-BFGS-B", "jac": True,
         #                    "bounds": bounds}
         #res = basinhopping(f, c0, minimizer_kwargs=minimizer_kwargs,
