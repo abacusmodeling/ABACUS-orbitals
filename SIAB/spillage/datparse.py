@@ -4,7 +4,6 @@ import itertools
 from scipy.sparse import csr_matrix
 
 from SIAB.spillage.jlzeros import JLZEROS
-from scipy.special import spherical_jn
 from SIAB.spillage.index import _lin2comp
 
 
