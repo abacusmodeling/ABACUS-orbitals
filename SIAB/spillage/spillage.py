@@ -811,7 +811,7 @@ class Spillage_pw(Spillage):
 ############################################################
 import unittest
 
-from SIAB.spillage.radial import build_reduced, build_raw
+from SIAB.spillage.radial import build_reduced
 from SIAB.spillage.plot import plot_chi
 
 import matplotlib.pyplot as plt
