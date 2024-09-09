@@ -1,25 +1,25 @@
 import re
 import numpy as np
 import itertools
+from scipy.sparse import csr_matrix
 
 from SIAB.spillage.jlzeros import JLZEROS
-from scipy.special import spherical_jn
-from SIAB.spillage.indexmap import _index_map
+from SIAB.spillage.index import _lin2comp
 
 
 def read_orb_mat(fpath):
     '''
     Reads an "orb_matrix" data file.
 
-    In spillage-based orbital generation, ABACUS will generate some
-    "orb_matrix" data files which contain some system parameters as
-    well as various overlaps. This function parses such a file and
-    returns a dictionary containing its content.
+    In spillage-based orbital generation with plane-wave reference states,
+    ABACUS will generate some "orb_matrix" data files which contain some
+    system parameters as well as various overlaps. This function parses
+    such a file into a dictionary containing the necessary data.
 
     Parameters
     ----------
         fpath : str
-            The file path.
+            Path of an "orb_matrix" data file.
 
     Returns
     -------
@@ -45,29 +45,29 @@ def read_orb_mat(fpath):
             Number of spherical Bessel wave numbers.
         nk : int
             Number of k-points.
-            Should be 1 or 2 (nspin=2)
         kpt : np.ndarray
             k-points.
         wk : np.ndarray
             k-point weights.
-        mo_jy : np.ndarray
-            Overlap between MOs and jYs.
-            Shape: (nk, nbands, nao*nbes)
-        jy_jy : np.ndarray
-            Overlap between jYs.
-            Shape: (nk, nao*nbes, nao*nbes)
+        ref_jy : np.ndarray, shape (nk, nbands, nao*nbes)
+            Overlap or operator matrix elements between reference states
+            and spherical waves (jY).
+            NOTE: jYs are arranged in the lexicographic order of
+            (itype, iatom, l, mm, q) where mm = 2*abs(m)-(m>0).
+        jy_jy : np.ndarray, shape (nk, nao*nbes, nao*nbes)
+            Overlap or operator matrix elements between spherical waves (jY).
             Note: the original jy_jy data assumed a shape of
             (nk, nao, nao, nbes, nbes), which is permuted and
             reshaped for convenience.
-        mo_mo : np.ndarray
-            Overlap between MOs.
-            Shape: (nk, nbands)
-        comp2lin, lin2comp : dict
-            Bijective index map between the composite and the
-            lineaerized index.
-            comp2lin: (itype, iatom, l, zeta, m) -> mu
-            lin2comp: mu -> (itype, iatom, l, zeta, m)
-            NOTE: zeta is always 0 in the present code.
+            NOTE: jYs are arranged in the lexicographic order of
+            (itype, iatom, l, mm, q) where mm = 2*abs(m)-(m>0).
+        ref_ref : np.ndarray, shape (nk, nbands)
+            Overlap or operator matrix elements between reference states
+            (diagonal terms only!).
+        lin2comp : list
+            Linearized-to-composite index map of atomic orbitals
+            (not including zeta/spherical waves indices!).
+            lin2comp[mu] -> (itype, iatom, l, m)
 
     Notes
     -----
@@ -116,20 +116,20 @@ def read_orb_mat(fpath):
     wk = kinfo[:, 3]
 
     ####################################################################
-    #   bijective map between the composite and linearized index
+    #   bijective map between the composite and linearized indices
     ####################################################################
-    comp2lin, lin2comp = _index_map(ntype, natom, lmax)
-    nao = len(comp2lin)
+    lin2comp = _lin2comp(natom, lmax=lmax)
+    nao = len(lin2comp)
 
     ####################################################################
     #                           MO-jY overlap
     ####################################################################
-    mo_jy_start= data.index('<OVERLAP_Q>') + 1
-    mo_jy_end = data.index('</OVERLAP_Q>')
-    mo_jy = np.array(data[mo_jy_start:mo_jy_end], dtype=float) \
+    ref_jy_start= data.index('<OVERLAP_Q>') + 1
+    ref_jy_end = data.index('</OVERLAP_Q>')
+    ref_jy = np.array(data[ref_jy_start:ref_jy_end], dtype=float) \
             .view(dtype=complex) \
             .reshape((nk, nbands, nao*nbes)) \
-            .conj() # the output of abacus is <jy|mo>; conjugate it to <mo|jy>
+            .conj() # abacus outputs <jy|mo>, so a conjugate is needed
 
 
     ####################################################################
@@ -141,42 +141,224 @@ def read_orb_mat(fpath):
             .view(dtype=complex) \
             .reshape((nk, nao, nao, nbes, nbes))
 
-    # overlap between jY should be real
-    assert np.linalg.norm(np.imag(jy_jy.reshape(-1)), np.inf) < 1e-12
-    jy_jy = np.real(jy_jy)
+    if np.linalg.norm(np.imag(jy_jy.reshape(-1)), np.inf) < 1e-12:
+        jy_jy = np.real(jy_jy)
 
-    # NOTE permute jy_jy from (nk, nao, nao, nbes, nbes) to (nk, nao, nbes, nao, nbes)
-    # which is more convenient for later use.
-    jy_jy = jy_jy.transpose((0, 1, 3, 2, 4)).reshape((nk, nao*nbes, nao*nbes))
+    # permute jy_jy from (nk, nao, nao, nbes, nbes) to
+    # (nk, nao, nbes, nao, nbes) for convenience later.
+    jy_jy = jy_jy \
+            .transpose((0, 1, 3, 2, 4)) \
+            .reshape((nk, nao*nbes, nao*nbes))
 
     ####################################################################
     #                           MO-MO overlap
     ####################################################################
     # should be all 1
-    mo_mo_start= data.index('<OVERLAP_V>') + 1
-    mo_mo_end = data.index('</OVERLAP_V>')
-    mo_mo = np.array(data[mo_mo_start:mo_mo_end], dtype=float)
+    ref_ref_start= data.index('<OVERLAP_V>') + 1
+    ref_ref_end = data.index('</OVERLAP_V>')
+    ref_ref = np.array(data[ref_ref_start:ref_ref_end], dtype=float)
 
-    assert len(mo_mo) == nbands * nk
-    mo_mo = mo_mo.reshape((nk, nbands))
-
+    assert len(ref_ref) == nbands * nk
+    ref_ref = ref_ref.reshape((nk, nbands))
 
     return {'ntype': ntype, 'natom': natom, 'ecutwfc': ecutwfc,
             'ecutjlq': ecutjlq, 'rcut': rcut, 'lmax': lmax, 'nk': nk,
             'nbands': nbands, 'nbes': nbes, 'kpt': kpt, 'wk': wk,
-            'jy_jy': jy_jy, 'mo_jy': mo_jy, 'mo_mo': mo_mo,
-            'comp2lin': comp2lin, 'lin2comp': lin2comp}
+            'jy_jy': jy_jy, 'ref_jy': ref_jy, 'ref_ref': ref_ref,
+            'lin2comp': lin2comp}
 
 
-def _assert_consistency(dat1, dat2):
+def read_wfc_lcao_txt(fname):
     '''
-    Check if two dat files corresponds to the same system.
+    Read an LCAO wave function coefficient file generated by ABACUS.
+
+    Returns
+    -------
+        wfc : 2D array of shape (nao, nbands)
+            Wave function coefficients in LCAO basis. The datatype is
+            complex for multi-k calculations and float for gamma-only.
+        e : array
+            Band energies.
+        occ : array
+            Occupations.
+        k : array
+            k-point Cartesian coordinates (not direct coordinates!).
 
     '''
-    assert dat1['lin2comp'] == dat2['lin2comp'] and \
-            dat1['rcut'] == dat2['rcut'] and \
-            np.all(dat1['wk'] == dat2['wk']) and \
-            np.all(dat1['kpt'] == dat2['kpt'])
+    with open(fname, 'r') as f:
+        data = f.read()
+        data = data.replace('\n', ' ').split()
+
+    if 'k' in data:
+        is_gamma = False
+        start = data.index('k') + 2
+        k = np.array([float(data[i]) for i in range(start, start + 3)])
+    else:
+        is_gamma = True
+        k = np.array([0., 0., 0.])
+
+    nfloat_each_band = int(data[data.index('orbitals)') - 3]) \
+                        * (1 if is_gamma else 2)
+
+    # use the string "(band)" as delimiters
+    delim = [i for i, x in enumerate(data) if x == '(band)']
+
+    e = np.array([float(data[i+1]) for i in delim])
+    occ = np.array([float(data[i+3]) for i in delim])
+    wfc = np.array([[float(c) for c in data[i+5:i+5+nfloat_each_band]]
+                    for i in delim])
+
+    if not is_gamma:
+        wfc = wfc.view(complex)
+
+    return wfc.T, e, occ, k
+
+
+def read_csr(fname):
+    '''
+    Read a CSR data file generated by ABACUS.
+
+    When specifying "out_mat_hs2 1" (or out_mat_t) in INPUT, ABACUS will
+    output all non-zero sparse matrices H(R) & S(R) (or T(R)) in CSR format.
+
+    This function reads such a data file and returns the corresponding
+    matrices, as well as their corresponding R vectors in crystal coordinate.
+
+    '''
+    with open(fname, 'r') as f:
+        data = f.readlines()
+
+    # make sure the file only contains the data for one step (geometry)
+    assert(data[0].startswith('STEP: 0') \
+            and not any(x.startswith('STEP') for x in data[1:]))
+
+    sz = int(data[1].split()[-1])
+
+    # some R may have no element at all, that's why we have to parse
+    # sequentially and keep track of a line number instead of simply
+    # dividing the rest data by blocks of 4.
+    i = 3
+    R = []
+    mat = []
+    while i < len(data):
+        nnz = int(data[i].split()[-1])
+        if nnz == 0:
+            i += 1
+            continue
+        else:
+            R.append(tuple(map(int, data[i].split()[:3])))
+            val = list(map(float, data[i+1].split()))
+            indices = list(map(float, data[i+2].split()))
+            indptr = list(map(float, data[i+3].split()))
+            mat.append(csr_matrix((val, indices, indptr), shape=(sz, sz)))
+            i += 4
+
+    return mat, R
+
+
+def read_triu(fname):
+    '''
+    Read an upper triangular matrix file generated by ABACUS.
+
+    When specifying "out_mat_hs 1" (or out_mat_tk 1) in INPUT, ABACUS will
+    output H(k) & S(k) (or T(k)) to text files. The content of such files
+    merely contains the upper-triangle of those Hermitian matrices.
+
+    This function reads such a file and returns the full matrix. The data
+    type of such matrix is real for Gamma-only calculations and complex
+    for multiple-k calculations.
+
+    '''
+    with open(fname, 'r') as f:
+        data = f.read()
+        data = re.sub('\(|\)|,|\n', ' ', data).split()
+
+    # the first element of the file is the size of the matrix
+    sz = int(data[0])
+    assert len(data) == sz*(sz+1)//2 + 1 or len(data) == sz*(sz+1) + 1
+    dtype = complex if len(data) == sz*(sz+1) + 1 else float
+
+    M = np.zeros((sz, sz), dtype=dtype)
+    idx_u = np.triu_indices(sz)
+    M[idx_u] = np.array([float(x) for x in data[1:]]).view(dtype)
+
+    # symmetrize the matrix
+    idx_l = np.tril_indices(sz)
+    M[idx_l] = M.T[idx_l].conj()
+
+    # make diagonal elements real (fix floating point error)
+    M[np.diag_indices(sz)] = np.real(M[np.diag_indices(sz)])
+
+    return M
+
+
+def read_kpoints(fname):
+    '''
+    Reads a "kpoints" file generated by ABACUS
+    and extracts the k-points and their weights.
+
+    '''
+    with open(fname, 'r') as f:
+        data = f.read().replace('\n', ' ').split()
+
+    nk = int(data[3])
+    wk = [float(data[i]) for i in range(16, 16+(nk-1)*5+1, 5)]
+    k = [tuple(map(float, data[i:i+3])) for i in range(13, 13+(nk-1)*5+1, 5)]
+
+    return k, wk
+
+
+def read_running_scf_log(fname):
+    '''
+    Reads from running_scf.log the following information into a dict:
+
+    natom: list of int
+        number of atoms for each atom type
+    nzeta: list of list of int
+        Number of zeta functions for each angular momentum of each atom type
+        nzeta[itype][l] -> int.
+    nspin: int
+        number of spins, should be 1 or 2.
+    wk: list of float
+        k-point weights. If spin=2, the weights are NOT repeated.
+
+    '''
+    keywords = ['nzeta', 'nspin', 'wk']
+    status = {key: False for key in keywords}
+    with open(fname, 'r') as f:
+        for line in f:
+            if 'nspin' in line:
+                nspin = int(line.split()[-1])
+                status['nspin'] = True
+
+            if 'ntype' in line:
+                nzeta = []
+                natom = []
+                ntype = int(line.split()[-1])
+                for itype in range(ntype):
+                    while (line := next(f)).find('READING ATOM TYPE') == -1:
+                        continue
+                    next(f)
+
+                    nzeta.append([])
+                    while (line := next(f)).find('zeta') != -1:
+                        nzeta[itype].append(int(line.split()[-1]))
+
+                    natom.append(int(line.split()[-1]))
+
+                status['nzeta'] = True
+
+            if 'nkstot now' in line:
+                nk = int(line.split()[-1])
+                next(f); next(f)
+                wk = [float(next(f).split()[-1]) for _ in range(nk)]
+                wk = np.array(wk)
+                status['wk'] = True
+
+            if all(status.values()):
+                break
+
+    return {'natom': natom, 'nzeta': nzeta, 'wk': wk, 'nspin': nspin}
 
 
 ############################################################
@@ -187,8 +369,10 @@ import unittest
 class _TestDatParse(unittest.TestCase):
 
     def test_read_orb_mat(self):
-        fpath = './testfiles/Si/Si-dimer-1.8/orb_matrix.0.dat'
+        fpath = './testfiles/Si/pw/dimer-1.8-gamma/orb_matrix.0.dat'
         dat = read_orb_mat(fpath)
+
+        nbes0 = int(np.sqrt(dat['ecutjlq']) * dat['rcut'] / np.pi)
 
         self.assertEqual(dat['ntype'], 1)
         self.assertEqual(dat['natom'], [2])
@@ -197,38 +381,125 @@ class _TestDatParse(unittest.TestCase):
         self.assertEqual(dat['rcut'], 7.0)
         self.assertEqual(dat['lmax'], [2])
         self.assertEqual(dat['nbands'], 8)
-        self.assertEqual(dat['nbes'], int(np.sqrt(dat['ecutjlq']) * dat['rcut'] / np.pi))
+        self.assertEqual(dat['nbes'], nbes0)
         self.assertEqual(dat['nk'], 1)
         self.assertTrue(np.all( dat['kpt'] == np.array([[0., 0., 0.]]) ))
         self.assertTrue(np.all( dat['wk'] == np.array([1.0]) ))
 
         nao = dat['natom'][0] * (dat['lmax'][0] + 1)**2
 
-        self.assertEqual(dat['mo_jy'].shape, (dat['nk'], dat['nbands'], nao*dat['nbes']))
-        self.assertEqual(dat['jy_jy'].shape, (dat['nk'], nao*dat['nbes'], nao*dat['nbes']))
-        self.assertEqual(dat['mo_mo'].shape, (dat['nk'], dat['nbands']))
+        self.assertEqual(dat['ref_jy'].shape,
+                         (dat['nk'], dat['nbands'], nao*dat['nbes']))
+        self.assertEqual(dat['jy_jy'].shape,
+                         (dat['nk'], nao*dat['nbes'], nao*dat['nbes']))
+        self.assertEqual(dat['ref_ref'].shape,
+                         (dat['nk'], dat['nbands']))
 
 
-        fpath = './testfiles/Si/Si-trimer-1.7/orb_matrix.1.dat'
+        fpath = './testfiles/Si/pw/trimer-1.7-gamma/orb_matrix.1.dat'
         dat = read_orb_mat(fpath)
+
+        nbes0 = int(np.sqrt(dat['ecutjlq']) * dat['rcut'] / np.pi)
 
         self.assertEqual(dat['ntype'], 1)
         self.assertEqual(dat['natom'], [3])
-        self.assertEqual(dat['ecutwfc'], 40.0)
-        self.assertEqual(dat['ecutjlq'], 40.0)
+        self.assertEqual(dat['ecutwfc'], 60.0)
+        self.assertEqual(dat['ecutjlq'], 60.0)
         self.assertEqual(dat['rcut'], 7.0)
-        self.assertEqual(dat['lmax'], [2])
+        self.assertEqual(dat['lmax'], [1])
         self.assertEqual(dat['nbands'], 12)
-        self.assertEqual(dat['nbes'], int(np.sqrt(dat['ecutjlq']) * dat['rcut'] / np.pi))
+        self.assertEqual(dat['nbes'], nbes0)
         self.assertEqual(dat['nk'], 2)
-        self.assertTrue(np.all( dat['kpt'] == np.array([[0., 0., 0.], [0., 0., 0.]]) ))
+        self.assertTrue(np.all( dat['kpt'] == np.array([[0., 0., 0.],
+                                                        [0., 0., 0.]]) ))
         self.assertTrue(np.all( dat['wk'] == np.array([0.5, 0.5]) ))
 
         nao = dat['natom'][0] * (dat['lmax'][0] + 1)**2
 
-        self.assertEqual(dat['mo_jy'].shape, (dat['nk'], dat['nbands'], nao*dat['nbes']))
-        self.assertEqual(dat['jy_jy'].shape, (dat['nk'], nao*dat['nbes'], nao*dat['nbes']))
-        self.assertEqual(dat['mo_mo'].shape, (dat['nk'], dat['nbands']))
+        self.assertEqual(dat['ref_jy'].shape,
+                         (dat['nk'], dat['nbands'], nao*dat['nbes']))
+        self.assertEqual(dat['jy_jy'].shape,
+                         (dat['nk'], nao*dat['nbes'], nao*dat['nbes']))
+        self.assertEqual(dat['ref_ref'].shape,
+                         (dat['nk'], dat['nbands']))
+
+
+    def test_read_csr(self):
+        # the test data is generated by ABACUS with integration test
+        # 201_NO_15_f_pseudopots (a single Cerium atom)
+        SR, R = read_csr('./testfiles/data-SR-sparse_SPIN0.csr')
+
+        # S(0) should be identity
+        i0 = R.index((0, 0, 0))
+        sz = SR[i0].shape[0]
+        self.assertTrue(np.allclose(SR[i0].toarray(), np.eye(sz)))
+
+
+    def test_read_wfc_lcao_txt_gamma(self):
+        wfc, e, occ, k = read_wfc_lcao_txt('./testfiles/WFC_NAO_GAMMA1.txt')
+        self.assertEqual(wfc.shape, (10, 4))
+        self.assertAlmostEqual(wfc[0,0], -0.53725)
+        self.assertEqual(e[0], -0.7525)
+        self.assertEqual(occ[0], 2.)
+        self.assertTrue(np.all(k == np.array([0., 0., 0.])))
+
+
+    def test_read_wfc_lcao_txt_multik(self):
+        wfc, e, occ, k = read_wfc_lcao_txt('./testfiles/WFC_NAO_K4.txt')
+        self.assertEqual(wfc.shape, (10, 4))
+        self.assertAlmostEqual(wfc[-1,-1], -7.0718e-02+6.4397e-04j)
+        self.assertEqual(e[-1], 2.0941)
+        self.assertEqual(occ[-1], 0.)
+        self.assertTrue(np.all(k == np.array([0.5, 0.5, 0.])))
+
+
+    def test_read_triu_gamma(self):
+        Tk = read_triu('./testfiles/data-0-T')
+        self.assertEqual(Tk.shape, (34, 34))
+        self.assertTrue(np.all(Tk == Tk.T))
+        self.assertEqual(Tk[0,0], 0.243234968741)
+        self.assertEqual(Tk[0,1], 0.137088191847)
+        self.assertEqual(Tk[-1,-1], 2.20537992217)
+
+
+    def test_read_triu_multik(self):
+        k = np.array([0.4, 0.4, 0.4]) # direct coordinates
+        Tk = read_triu('./testfiles/data-2-T')
+
+        TR, R_all = read_csr('./testfiles/data-TR-sparse_SPIN0.csr')
+        Tk_ = np.zeros_like(Tk, dtype=complex)
+        for i, R in enumerate(R_all):
+            Tk_ += TR[i] * np.exp(2j * np.pi * np.dot(k, R))
+
+        self.assertTrue(np.allclose(Tk, Tk_))
+
+
+    def test_read_kpoints(self):
+        k, wk = read_kpoints('./testfiles/kpoints')
+
+        self.assertEqual(len(k), 10)
+        self.assertEqual(len(wk), 10)
+
+        self.assertTrue(np.allclose(k[0], [0.0, 0.0, 0.0]))
+        self.assertEqual(wk[0], 0.008)
+
+        self.assertTrue(np.allclose(k[-1], [0.4, -0.4, 0.2]))
+        self.assertEqual(wk[-1], 0.192)
+
+
+    def test_read_running_scf_log(self):
+        dat = read_running_scf_log('./testfiles/running_scf.log1')
+        self.assertEqual(dat['natom'], [1, 1])
+        self.assertEqual(dat['nzeta'], [[2, 2, 2], [2, 2, 2]])
+        self.assertEqual(dat['nspin'], 1)
+        self.assertEqual(len(dat['wk']), 8)
+
+        dat = read_running_scf_log('./testfiles/running_scf.log2')
+        self.assertEqual(dat['natom'], [2])
+        self.assertEqual(dat['nzeta'], [[21, 20, 20]])
+        self.assertEqual(dat['nspin'], 2)
+        self.assertEqual(len(dat['wk']), 6)
+
 
 
 if __name__ == '__main__':

@@ -61,11 +61,12 @@ def bracket(l, nzeros, return_all=False):
     
     Returns
     -------
-        zeros : array or list of array
-            If return_all is False, zeros[i] is the i-th zero of the
-            l-th order spherical Bessel function.
-            If return_all is True, zeros[n][i] is i-th zero of the
-            n-th order spherical Bessel function (n = 0, 1, ..., l).
+        array or list of array
+            If return_all is False, an array that contains the first
+            `nzeros` zeros of the l-th order spherical Bessel function
+            is returned. Otherwise, a list of l+1 arrays is returned
+            where the i-th array contains the zeros of the i-th order
+            spherical Bessel function (i = 0, 1, ..., l).
 
     '''
     from scipy.optimize import brentq
@@ -98,7 +99,10 @@ def bracket(l, nzeros, return_all=False):
     return list(_zerogen()) if return_all else next(_zerogen())
 
 
-JLZEROS = bracket(20, 100, return_all=True)
+# tabulate some frequently used zeros
+JLZEROS_LMAX = 20
+JLZEROS_NZEROS = 100
+JLZEROS = bracket(JLZEROS_LMAX, JLZEROS_NZEROS, return_all=True)
 
 ############################################################
 #                       Test
@@ -110,20 +114,23 @@ class _TestJlZeros(unittest.TestCase):
         for l in range(20):
             for nzeros in range(1, 50):
                 zeros = ikebe(l, nzeros)
-                self.assertLess(np.linalg.norm(spherical_jn(l, zeros), np.inf), 1e-14)
+                self.assertLess(np.linalg.norm(spherical_jn(l, zeros), np.inf),
+                                1e-14)
     
     
     def test_bracket(self):
         for l in range(20):
             for nzeros in range(1, 5):
                 zeros = bracket(l, nzeros, return_all=False)
-                self.assertLess(np.linalg.norm(spherical_jn(l, zeros), np.inf), 1e-14)
+                self.assertLess(np.linalg.norm(spherical_jn(l, zeros), np.inf),
+                                1e-14)
 
         lmax = 20
         nzeros = 100
         zeros = bracket(lmax, nzeros, return_all=True)
         for l in range(lmax+1):
-            self.assertLess(np.linalg.norm(spherical_jn(l, zeros[l]), np.inf), 1e-14)
+            self.assertLess(np.linalg.norm(spherical_jn(l, zeros[l]), np.inf),
+                            1e-14)
 
 
 if __name__ == '__main__':

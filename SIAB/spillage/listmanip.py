@@ -2,12 +2,30 @@ def flatten(x, return_index=False):
     '''
     Flattens a nested list and optionally attaches the original indices.
 
+    Examples
+    --------
+    >>> x = [[1,2], 3, [], [[[], 4,5], 6], 7]
+    >>> print(flatten(x, False))
+    [1, 2, 3, 4, 5, 6, 7]
+
+    >>> print(flatten(x, True))
+    [(1, (0, 0)), (2, (0, 1)), (3, (1,)), (4, (3, 0, 1)), (5, (3, 0, 2)),
+    (6, (3, 1)), (7, (4,))]
+
+    Returns
+    -------
+    If return_index=False, a plain list of elements.
+    If return_index=True, a list of 2-tuple (element, index) such that
+    x[index[0]][index[1]]...[index[len(index)-1]] = element.
+
+
     '''
     def _flatten(x):
         for i, elem in enumerate(x):
             if isinstance(elem, list):
                 for sub_elem in _flatten(elem):
-                    yield (sub_elem[0], (i,) + sub_elem[1]) if return_index else sub_elem
+                    yield (sub_elem[0], (i,) + sub_elem[1]) if return_index \
+                            else sub_elem
             else:
                 yield (elem, (i,)) if return_index else elem
 
@@ -19,9 +37,14 @@ def retrive(x, index):
     '''
     Retrives an element from a nested list.
 
+    Returns
+    -------
+    The element at x[index[0]][index[1]]...[index[len(index)-1]].
+
     '''
     def _retrieve(x, index):
-        return x[index[0]] if len(index) == 1 else _retrieve(x[index[0]], index[1:])
+        return x[index[0]] if len(index) == 1 \
+                else _retrieve(x[index[0]], index[1:])
 
     assert isinstance(x, list) and isinstance(index, tuple)
     return _retrieve(x, index)
@@ -51,7 +74,7 @@ def nest(x, pattern):
         x : list
             A list to be nested.
         pattern : (nested) list
-            A nested list of non-negative int that specifies the nesting pattern.
+            A nested list of non-negative int that specifies the pattern.
     
     Examples
     --------
@@ -65,9 +88,10 @@ def nest(x, pattern):
     
     Notes
     -----
-    Sublists must be specified in the pattern by enclosing their sizes in lists.
-    For example, to nest [1,2,3,4,5] into [[1,2],[3,4,5]], one needs a pattern of [[2],[3]];
-    [2,3] would not do anything. Empty lists must also be specified explicitly as [0].
+    Sublists must be specified by enclosing their sizes in lists.
+    For example, to nest [1,2,3,4,5] into [[1,2],[3,4,5]], one needs
+    a pattern of [[2],[3]]; [2,3] would not do anything. Empty lists
+    must also be specified explicitly as [0].
     
     '''
     def _nestgen(x, pattern):
@@ -92,7 +116,8 @@ def nestpat(x):
     
     The nesting pattern is a (nested) list of non-negative integers.
     For a plain (i.e., not nested) list of length n, the pattern is [n].
-    For a nested list like [[1,2], [[]], 3, 4, [5]], the pattern is [[2], [[0]], 2, [1]].
+    For a nested list like [[1,2], [[]], 3, 4, [5]], the pattern is
+    [[2], [[0]], 2, [1]].
     
     '''
     def _patgen(x):
@@ -126,11 +151,11 @@ def merge(l1, l2, depth):
     appended.
 
     '''
-    def _mergegen(l1, l2, depth):
-        if depth == 0:
+    def _mergegen(l1, l2, d):
+        if d == 0:
             yield from l1 + l2
         else:
-            yield from (list(_mergegen(i, j, depth-1)) for i, j in zip(l1, l2))
+            yield from (list(_mergegen(i, j, d-1)) for i, j in zip(l1, l2))
             if len(l1) != len(l2):
                 l_long, l_short = (l1, l2) if len(l1) > len(l2) else (l2, l1)
                 yield from l_long[len(l_short):]
@@ -145,6 +170,7 @@ def merge(l1, l2, depth):
 #                       Test
 ############################################################
 import unittest
+
 class _TestListManip(unittest.TestCase):
 
     def test_flatten(self):
@@ -212,7 +238,8 @@ class _TestListManip(unittest.TestCase):
     
         x = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
         pattern = [[1, [2], [[1]]], [[2], 1], [1], 2]
-        self.assertEqual(nest(x, pattern), [[0, [1, 2], [[3]]], [[4, 5], 6], [7], 8, 9])
+        self.assertEqual(nest(x, pattern),
+                         [[0, [1, 2], [[3]]], [[4, 5], 6], [7], 8, 9])
     
     
     def test_nestpat(self):
@@ -241,13 +268,17 @@ class _TestListManip(unittest.TestCase):
     
         l1 = [[0, 1], [2, 3]]
         l2 = [[], [4, 5], [[6, 7]]]
-        self.assertEqual(merge(l1, l2, 0), [[0, 1], [2, 3], [], [4, 5], [[6, 7]]])
-        self.assertEqual(merge(l1, l2, 1), [[0, 1], [2, 3, 4, 5], [[6, 7]]])
+        self.assertEqual(merge(l1, l2, 0),
+                         [[0, 1], [2, 3], [], [4, 5], [[6, 7]]])
+        self.assertEqual(merge(l1, l2, 1),
+                         [[0, 1], [2, 3, 4, 5], [[6, 7]]])
     
         l1 = [[[0], [1]], [[2, 3]]]
         l2 = [[[4, 5]], [[6], [7]]]
-        self.assertEqual(merge(l1, l2, 1), [[[0], [1], [4, 5]], [[2, 3], [6], [7]]])
-        self.assertEqual(merge(l1, l2, 2), [[[0, 4, 5], [1]], [[2, 3, 6], [7]]])
+        self.assertEqual(merge(l1, l2, 1),
+                         [[[0], [1], [4, 5]], [[2, 3], [6], [7]]])
+        self.assertEqual(merge(l1, l2, 2),
+                         [[[0, 4, 5], [1]], [[2, 3, 6], [7]]])
 
 
 if __name__ == '__main__':
