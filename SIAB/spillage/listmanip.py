@@ -192,9 +192,6 @@ class _TestListManip(unittest.TestCase):
                          [(1, (0,0)), (2, (0,1,0)), (3, (0,1,1)),
                           (4, (0,3)), (5, (1,0,0,0)), (6, (3,))])
 
-        x = [[1,2], 3, [], [[[], 4,5], 6], 7]
-        print(flatten(x, False))
-        print(flatten(x, True))
 
     def test_retrieve(self):
         x = [[1, 2], 3, [[4, 5], 6], 7]
