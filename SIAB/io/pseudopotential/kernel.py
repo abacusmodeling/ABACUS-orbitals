@@ -4,26 +4,52 @@ def iter_tree(root: ET.Element):
     return {child.tag: {"attrib": child.attrib, "data": child.text} for child in list(root.iter())}
 
 def preprocess(fname: str):
-    """ADC pseudopotential has & symbol at the beginning of line, which is not allowed in xml, replace & with &amp;"""
+    """ Pseudopotential XML file preprocess
+
+    preprocess is relatively hard-coded. There are some cases the UPF file is not standard xml, therefore
+    some modifications are needed. Cases considered:
+    1. ADC pseudopotential has & symbol at the beginning of line, which is not allowed in xml, replace `&` 
+    with `&amp;`
+    2. GBRV pseudopotential does not startswith <UPF version="2.0.1">, and not endswith </UPF>, add <UPF version="2.0.1">
+    to the beginning of the file and </UPF> to the end of the file
+    3. some of ADC pseudopotentials have `CDATA` tag, which is not allowed in xml, remove them
+    """
+    import re, uuid, os
+    ftemp = f"{str(uuid.uuid3(uuid.NAMESPACE_DNS, fname))}.xml"
+    #print(f"Preprocessing {fname}, will write standard XML formatted temporaray file to {ftemp}")
+    # because a pseudopotential file would not be large, directly read all lines into memory
     with open(fname, "r") as f:
         lines = f.readlines()
-    """GBRV pseudopotential does not startswith <UPF version="2.0.1">, but <PP_INFO>, 
-    add <UPF version="2.0.1"> to the beginning of the file and </UPF> to the end of the file"""
-    if not lines[0].startswith("<UPF version="):
-        lines.insert(0, "<UPF version=\"2.0.1\">\n")
-        lines.append("</UPF>")
-
-    with open(fname, "w") as f:
-        for line in lines:
-            """if line starts with &, replace & with &amp;, 
-            but if already &amp;, do not replace"""
-            if line.strip().startswith("&") and not line.strip().startswith("&amp;"):
-                line = line.replace("&", "&amp;")
-            
+    # it is compulsory for all XML files to start with <UPF version="2.0.1">
+    if not lines[0].startswith("<UPF version="): # not expected case, but how?
+        if lines[0].strip().startswith("<UPF version="):
+            # remove all left whitespaces
+            lines[0] = lines[0].strip() + "\n"
+        else:
+            lines.insert(0, "<UPF version=\"unknown\" comment=\"added to complete xml format\">\n")
+    # from the last line, check if the first line startswith `<` is not </UPF>. If not, add </UPF> to the end of the file
+    i = -1
+    while not lines[i].strip() and i > -len(lines):
+        i -= 1
+    if not "</UPF>" in lines[i]:
+        lines.append("</UPF>\n")
+    # write the modified lines back to the file
+    # there are more than one tasks remain:
+    # for ADC pseudopotential, replace `&` with `&amp;`
+    # for PseudoDojo v1.0 pseudopotential, carefully check consistency between opening and closing tags
+    # for ADC pseudopotential or ld1 generated, replace eliminate both `<![CDATA[` and `]]>` if they exist
+    lines = [line.replace("<![CDATA[", "").replace("]]>", "") for line in lines]
+    with open(ftemp, "w") as f:
+        # replace the `&` symbol at the beginning of the line with `&amp;`, this is done by xml_syntax_filter
+        for _, line in xml_syntax_filter(lines):
+        #for line in lines:
+            _match = re.match(r"^([\s]*)(\&[\w]+)([^;]*)(\s*)$", line)
+            line = f"{_match.group(1)}{_match.group(2).replace('&', '&amp;')}{_match.group(3)}{_match.group(4)}\n"\
+                   if _match else line
             f.write(line)
-
-            if line.strip() == "</UPF>":
+            if "</UPF>" in line: # there are some pseudopotential files endswith ppgen file, but will crash the xml parser
                 break
+    return os.path.abspath(ftemp)
 
 import SIAB.io.pseudopotential.tools.basic as siptb
 def postprocess(parsed: dict):
@@ -50,20 +76,22 @@ def postprocess(parsed: dict):
 
 def upf(fname: str):
     """parse the pseudopotential file, return a dictionary"""
+    import os
     error_msg = """ERROR: UPF file with non-XML format. Please contact with either developer
 of pseudopotential you use or the developer of this package. For the latter choice, 
 you can submit issue in Github Repository at:
 https://github.com/kirk0830/abacus_orbital_generation
 , thanks for understanding, raise TypeError and Quit..."""
-    preprocess(fname)
+    ftemp = preprocess(fname)
     try:
-        tree = ET.parse(fname)
+        tree = ET.parse(ftemp)
     except ET.ParseError:
         print(error_msg, flush=True)
         raise TypeError("ERROR: Please read the error message above.") from None
     root = tree.getroot()
     parsed = iter_tree(root)
     postprocess(parsed)
+    os.remove(ftemp)
     return parsed
     
 def vwr(fname: str):
@@ -190,6 +218,110 @@ def vwr(fname: str):
         }
     }
     return out
+
+def xml_syntax_filter(content: str|list[str]):
+    """it is found that some pseudopotential may have incorrect xml format, this function is to check the consistency of tags
+    and correct if possible. A two-member tuple is returned, the first element is a boolean indicating whether the nearest tag is closed,
+    the second element is the corrected line.
+
+    ```python
+    with open("file.xml", "r") as f:
+        content = f.readlines()
+    for is_closed, line in xml_syntax_filter(content):
+        print(line)
+    ```
+    """
+    import re
+    content = content.split("\n") if isinstance(content, str) else content
+    # for there are tags like "<PP_HEADER" in the file, we need to keep the buffer
+    # then we can combine the buffer with the current line to form a complete tag
+    # like "<PP_HEADER .../>", then it will be a single tag
+    # or <PP_HEADER to form a complete "opening" tag <PP_HEADER ...>
+    buf = ""
+
+    # regular expression     example
+    resg    = r"<[^>]+/>"    # <.../>
+    reop    = r"<[^/][^>]+>" # <...>
+    recls   = r"</[^>]+>"    # </...>
+    relicmp = r"<[^>]+"      # <...
+    rericmp = r"[^>]+>"      # ...>
+    recmt   = r"<!--.*-->"   # <!--...-->
+    
+    # the stack to store the names of the tags, when a closing tag is found, it should be the same as the nearest opened tag
+    # otherwise, it is a mismatch error and correction is needed
+
+    # there is an exception caused by the opening comment: 20240506
+    inbuilt_name_stack = []
+    for line in content: # loop over all lines
+        l = line.strip() # copy the value then do the strip operation
+        # XML comments can be add both in one line and across line. However,
+        # only in pslibrary 1.0.0 the across-line-comment is encountered...
+        # but it is not clever to add more complexity (I mean more regular
+        # expressions) to handle this case
+        if re.match(recmt, l):
+            yield True, line
+        # single tag case, with the form <.../>, directly yield it, remember
+        # to yield the original line, rather than the stripped one
+        elif re.match(resg, l):
+            yield True, line
+        # opening tag case, with the form <...>. If this form appears, it
+        # is possible that there are plenty of data belonging to this tag.
+        # To save the tag name into the stack, then yield the original line
+        elif re.match(reop, l):
+            name = re.match(r"<([^ >]+)", l).group(1)
+            inbuilt_name_stack.append(name)
+            yield False, line
+        # closing tag case, with the form </...>, the end of the possibilty
+        # above. If this form appears, then it is the end of the tag, so pop
+        # the tag name from the stack, then yield the original line. However,
+        # for PseudoDojo v1.0 pseudopotential, there would be mismatch between
+        # the opening tag and the closing tag, so need to correct it
+        elif re.match(recls, l):
+            name = re.match(r"</([^ >]+)", l).group(1)
+            yield (True, line) if inbuilt_name_stack[-1] == name \
+                else (True, line.replace(name, inbuilt_name_stack[-1]))
+            inbuilt_name_stack.pop()
+        # the case that a "left tag incomplete", means the tag is not closed but like
+        # <PP_HEADER ...
+        # comment="PP_HEADER is the most typical case that not-closed tag"
+        # additional="but other tag can also be like this, e.g. PSWFC"
+        # ... />
+        # in this case, will use buffer to store all content until the tag is closed
+        # then yield-back the complete tag.
+        # however, must be sure the buffer is empty before the next tag
+        # EXCEPTION: read <!-- in
+        elif re.match(relicmp, l) and l != "<!--":
+            assert buf == "", "buffer is not empty"
+            buf = l
+            continue
+        elif re.match(rericmp, l) and l != "-->":
+            assert buf != "", "buffer is empty"
+            buf = " ".join([buf, l])
+            if re.match(resg, buf):
+                yield True, buf + "\n"
+                buf = ""
+            elif re.match(reop, buf):
+                name = re.match(r"<([^ >]+)", buf).group(1)
+                inbuilt_name_stack.append(name)
+                yield False, buf + "\n"
+                buf = ""
+            else:
+                raise ValueError(f"incorrect tag: {buf}")
+        # for not-tag case, might be data, so in this case, do not touch
+        # it. but it can also be within tag, say incomplete tag.
+        else:
+            # if buffer is not empty and the current line does not have any tag
+            # related information, then it would be the situation within the tag
+            # or out of any tags. Fortunately the tag will always start with its
+            # name, or say the symbol `<` always appear to be in the same line
+            # as the tag name, therefore once it is really within the tag, the
+            # buffer will at least has the content of tag name, rather than empty
+            if buf != "":
+                buf = " ".join([buf, l])
+                continue
+            # if buffer is empty, then it is not within any tag, just yield the line
+            else:
+                yield True, line
 
 import unittest
 class TestPspotKernel(unittest.TestCase):
