@@ -2,6 +2,23 @@ def flatten(x, return_index=False):
     '''
     Flattens a nested list and optionally attaches the original indices.
 
+    Examples
+    --------
+    >>> x = [[1,2], 3, [], [[[], 4,5], 6], 7]
+    >>> print(flatten(x, False))
+    [1, 2, 3, 4, 5, 6, 7]
+
+    >>> print(flatten(x, True))
+    [(1, (0, 0)), (2, (0, 1)), (3, (1,)), (4, (3, 0, 1)), (5, (3, 0, 2)),
+    (6, (3, 1)), (7, (4,))]
+
+    Returns
+    -------
+    If return_index=False, a plain list of elements.
+    If return_index=True, a list of 2-tuple (element, index) such that
+    x[index[0]][index[1]]...[index[len(index)-1]] = element.
+
+
     '''
     def _flatten(x):
         for i, elem in enumerate(x):
@@ -19,6 +36,10 @@ def flatten(x, return_index=False):
 def retrive(x, index):
     '''
     Retrives an element from a nested list.
+
+    Returns
+    -------
+    The element at x[index[0]][index[1]]...[index[len(index)-1]].
 
     '''
     def _retrieve(x, index):
@@ -171,6 +192,9 @@ class _TestListManip(unittest.TestCase):
                          [(1, (0,0)), (2, (0,1,0)), (3, (0,1,1)),
                           (4, (0,3)), (5, (1,0,0,0)), (6, (3,))])
 
+        x = [[1,2], 3, [], [[[], 4,5], 6], 7]
+        print(flatten(x, False))
+        print(flatten(x, True))
 
     def test_retrieve(self):
         x = [[1, 2], 3, [[4, 5], 6], 7]
