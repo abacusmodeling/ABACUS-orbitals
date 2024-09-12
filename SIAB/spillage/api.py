@@ -17,7 +17,7 @@ def _coef_gen(rcut: float, ecut: float, lmax: int, value: str = "eye"):
     Returns:
     list of list of list of list of float: the coefficients of the orbitals
     """
-    from SIAB.spillage.spillage import _nbes
+    from SIAB.spillage.radial import _nbes
     import numpy as np
     if not isinstance(ecut, (int, float)):
         raise ValueError("Expected ecut to be an integer or float")
@@ -180,46 +180,66 @@ def _orb_matrices(folder: str):
     for f in files:
         yield f
 
-def _save_orb(coefs_tot, elem, ecut, rcut, nzeta, jY_type: str = "reduced"):
+def _save_orb(coefs, 
+              elem, 
+              ecut, 
+              rcut, 
+              folder,
+              jY_type: str = "reduced"):
+    """
+    Plot the orbital and save .orb file
+    Parameter
+    ---------
+    coefs_tot: list of list of list of float
+        the coefficients of the orbitals [l][zeta][q]: c (float)
+    elem: str
+        the element symbol
+    ecut: float
+        the energy cutoff
+    rcut: float
+        the cutoff radius
+    folder: str
+        the folder to save the orbitals
+    jY_type: str
+        the type of jY basis, can be "reduced", "nullspace", "svd" or "raw"
+    
+    Return
+    ------
+    str: the file name of the orbital    
+    """
     import numpy as np
     import matplotlib.pyplot as plt
     from SIAB.spillage.plot import plot_chi
     from SIAB.spillage.orbio import write_nao, write_param
     from SIAB.spillage.radial import coeff_normalized2raw, coeff_reduced2raw
-    import os, uuid
-    """
-    Plot the orbital and save .orb file
-    """
-    assert len(nzeta) == len(coefs_tot)
+    import os
+
     coeff_converter_map = {"reduced": coeff_reduced2raw, 
                            "normalized": coeff_normalized2raw}
-    
+    syms = "SPDFGHIKLMNOQRTUVWXYZ".lower()
     dr = 0.01
     r = np.linspace(0, rcut, int(rcut/dr)+1)
 
-    for i, coefs in enumerate(coefs_tot): # loop over all levels of orbitals
-        assert len(coefs) == 1, "multiple elements?"
+    folder = os.path.abspath(folder)
+    os.makedirs(folder, exist_ok=True)
 
-        chi = _build_orb(coefs, rcut, 0.01, jY_type)
+    chi = _build_orb([coefs], rcut, 0.01, jY_type)
+    # however, we should not bundle orbitals of different atomtypes together
 
-        syms = "SPDFGHIKLMNOQRTUVWXYZ".lower()
-        nz = nzeta[i]
-        suffix = "".join([f"{nz[j]}{syms[j]}" for j in range(len(nz))])
+    suffix = "".join([f"{len(coef)}{sym}" for coef, sym in zip(coefs, syms)])
 
-        folder, subfolder = f"{elem}_{suffix}", f"{rcut}au_{ecut}Ry"
-        os.makedirs(f"{folder}/{subfolder}", exist_ok=True)
-        fpng = f"{elem}_gga_{rcut}au_{ecut}Ry_{suffix}.png"
-        plot_chi(chi, r, save=fpng)
-        os.rename(fpng, os.path.join(f"{folder}/{subfolder}", fpng))
-        plt.close()
-        forb = fpng.replace(".png", ".orb")
-        write_nao(forb, elem, ecut, rcut, len(r), dr, chi)
-        fparam = str(uuid.uuid4())
+    fpng = os.path.join(folder, f"{elem}_gga_{rcut}au_{ecut}Ry_{suffix}.png")
+    plot_chi(chi, r, save=fpng)
+    plt.close()
 
-        write_param(fparam, coeff_converter_map[jY_type](coefs[0], rcut), rcut, 0.0, elem) # normalized or reduced coefficient
-        os.rename(forb, os.path.join(f"{folder}/{subfolder}", forb))
-        os.rename(fparam, os.path.join(f"{folder}/{subfolder}", "ORBITAL_RESULTS.txt"))
-        print(f"orbital saved as {forb}")
+    forb = fpng[:-4] + ".orb"
+    write_nao(forb, elem, ecut, rcut, len(r), dr, chi)
+
+    fparam = os.path.join(folder, "ORBITAL_RESULTS.txt")
+    write_param(fparam, coeff_converter_map[jY_type](coefs, rcut), rcut, 0.0, elem)
+    print(f"orbital saved as {forb}")
+
+    return forb
 
 def _build_orb(coefs, rcut, dr: float = 0.01, jY_type: str = "reduced"):
     """build real space grid orbital based on the coefficients of the orbitals,
@@ -264,17 +284,27 @@ def iter(siab_settings: dict, calculation_settings: list, folders: list):
     run_map = {"none": "none", "restart": "restart", "bfgs": "opt"}
     run_type = run_map.get(siab_settings.get("optimizer", "none"), "none")
     for rcut in rcuts: # can be parallelized here
+        # for jy basis calculation, only matched rcut folders are needed
         if run_type == "opt":
-            coefs_tot = _coef_opt(rcut, siab_settings, folders)
-            nzeta = [orb['nzeta'] for orb in siab_settings['orbitals']]
+            f_ = [[f for f in fgrp if len(f.split("-")) == 2 or \
+                   float(f.split("-")[-1].replace("au", "")) == rcut] 
+                  for fgrp in folders] # get folders with matched rcut
+            coefs_tot = _coef_opt(rcut, siab_settings, f_)
+            # optimize a cascade of orbitals is reasonable because the orbitals always
+            # have a hierarchical structure like
+            # SZ
+            # [SZ] SZP = DZP
+            # [DZP] SZP = TZDP
         elif run_type == "restart":
-            nzeta = None # here it is actually unreachable, so give as None
             raise NotImplementedError("restart is not implemented yet")
-        else:
+        else: # run_type == "none", used to generate jY basis
             coefs_tot = [_coef_gen(rcut, ecut, len(orb['nzeta']) - 1) for orb in siab_settings['orbitals']]
-            nzeta = [[len(shell) for shell in coefs[0]] for coefs in coefs_tot]
 
-        _save_orb(coefs_tot, elem, ecut, rcut, nzeta, jY_type)
+        # save orbitals
+        for ilev, coefs in enumerate(coefs_tot): # loop over different levels...
+            folder = "_orblevel-".join([elem, str(ilev)]) # because the concept of "level" is not clear
+            for coefs_it in coefs: # loop over different atom types
+                _ = _save_orb(coefs_it, elem, ecut, rcut, folder, jY_type)
     return
 
 import unittest

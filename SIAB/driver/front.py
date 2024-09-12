@@ -16,15 +16,32 @@ def initialize(version: str = "0.1.0",
         - env_settings: tuple of environment settings, contain environment variables, abacus executable, and mpi executable
         - general: dict of general settings, contain element symbol, pseudo_dir, pseudo_name
     """
-
+    # only for jy basis case
+    from SIAB.spillage.api import _coef_gen, _save_orb
+    import os
     fname = fname.strip().replace("\\", "/")
     user_settings = siri.read_siab_inp(fname=fname, version=version)
+    # prepare jy basis
+    use_jy = user_settings.get("basis_type", "jy") == "jy" \
+        and user_settings.get("optimizer", "pytorch.SWAT") != "none" # if user only want jy, will generate elsewhere
+    ecut = user_settings.get("ecutwfc", 100)
+    rcuts = user_settings.get("bessel_nao_rcut", [6.0])
     # pseudopotential existence check
     fpseudo = user_settings["pseudo_dir"]+"/"+user_settings["pseudo_name"]
     if not os.path.exists(fpseudo): # check the existence of pseudopotential file
         raise FileNotFoundError("Pseudopotential file %s not found"%fpseudo)
-    unpacked = siri.unpack_siab_input(user_settings)
-    return unpacked
+    structures, abacus, siab, env, general = siri.unpack_siab_input(user_settings)
+    lmaxmax = max([dftparam.get("lmaxmax", 1) for dftparam in abacus])
+    # only if use_jy, will generate jy basis
+    fjy = []
+    if use_jy:
+        for rcut in rcuts:
+            jy_coef = _coef_gen(rcut, ecut, lmaxmax)
+            fjy.append(_save_orb(jy_coef[0], general["element"], ecut, rcut, "jy", user_settings.get("jy_type", "reduced")))
+        abacus = [dftparam|{"orbital_dir": fjy, 
+                            "basis_type": "lcao",
+                            "ks_solver": "genelpa"} for dftparam in abacus]
+    return structures, abacus, siab, env, general
 
 # interface to abacus
 import SIAB.interface.abacus as sia

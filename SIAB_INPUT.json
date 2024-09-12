@@ -12,6 +12,8 @@
     "pseudo_rcut": 10,
     "pseudo_mesh": 1,
 
+    "basis_type": "jy",
+
     "optimizer": "bfgs",
     "max_steps": 1000,
     "spill_coefs": [0.0, 1.0],

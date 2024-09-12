@@ -17,11 +17,13 @@ def version_compare(version_1: str, version_2: str) -> bool:
 ##############################################
 #         input files preparation            #
 ##############################################
-def monomer(element, mass, fpseudo, lattice_constant, nspin):
+def monomer(element, mass, fpseudo, lattice_constant, nspin, forb):
     """generate monomer structure"""
     shift = lattice_constant/2/1.8897259886
     starting_magnetization = 0.0 if nspin == 1 else 2.0
     result = "ATOMIC_SPECIES\n%s %.6f %s\n"%(element, mass, fpseudo)
+    if forb is not None:
+        result += "\nNUMERICAL_ORBITAL\n%s\n\n"%forb
     result += "LATTICE_CONSTANT\n%.6f  // add lattice constant(a.u.)\n"%lattice_constant
     result += "LATTICE_VECTORS\n"
     result += "%10.8f %10.8f %10.8f\n"%(1.0, 0.0, 0.0)
@@ -34,11 +36,13 @@ def monomer(element, mass, fpseudo, lattice_constant, nspin):
     result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0 + shift, 0.0 + shift, 0.0 + shift)
     return result
 
-def dimer(element, mass, fpseudo, lattice_constant, bond_length, nspin):
+def dimer(element, mass, fpseudo, lattice_constant, bond_length, nspin, forb = None):
     """generate dimer structure"""
     shift = lattice_constant/2/1.8897259886
     starting_magnetization = 0.0 if nspin == 1 else 2.0
     result = "ATOMIC_SPECIES\n%s %.6f %s\n"%(element, mass, fpseudo)
+    if forb is not None:
+        result += "\nNUMERICAL_ORBITAL\n%s\n\n"%forb
     result += "LATTICE_CONSTANT\n%.6f  // add lattice constant(a.u.)\n"%lattice_constant
     result += "LATTICE_VECTORS\n"
     result += "%10.8f %10.8f %10.8f\n"%(1.0, 0.0, 0.0)
@@ -52,13 +56,15 @@ def dimer(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0 + shift, 0.0 + shift, bond_length + shift)
     return result
 
-def trimer(element, mass, fpseudo, lattice_constant, bond_length, nspin):
+def trimer(element, mass, fpseudo, lattice_constant, bond_length, nspin, forb = None):
     """generate trimer structure"""
     shift = lattice_constant/2/1.8897259886
     starting_magnetization = 0.0 if nspin == 1 else 2.0
     dis1 = bond_length * 0.86603
     dis2 = bond_length * 0.5
     result = "ATOMIC_SPECIES\n%s %.6f %s\n"%(element, mass, fpseudo)
+    if forb is not None:
+        result += "\nNUMERICAL_ORBITAL\n%s\n\n"%forb
     result += "LATTICE_CONSTANT\n%.6f  // add lattice constant(a.u.)\n"%lattice_constant
     result += "LATTICE_VECTORS\n"
     result += "%10.8f %10.8f %10.8f\n"%(1.0, 0.0, 0.0)
@@ -73,7 +79,7 @@ def trimer(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0 + shift, dis1 + shift, dis2 + shift)
     return result
 
-def tetrahedron(element, mass, fpseudo, lattice_constant, bond_length, nspin):
+def tetrahedron(element, mass, fpseudo, lattice_constant, bond_length, nspin, forb = None):
     """generate tetrahedron structure"""
     shift = lattice_constant/2/1.8897259886
     starting_magnetization = 0.0 if nspin == 1 else 2.0
@@ -82,6 +88,8 @@ def tetrahedron(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     dis3 = bond_length * 0.81649
     dis4 = bond_length * 0.28867
     result = "ATOMIC_SPECIES\n%s %.6f %s\n"%(element, mass, fpseudo)
+    if forb is not None:
+        result += "\nNUMERICAL_ORBITAL\n%s\n\n"%forb
     result += "LATTICE_CONSTANT\n%.6f  // add lattice constant(a.u.)\n"%lattice_constant
     result += "LATTICE_VECTORS\n"
     result += "%10.8f %10.8f %10.8f\n"%(1.0, 0.0, 0.0)
@@ -97,11 +105,13 @@ def tetrahedron(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     result += "%10.8f %10.8f %10.8f 0 0 0\n"%(dis3 + shift, dis4 + shift, dis2 + shift)
     return result
 
-def square(element, mass, fpseudo, lattice_constant, bond_length, nspin):
+def square(element, mass, fpseudo, lattice_constant, bond_length, nspin, forb = None):
     """generate square structure"""
     shift = lattice_constant/2/1.8897259886
     starting_magnetization = 0.0 if nspin == 1 else 2.0
     result = "ATOMIC_SPECIES\n%s %.6f %s\n"%(element, mass, fpseudo)
+    if forb is not None:
+        result += "\nNUMERICAL_ORBITAL\n%s\n\n"%forb
     result += "LATTICE_CONSTANT\n%.6f  // add lattice constant(a.u.)\n"%lattice_constant
     result += "LATTICE_VECTORS\n"
     result += "%10.8f %10.8f %10.8f\n"%(1.0, 0.0, 0.0)
@@ -117,11 +127,13 @@ def square(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length + shift, 0.0 + shift, bond_length + shift)
     return result
 
-def triangular_bipyramid(element, mass, fpseudo, lattice_constant, bond_length, nspin):
+def triangular_bipyramid(element, mass, fpseudo, lattice_constant, bond_length, nspin, forb = None):
     """generate triangular bipyramid structure"""
     shift = lattice_constant/2/1.8897259886
     starting_magnetization = 0.0 if nspin == 1 else 2.0
     result = "ATOMIC_SPECIES\n%s %.6f %s\n"%(element, mass, fpseudo)
+    if forb is not None:
+        result += "\nNUMERICAL_ORBITAL\n%s\n\n"%forb
     result += "LATTICE_CONSTANT\n%.6f  // add lattice constant(a.u.)\n"%lattice_constant
     result += "LATTICE_VECTORS\n"
     result += "%10.8f %10.8f %10.8f\n"%(1.0, 0.0, 0.0)
@@ -138,11 +150,13 @@ def triangular_bipyramid(element, mass, fpseudo, lattice_constant, bond_length, 
     result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0 + shift, 0.0 + shift, -bond_length * (2/3)**(1/2) + shift)
     return result
 
-def octahedron(element, mass, fpseudo, lattice_constant, bond_length, nspin):
+def octahedron(element, mass, fpseudo, lattice_constant, bond_length, nspin, forb = None):
     """generate octahedron structure"""
     shift = lattice_constant/2/1.8897259886
     starting_magnetization = 0.0 if nspin == 1 else 2.0
     result = "ATOMIC_SPECIES\n%s %.6f %s\n"%(element, mass, fpseudo)
+    if forb is not None:
+        result += "\nNUMERICAL_ORBITAL\n%s\n\n"%forb
     result += "LATTICE_CONSTANT\n%.6f  // add lattice constant(a.u.)\n"%lattice_constant
     result += "LATTICE_VECTORS\n"
     result += "%10.8f %10.8f %10.8f\n"%(1.0, 0.0, 0.0)
@@ -160,11 +174,13 @@ def octahedron(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     result += "%10.8f %10.8f %10.8f 0 0 0\n"%(0.0 + shift, 0.0 + shift, -bond_length / 2**(1/2) + shift)
     return result
 
-def cube(element, mass, fpseudo, lattice_constant, bond_length, nspin):
+def cube(element, mass, fpseudo, lattice_constant, bond_length, nspin, forb = None):
     """generate cube structure"""
     shift = lattice_constant/2/1.8897259886
     starting_magnetization = 0.0 if nspin == 1 else 2.0
     result = "ATOMIC_SPECIES\n%s %.6f %s\n"%(element, mass, fpseudo)
+    if forb is not None:
+        result += "\nNUMERICAL_ORBITAL\n%s\n\n"%forb
     result += "LATTICE_CONSTANT\n%.6f  // add lattice constant(a.u.)\n"%lattice_constant
     result += "LATTICE_VECTORS\n"
     result += "%10.8f %10.8f %10.8f\n"%(1.0, 0.0, 0.0)
@@ -185,24 +201,25 @@ def cube(element, mass, fpseudo, lattice_constant, bond_length, nspin):
     return result
 
 def STRU(shape: str, element: str, mass: float, fpseudo: str, 
-         lattice_constant: float, bond_length: float, nspin: int):
+         lattice_constant: float, bond_length: float, nspin: int,
+         forb = None):
     """generate structure"""
     if shape == "monomer":
-        return monomer(element, mass, fpseudo, lattice_constant, nspin), 1
+        return monomer(element, mass, fpseudo, lattice_constant, nspin, forb), 1
     elif shape == "dimer":
-        return dimer(element, mass, fpseudo, lattice_constant, bond_length, nspin), 2
+        return dimer(element, mass, fpseudo, lattice_constant, bond_length, nspin, forb), 2
     elif shape == "trimer":
-        return trimer(element, mass, fpseudo, lattice_constant, bond_length, nspin), 3
+        return trimer(element, mass, fpseudo, lattice_constant, bond_length, nspin, forb), 3
     elif shape == "tetrahedron":
-        return tetrahedron(element, mass, fpseudo, lattice_constant, bond_length, nspin), 4
+        return tetrahedron(element, mass, fpseudo, lattice_constant, bond_length, nspin, forb), 4
     elif shape == "square":
-        return square(element, mass, fpseudo, lattice_constant, bond_length, nspin), 4
+        return square(element, mass, fpseudo, lattice_constant, bond_length, nspin, forb), 4
     elif shape == "triangular_bipyramid":
-        return triangular_bipyramid(element, mass, fpseudo, lattice_constant, bond_length, nspin), 5
+        return triangular_bipyramid(element, mass, fpseudo, lattice_constant, bond_length, nspin, forb), 5
     elif shape == "octahedron":
-        return octahedron(element, mass, fpseudo, lattice_constant, bond_length, nspin), 6
+        return octahedron(element, mass, fpseudo, lattice_constant, bond_length, nspin, forb), 6
     elif shape == "cube":
-        return cube(element, mass, fpseudo, lattice_constant, bond_length, nspin), 8
+        return cube(element, mass, fpseudo, lattice_constant, bond_length, nspin, forb), 8
     else:
         raise NotImplementedError("Unknown shape %s"%shape)
 
@@ -261,7 +278,7 @@ def INPUT(calculation_setting: dict,
 #              file operations               #
 ##############################################
 def configure(input_setting: dict,
-              stru_setting: dict) -> str:
+              stru_setting: dict):
     """generate input files for orbital generation in present folder
     
     input_settings: dict, INPUT settings for ABACUS
@@ -273,6 +290,7 @@ def configure(input_setting: dict,
         in `stru_settings`, at least contain `shape`, `element`, `fpseudo` and `bond_length`
         information.
     """
+    import os
     necessary_keys = ["element", "shape", "fpseudo", "bond_length"]
     for necessary_key in necessary_keys:
         if necessary_key not in stru_setting.keys():
@@ -284,22 +302,55 @@ def configure(input_setting: dict,
     # because bond_length is not necessary for monomer
     folder = f"{stru_setting['element']}-{stru_setting['shape']}"
     folder += "-%3.2f"%stru_setting["bond_length"] if stru_setting["shape"] != "monomer" else ""
-    _input = INPUT(input_setting, suffix=folder)
-    _stru, _ = STRU(**stru_setting)
-    _kpt = KPOINTS()
+    orbital_dir = input_setting.get("orbital_dir")
+    if orbital_dir is not None:
+        forbs = [os.path.basename(f) for f in orbital_dir]
+        dirs = [os.path.dirname(d) for d in orbital_dir]
+        assert len(set(dirs)) == 1, "all temporary jybasis files is set to the same directory"
+        assert len(forbs) == len(input_setting["bessel_nao_rcut"]), "number of forbs should be the same as bessel_nao_rcut"
+        
+        for forb, rcut in zip(forbs, input_setting["bessel_nao_rcut"]):
+            inp = input_setting.copy()
+            inp.update({"bessel_nao_rcut": rcut, "orbital_dir": dirs[0]})
+            stru_setting["forb"] = forb
+            
+            folder_rcut = "-".join([folder, str(rcut) + "au"])
+            suffix = folder_rcut
 
-    """to make code expresses clear"""
-    suffix = folder
-    with open("INPUT-"+suffix, "w") as f:
-        f.write(_input)
-    with open("STRU-"+suffix, "w") as f:
-        f.write(_stru)
-    with open("KPT-"+suffix, "w") as f:
-        f.write(_kpt)
-    with open("INPUTw", "w") as f:
-        f.write("WANNIER_PARAMETERS\n")
-        f.write("out_spillage 2\n")
-    return folder
+            _input = INPUT(inp, suffix=suffix)
+            _stru, _ = STRU(**stru_setting)
+            _kpt = KPOINTS()
+
+            with open("INPUT-"+suffix, "w") as f:
+                f.write(_input)
+            with open("STRU-"+suffix, "w") as f:
+                f.write(_stru)
+            with open("KPT-"+suffix, "w") as f:
+                f.write(_kpt)
+            with open("INPUTw", "w") as f:
+                f.write("WANNIER_PARAMETERS\n")
+                f.write("out_spillage 2\n")
+            yield folder_rcut
+
+    else:
+        _input = INPUT(input_setting, suffix=folder)
+        _stru, _ = STRU(**stru_setting)
+        _kpt = KPOINTS()
+
+        """to make code expresses clear"""
+        suffix = folder
+        with open("INPUT-"+suffix, "w") as f:
+            f.write(_input)
+        with open("STRU-"+suffix, "w") as f:
+            f.write(_stru)
+        with open("KPT-"+suffix, "w") as f:
+            f.write(_kpt)
+        with open("INPUTw", "w") as f:
+            f.write("WANNIER_PARAMETERS\n")
+            f.write("out_spillage 2\n")
+
+        yield folder
+
 
 import SIAB.interface.env as sienv
 def archive(footer: str = "", env: str = "local"):
@@ -465,7 +516,31 @@ def blscan(general: dict,                  # general settings
                      env_settings=env_settings,
                      test=test)
     """wait for all jobs to finish"""
+    out = []
     """read energies"""
+    use_jy = calculation_setting.get("basis_type", "pw") == "jy"
+    rcuts = calculation_setting.get("bessel_nao_rcut")
+    if use_jy:
+        for rcut in rcuts:
+            f_ = [folder for folder in folders if folder.endswith(str(rcut) + "au")]
+            bond_lengths = [float(folder.split("-")[-1]) for folder in f_]
+            energies = [read_output.read_energy(folder=folder,
+                                                suffix=folder) for folder in f_]
+            natoms = [read_output.read_natom(folder=folder,
+                                            suffix=folder) for folder in f_]
+            energies = [energy/natom for energy, natom in zip(energies, natoms)]
+            """fitting morse potential"""
+            De, a, re, e0 = blscan_fitmorse(bond_lengths, energies)
+            """search bond lengths"""
+            bond_lengths = blscan_returnbls(bl0=re,
+                                            ener0=e0,
+                                            bond_lengths=bond_lengths,
+                                            energies=energies,
+                                            ener_thr=ener_thr)
+            f_ = [folder for folder in f_ for bond_length in bond_lengths if "%3.2f"%bond_length in folder]
+            out.extend(f_)
+        return out
+    
     bond_lengths = [float(folder.split("-")[-1]) for folder in folders]
     energies = [read_output.read_energy(folder=folder,
                                         suffix=folder) for folder in folders]
@@ -483,8 +558,7 @@ def blscan(general: dict,                  # general settings
                                     energies=energies,
                                     ener_thr=ener_thr)
 
-    folders_to_use = [folder for folder in folders for bond_length in bond_lengths if "%3.2f"%bond_length in folder]
-    return folders_to_use
+    return [folder for folder in folders for bond_length in bond_lengths if "%3.2f"%bond_length in folder]
 
 def blscan_guessbls(bl0: float, 
                     stepsize: list, 
@@ -639,31 +713,30 @@ def normal(general: dict,
            test: bool = True):
     """iteratively run ABACUS calculation on reference structures
     To let optimizer be easy to find output, return names of folders"""
-
     folders = []
     for bond_length in bond_lengths:
         stru_setting = {"element": general["element"], "shape": reference_shape, "bond_length": bond_length,
             "fpseudo": general["pseudo_name"], "lattice_constant": 20.0, "nspin": calculation_setting["nspin"],
             "mass": 1.0}
-        folder = configure(input_setting=calculation_setting,
-                           stru_setting=stru_setting)
-        folders.append(folder) if "monomer" not in folder else None
-        # check if the calculation is duplicate, if so, skip
-        if is_duplicate(folder, calculation_setting):
-            print("ABACUS calculation on reference structure %s with bond length %s is skipped."%(reference_shape, bond_length), flush=True)
-            sienv.op("rm", "INPUT-%s KPT-%s STRU-%s INPUTw"%(folder, folder, folder), env="local")
-            continue
-        # else...
-        archive(footer=folder)
-        print("""Run ABACUS calculation on reference structure.
-Reference structure: %s
-Bond length: %s"""%(reference_shape, bond_length), flush=True)
-        # need a better design here
-        _jtg = sienv.submit(folder=folder,
-                            module_load_command=env_settings["environment"],
-                            mpi_command=env_settings["mpi_command"],
-                            program_command=env_settings["abacus_command"],
-                            test=test)
+        for folder in configure(input_setting=calculation_setting,
+                                stru_setting=stru_setting):
+            folders.append(folder) if "monomer" not in folder else None
+            # check if the calculation is duplicate, if so, skip
+            if is_duplicate(folder, calculation_setting):
+                print("ABACUS calculation on reference structure %s with bond length %s is skipped."%(reference_shape, bond_length), flush=True)
+                sienv.op("rm", "INPUT-%s KPT-%s STRU-%s INPUTw"%(folder, folder, folder), env="local")
+                continue
+            # else...
+            archive(footer=folder)
+            print("""Run ABACUS calculation on reference structure.
+    Reference structure: %s
+    Bond length: %s"""%(reference_shape, bond_length), flush=True)
+            # need a better design here
+            _jtg = sienv.submit(folder=folder,
+                                module_load_command=env_settings["environment"],
+                                mpi_command=env_settings["mpi_command"],
+                                program_command=env_settings["abacus_command"],
+                                test=test)
         
     """wait for all jobs to finish"""
     return folders
