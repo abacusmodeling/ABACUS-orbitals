@@ -1,7 +1,5 @@
 # interface to initialize
-import os
 import SIAB.io.read_input as siri
-import SIAB.io.pseudopotential.api as sipa
 def initialize(version: str = "0.1.0",
                fname: str = "./SIAB_INPUT"):
     """initialization of numerical atomic orbitals generation task, 
@@ -10,21 +8,52 @@ def initialize(version: str = "0.1.0",
     3. unpack the input file, return set of parameters:
         - reference_shapes: list of reference shapes, e.g. ["dimer", "trimer"]
         - bond_lengths: list of bond lengths for each reference shape, e.g. [[1.0, 1.1], [1.0, 1.1, 1.2]]
-        - calculation_settings: list of calculation settings, e.g. [{"bessel_nao_rcut": 5.0, "bessel_nao_lmax": 5}, {"bessel_nao_rcut": 5.0, "bessel_nao_lmax": 5}]
-            for each reference shape
+        - calculation_settings: list of calculation settings, e.g. 
+          [{"bessel_nao_rcut": 5.0, "bessel_nao_lmax": 5}, {"bessel_nao_rcut": 5.0, "bessel_nao_lmax": 5}]
+          for each reference shape
         - siab_settings: dict of SIAB settings specially for SIAB optimization tasks.
         - env_settings: tuple of environment settings, contain environment variables, abacus executable, and mpi executable
         - general: dict of general settings, contain element symbol, pseudo_dir, pseudo_name
+    
+    Parameters
+    ----------
+    version: str
+        version of SIAB, this is not used anymore
+    fname: str
+        input filename, default is "./SIAB_INPUT"
     """
-
+    import os
     fname = fname.strip().replace("\\", "/")
     user_settings = siri.read_siab_inp(fname=fname, version=version)
+    
     # pseudopotential existence check
     fpseudo = user_settings["pseudo_dir"]+"/"+user_settings["pseudo_name"]
     if not os.path.exists(fpseudo): # check the existence of pseudopotential file
         raise FileNotFoundError("Pseudopotential file %s not found"%fpseudo)
-    unpacked = siri.unpack_siab_input(user_settings)
-    return unpacked
+    structures, abacus, siab, env, general = siri.unpack_siab_input(user_settings)
+    lmaxmax = max([dftparam.get("lmaxmax", 1) for dftparam in abacus])
+
+    ##################################################
+    # NEW FEATURE in SIAB-v3.0: support for jy basis #
+    ##################################################
+    from SIAB.spillage.api import _coef_gen, _save_orb
+    use_jy = user_settings.get("basis_type", "jy") == "jy" \
+        and user_settings.get("optimizer", "pytorch.SWAT") != "none" 
+    # if user only want jy, will generate elsewhere
+    ecut = user_settings.get("ecutwfc", 100)
+    rcuts = user_settings.get("bessel_nao_rcut", [6.0])
+    if use_jy: # only if use_jy, will generate jy basis
+        fjy = [_save_orb(
+            _coef_gen(rcut, ecut, lmaxmax)[0], general["element"], ecut, rcut, "jy", 
+            user_settings.get("jy_type", "reduced")) for rcut in rcuts]
+        abacus = [dftparam|{"orbital_dir": fjy, 
+                            "basis_type": "lcao",
+                            "ks_solver": "genelpa"} for dftparam in abacus]
+    # the code above will change the abacus setting: INPUT:
+    # basis_type: pw -> lcao
+    # ks_solver: dav -> genelpa
+    # and add a new key: orbital_dir, which is the directory of jy basis
+    return structures, abacus, siab, env, general
 
 # interface to abacus
 import SIAB.interface.abacus as sia
@@ -50,6 +79,23 @@ def abacus(general: dict,
         ["Si-dimer-1.0", "Si-dimer-1.1"], ["Si-trimer-1.0", "Si-trimer-1.1", "Si-trimer-1.2"]
     ]
     if the bond_lengths is given as [[1.0, 1.1], [1.0, 1.1, 1.2]]
+
+    Parameters
+    ----------
+    general: dict
+        general settings, contain element symbol, pseudo_dir, pseudo_name
+
+    structures: list of dict
+        list of structures, each structure is a dict, contain the information of the structure
+    
+    calculation_settings: list of dict
+        list of calculation settings, for each reference shape
+    
+    env_settings: dict
+        settings for calculation environment configuration, important in HPC case
+    
+    test: bool
+        whether to run in test mode, default is True
     """
     return sia.run_all(general=general,
                        structures=structures,
@@ -63,20 +109,20 @@ import SIAB.spillage.pytorch_swat.api as ssps_api  # old version of backend
 import SIAB.spillage.api as ss_api  # new version of backend
 def spillage(folders: list,
              calculation_settings: list,
-             siab_settings: dict,
-             siab_version: str = "0.1.0"):
+             siab_settings: dict):
     """spillage interface
-    For being compatible with old version, the one without refactor, there exposes
-    a parameter siab_version, which is the version of SIAB, default is "0.1.0".
 
-    Parameters:
-    folders: list of list of str, the folders for each reference shape and bond length,
+    Parameters
+    ----------
+    folders: list of list of str
+        the folders for each reference shape and bond length,
     like
     ```python
-    [["Si-dimer-1.0", "Si-dimer-1.1"], ["Si-trimer-1.0", "Si-trimer-1.1", "Si-trimer-1.2"]]
+    [["Si-dimer-1.0", "Si-dimer-1.1"], 
+     ["Si-trimer-1.0", "Si-trimer-1.1", "Si-trimer-1.2"]]
     ```
-    calculation_settings: list of dict, the contents of INPUT for each reference shape,
-    like
+    calculation_settings: list of dict
+        the contents of INPUT for each reference shape, like
     ```python
     [
         {'pseudo_dir': '/root/abacus-develop/pseudopotentials/SG15_ONCV_v1.0_upf', 
@@ -87,8 +133,9 @@ def spillage(folders: list,
          'nbands': 10, 'lmaxmax': 2, 'nspin': 1}
     ]
     ```
-    siab_settings: dict, the settings for SIAB optimization tasks, including informations
-    all about the orbitals, like
+    siab_settings: dict
+        the settings for SIAB optimization tasks, including informations all about the orbitals, 
+        like
     ```python
     {
         'nthreads_per_rcut': 1,

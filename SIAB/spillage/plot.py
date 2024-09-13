@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 from matplotlib import rc
 rc('font',**{'family':'sans-serif'})
-rc('text', usetex=True)
+#rc('text', usetex=True)
 
 def plot_chi(chi, r, save=None):
     lmax = len(chi)-1

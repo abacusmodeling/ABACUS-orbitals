@@ -32,14 +32,15 @@ def initialize(command_line: bool = True):
 New version of Systematically Improvable Atomic-orbital Basis (SIAB) method for generating
 numerical atomic orbitals (NAOs) for Linar Combinations of Atomic Orbitals (LCAO) based electronic
 structure calculations.
-This version is refactored from PTG_DPSI, by ABACUS-AISI developers.
 
-Github repo: https://github.com/abacusmodeling/ABACUS-orbitals
+GitHub repo: https://github.com/abacusmodeling/ABACUS-orbitals
 Tutorials: https://mcresearch.github.io/abacus-user-guide/abacus-nac1.html
            https://mcresearch.github.io/abacus-user-guide/abacus-nac2.html
            https://mcresearch.github.io/abacus-user-guide/abacus-nac3.html
            
 See reference for more information.
+
+     ABACUS developers @ Artificial Intelligence for Science Institute (AISI), BEIJING, China
 ===================================================================================================
     """
     print(welcome, flush = True)
@@ -156,11 +157,9 @@ def run(fname: str,
     # `siab_version` is a temporary parameter, for directly calling the optimizer in spillage/
     # pytorch_swat. For future versions, this parameter will be removed, and `optimizer`
     # in `siab_settings` will be used to call corresponding optimizer.
-    # TODO: Remove `siab_version` in future versions as it will be deprecated
     sdf.spillage(folders=folders,
                  calculation_settings=calculation_settings,
-                 siab_settings=siab_settings,
-                 siab_version=siab_version)
+                 siab_settings=siab_settings)
 
 import SIAB.include.citation as sicite
 def finalize():
