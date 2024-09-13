@@ -1,3 +1,14 @@
+BLSCAN_WARNMSG = """
+WARNING: since SIAB version 2.1(2024.6.3), the original functionality invoked by value \"auto\" is replaced by 
+        \"scan\", and for dimer the \"auto\" now will directly use in-built dimer database if available, otherwise will 
+         fall back to \"scan\". This warning will be print everytime if \"auto\" is used. To disable this warning, specify 
+         directly the \"bond_lengths\" in any one of following ways:
+         1. a list of floats, e.g. [2.0, 2.5, 3.0]
+         2. a string \"default\", which will use default bond length for dimer, and scan for other shapes, for other shapes, will
+            fall back to \"scan\".
+         3. a string \"scan\", which will scan bond lengths for present shape.
+"""
+
 ##############################################
 #           general information              #
 ##############################################
@@ -300,15 +311,32 @@ def configure(input_setting: dict,
         information.
     """
     import os
+    # CHECK
     necessary_keys = ["element", "shape", "fpseudo", "bond_length"]
     for necessary_key in necessary_keys:
         if necessary_key not in stru_setting.keys():
             raise ValueError("key %s is not specified"%necessary_key)
+    
     # mostly value will not be None, except the case the monomer is included to be referred
     # in initial guess of coefficients of sphbes
     keys_in_foldername = ["element", "shape"]
     keys_in_foldername.append("bond_length") if stru_setting["shape"] != "monomer" else None
     # because bond_length is not necessary for monomer
+
+    def write(suffix, inp, stru):
+        inp = INPUT(inp, suffix)
+        stru = STRU(**stru)
+        with open("INPUT-"+suffix, "w") as f:
+            f.write(inp)
+        with open("STRU-"+suffix, "w") as f:
+            f.write(stru[0])
+        with open("KPT-"+suffix, "w") as f:
+            f.write(KPOINTS())
+        with open("INPUTw", "w") as f:
+            f.write("WANNIER_PARAMETERS\n")
+            f.write("out_spillage 2\n")
+        return suffix
+
     folder = f"{stru_setting['element']}-{stru_setting['shape']}"
     folder += "-%3.2f"%stru_setting["bond_length"] if stru_setting["shape"] != "monomer" else ""
     orbital_dir = input_setting.get("orbital_dir")
@@ -322,43 +350,10 @@ def configure(input_setting: dict,
             inp = input_setting.copy()
             inp.update({"bessel_nao_rcut": rcut, "orbital_dir": dirs[0]})
             stru_setting["forb"] = forb
-            
             folder_rcut = "-".join([folder, str(rcut) + "au"])
-            suffix = folder_rcut
-
-            _input = INPUT(inp, suffix=suffix)
-            _stru, _ = STRU(**stru_setting)
-            _kpt = KPOINTS()
-
-            with open("INPUT-"+suffix, "w") as f:
-                f.write(_input)
-            with open("STRU-"+suffix, "w") as f:
-                f.write(_stru)
-            with open("KPT-"+suffix, "w") as f:
-                f.write(_kpt)
-            with open("INPUTw", "w") as f:
-                f.write("WANNIER_PARAMETERS\n")
-                f.write("out_spillage 2\n")
-            yield folder_rcut
-
+            yield write(folder_rcut, inp, stru_setting)
     else:
-        _input = INPUT(input_setting, suffix=folder)
-        _stru, _ = STRU(**stru_setting)
-        _kpt = KPOINTS()
-
-        """to make code expresses clear"""
-        suffix = folder
-        with open("INPUT-"+suffix, "w") as f:
-            f.write(_input)
-        with open("STRU-"+suffix, "w") as f:
-            f.write(_stru)
-        with open("KPT-"+suffix, "w") as f:
-            f.write(_kpt)
-        with open("INPUTw", "w") as f:
-            f.write("WANNIER_PARAMETERS\n")
-            f.write("out_spillage 2\n")
-
-        yield folder
+        yield write(folder, input_setting, stru_setting)
 
 
 import SIAB.interface.env as sienv
@@ -397,16 +392,7 @@ def run_all(general: dict,
         shape, bond_lengths = shape
         folders_istructure = []
         """abacus_driver can be created iteratively in this layer, and feed in following functions"""
-        if bond_lengths == "auto": print("""
-WARNING: since SIAB version 2.1(2024.6.3), the original functionality invoked by value \"auto\" is replaced by 
-        \"scan\", and for dimer the \"auto\" now will directly use in-built dimer database if available, otherwise will 
-         fall back to \"scan\". This warning will be print everytime if \"auto\" is used. To disable this warning, specify 
-         directly the \"bond_lengths\" in any one of following ways:
-         1. a list of floats, e.g. [2.0, 2.5, 3.0]
-         2. a string \"default\", which will use default bond length for dimer, and scan for other shapes, for other shapes, will
-            fall back to \"scan\".
-         3. a string \"scan\", which will scan bond lengths for present shape.
-""", flush=True)
+        if bond_lengths == "auto": print(BLSCAN_WARNMSG, flush=True)
         # deal with "auto" keyword
         if bond_lengths == "auto":
             bond_lengths = "default" if element in DEFAULT_BOND_LENGTH.get(shape, {}) else "scan"
@@ -747,6 +733,7 @@ def normal(general: dict,
         stru_setting = {"element": general["element"], "shape": reference_shape, "bond_length": bond_length,
             "fpseudo": general["pseudo_name"], "lattice_constant": 20.0, "nspin": calculation_setting["nspin"],
             "mass": 1.0}
+        # SIAB-v3.0 refactor here, change the configure() to generator
         for folder in configure(input_setting=calculation_setting,
                                 stru_setting=stru_setting):
             folders.append(folder) if "monomer" not in folder else None
@@ -757,16 +744,22 @@ def normal(general: dict,
                 continue
             # else...
             archive(footer=folder)
-            print("""Run ABACUS calculation on reference structure.
-    Reference structure: %s
-    Bond length: %s"""%(reference_shape, bond_length), flush=True)
-            # need a better design here
+            print("""
+# ----------------------------------------------- #
+# Run ABACUS calculation on reference structure.  #
+# Reference structure: %s                         #
+# Bond length: %s                                 #
+# ----------------------------------------------- #
+"""%(reference_shape, bond_length), flush=True)
+    
+    # ========= HERE DIFFERENT PARALLELIZATION ON ABACUS RUN CAN BE IMPLEMENTED ===========
+    # presently it is only run in serial...
             _jtg = sienv.submit(folder=folder,
                                 module_load_command=env_settings["environment"],
                                 mpi_command=env_settings["mpi_command"],
                                 program_command=env_settings["abacus_command"],
                                 test=test)
-        
+    # =====================================================================================
     """wait for all jobs to finish"""
     return folders
 

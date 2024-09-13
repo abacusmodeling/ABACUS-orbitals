@@ -298,9 +298,10 @@ def iter(siab_settings: dict, calculation_settings: list, folders: list):
     for rcut in rcuts: # can be parallelized here
         # for jy basis calculation, only matched rcut folders are needed
         if run_type == "opt":
+            # REFACTOR: SIAB-v3.0, get folders with matched rcut
             f_ = [[f for f in fgrp if len(f.split("-")) == 2 or \
                    float(f.split("-")[-1].replace("au", "")) == rcut] 
-                  for fgrp in folders] # get folders with matched rcut
+                  for fgrp in folders]
             jy = f_[0][0][-2:] == "au"
             coefs_tot = _coef_opt(rcut, siab_settings, f_, jy)
             # optimize a cascade of orbitals is reasonable because the orbitals always

@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="SIAB",
-    version="0.2",
+    version="3.0-alpha",
     author="ABACUS-AISI developers",
     author_email="huangyk@aisi.ac.cn",
     description="",

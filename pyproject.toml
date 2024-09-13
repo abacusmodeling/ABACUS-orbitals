@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "SIAB"
-version = "2.1-alpha"
+version = "3.0-alpha"
 requires-python = "<3.11" # required by SciPy 1.10
 description = ""
 readme = "README.md"
