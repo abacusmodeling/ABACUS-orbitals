@@ -269,6 +269,15 @@ def INPUT(calculation_setting: dict,
         inbuilt_template["suffix"] = suffix
         inbuilt_template["stru_file"] += "-"+suffix
         inbuilt_template["kpoint_file"] += "-"+suffix
+
+    if inbuilt_template["basis_type"] != "pw":
+        inbuilt_template.update({
+            "out_mat_hs": 1,
+            "out_mat_tk": 1,
+            "out_wfc_lcao": 1
+        })
+    inbuilt_template.update({"out_chg": -1}) # disable the out_chg or set init_chg auto?
+    # write
     for key, value in inbuilt_template.items():
         result += "\n%-20s %s"%(key, value)
 
@@ -446,20 +455,40 @@ def is_duplicate(folder: str, abacus_setting: dict):
         if key not in abacus_setting.keys():
             raise ValueError("NECESSARY KEYWORD %s is not specified"%key)
     original = read_INPUT(folder)
-    for key in abacus_setting.keys():
+
+    check_keys = [k for k in abacus_setting.keys() if k not in ["orbital_dir", "bessel_nao_rcut"]]
+    check_keys = list(abacus_setting.keys())\
+        if abacus_setting.get("basis_type", "pw") == "pw" else check_keys
+    for key in check_keys:
         value = abacus_setting[key]
         if isinstance(value, list):
             value = " ".join([str(v) for v in value])
         else:
             value = str(value)
         value_ = original.get(key, None)
+        # for jy, it is different here. Because the forb is no where to store, all orbitals
+        # involved are temporarily stored in the value of key "orbital_dir". Thus the following
+        # will fail for jy for two keys: orbital_dir and bessel_nao_rcut, the latter is because
+        # for jy, one SCF can only have one rcut.
         if value_ != value:
-            print("KEYWORD \"%s\" has different values. Original: %s, new: %s\nDifference detected, start a new job."%(key, value_, value), flush=True)
+            print("KEYWORD \"%s\" has different values. Original: %s, new: %s\nDifference \
+                  detected, start a new job."%(key, value_, value), flush=True)
             return False
-    rcuts = abacus_setting["bessel_nao_rcut"]
+    
+    # for jy, the following will also fail, because jy will not print such matrix, instead, 
+    # there will only be several matrices such as T(k), S(k), H(k) and wavefunction file.    
     print("DUPLICATE CHECK-3 pass: INPUT settings are consistent", flush=True)
+
     # STAGE4: existence of crucial output files
+    rcuts = abacus_setting["bessel_nao_rcut"]
     rcuts = [rcuts] if not isinstance(rcuts, list) else rcuts
+    print(original.get("bessel_nao_rcut"))
+    if abacus_setting.get("basis_type", "pw") != "pw" and \
+        float(original.get("bessel_nao_rcut", 0)) in [float(rcut) for rcut in rcuts]:
+        print("DUPLICATE CHECK-4 pass: realspace cutoff matches (file integrities not checked)", 
+              flush=True)
+        return True
+    
     if len(rcuts) == 1:
         if "orb_matrix.0.dat" not in files:
             return False

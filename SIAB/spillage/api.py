@@ -37,13 +37,16 @@ def _coef_restart(fcoef: str):
     from SIAB.spillage.orbio import read_param
     return read_param(fcoef)
 
-def _coef_opt(rcut: float, siab_settings: dict, folders: list):
+def _coef_opt(rcut: float, siab_settings: dict, folders: list, jy: bool = False):
     """generate orbitals for one single rcut value"""
     import os
     import numpy as np
-    from SIAB.spillage.spillage import Spillage, initgen
+    from SIAB.spillage.spillage import Spillage_jy, Spillage_pw, initgen_jy, initgen_pw
     from SIAB.spillage.datparse import read_orb_mat
     from SIAB.spillage.listmanip import merge
+
+    initgen = initgen_jy if jy else initgen_pw
+    Spillage = Spillage_jy if jy else Spillage_pw
 
     print(f"ORBGEN: Optimizing orbitals for rcut = {rcut} au", flush = True)
     # folders will be directly the `configs`
@@ -64,21 +67,27 @@ def _coef_opt(rcut: float, siab_settings: dict, folders: list):
     for iorb, orb in enumerate(siab_settings['orbitals']):
         iconfs[iorb] = [configs.index(folder) for f in orb['folder'] for folder in folders[f]]
             
-    reduced = siab_settings.get('jY_type', "reduced")
-    orbgen = Spillage(reduced in ["reduced", "nullspace", "svd"])
+    #reduced = siab_settings.get('jY_type', "reduced")
+    #orbgen = Spillage(reduced in ["reduced", "nullspace", "svd"])
+    orbgen = Spillage()
     # load orb_matix with correct rcut
     fov = None
     for folder in configs:
+        if jy:
+            orbgen.config_add(os.path.join(folder, f"OUT.{os.path.basename(folder)}"))
+            continue
         for fov_, fop_ in _orb_matrices(folder):
             ov, op = map(read_orb_mat, [fov_, fop_])
             assert ov['rcut'] == op['rcut'], "Data violation: rcut of ov and op matrices are different"
             if np.abs(ov['rcut'] - rcut) < 1e-10:
                 print(f"ORBGEN: jy_jy, mo_jy and mo_mo matrices loaded from {fov_} and {fop_}", flush = True)
-                orbgen.add_config(ov, op, siab_settings.get('spill_coefs', [0.0, 1.0]))
+                orbgen.config_add(ov, op, siab_settings.get('spill_coefs', [0.0, 1.0]))
                 fov = fov_ if fov is None else fov
     symbol = configs[0].split('-')[0]
-    monomer_dir = "-".join([symbol, "monomer"]) # weak binding
-    ov = read_orb_mat(os.path.join(monomer_dir, fov.replace('\\', '/').split('/')[-1]))
+    m = [symbol, "monomer"] if not jy else [symbol, "monomer", f"{rcut}au"]
+    monomer_dir = "-".join(m)
+    monomer_dir = os.path.join(monomer_dir, f"OUT.{monomer_dir}") if jy else monomer_dir
+    ov = read_orb_mat(os.path.join(monomer_dir, fov.replace('\\', '/').split('/')[-1])) if not jy else None
 
     # calculate the firs param of function initgen
     lmax = max([len(orb['nzeta']) for orb in siab_settings['orbitals']]) - 1
@@ -86,7 +95,10 @@ def _coef_opt(rcut: float, siab_settings: dict, folders: list):
     # calculate maxial number of zeta for each l
     nzeta_max = [(lambda nzeta: nzeta + (lmax + 1 - len(nzeta))*[-1])(orb['nzeta']) for orb in siab_settings['orbitals']]
     nzeta_max = [max([orb[i] for orb in nzeta_max]) for i in range(lmax + 1)]
-    coefs_init = initgen(nzeta_max, ov, reduced)
+    
+    init_recipe = {"outdir": monomer_dir, "nzeta": nzeta_max} if jy \
+        else {"orb_mat": ov, "nzeta": nzeta_max}
+    coefs_init = initgen(**init_recipe)
 
     # prepare opt params
     options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': siab_settings.get('max_steps', 2000), 'disp': True, 'maxcor': 20}
@@ -289,7 +301,8 @@ def iter(siab_settings: dict, calculation_settings: list, folders: list):
             f_ = [[f for f in fgrp if len(f.split("-")) == 2 or \
                    float(f.split("-")[-1].replace("au", "")) == rcut] 
                   for fgrp in folders] # get folders with matched rcut
-            coefs_tot = _coef_opt(rcut, siab_settings, f_)
+            jy = f_[0][0][-2:] == "au"
+            coefs_tot = _coef_opt(rcut, siab_settings, f_, jy)
             # optimize a cascade of orbitals is reasonable because the orbitals always
             # have a hierarchical structure like
             # SZ
