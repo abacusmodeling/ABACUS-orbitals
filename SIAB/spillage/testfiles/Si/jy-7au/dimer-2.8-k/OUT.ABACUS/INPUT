@@ -49,7 +49,7 @@ device                         cpu #the computing device for ABACUS
 precision                      double #the computing precision for ABACUS
 
 #Parameters (2.Electronic structure)
-ks_solver                      scalapack_gvx #cg; dav; lapack; genelpa; scalapack_gvx; cusolver
+ks_solver                      scalapack_gvx #cg; dav; lapack; genelpa; elpa; scalapack_gvx; cusolver
 basis_type                     lcao #PW; LCAO in pw; LCAO
 use_paw                        0 #whether to use PAW in pw calculation
 nbands                         50 #number of bands
@@ -151,6 +151,9 @@ lj_rcut                         #cutoff radius of LJ potential
 lj_epsilon                      #the value of epsilon for LJ potential
 lj_sigma                        #the value of sigma for LJ potential
 pot_file                       graph.pb #the filename of potential files for CMD such as DP
+dp_rescaling                   1 #rescaling factor for dp potential
+dp_fparam                       #the frame parameter for dp potential
+dp_aparam                       #the atomic parameter for dp potential
 msst_direction                 2 #the direction of shock wave
 msst_vel                       0 #the velocity of shock wave
 msst_vis                       0 #artificial viscosity
@@ -266,7 +269,7 @@ abs_broadening                 0.01 #the broadening (eta) for LR-TDDFT absorptio
 out_stru                       0 #output the structure files after each ion step
 out_freq_elec                  0 #the frequency ( >= 0) of electronic iter to output charge density and wavefunction. 0: output only when converged
 out_freq_ion                   0 #the frequency ( >= 0 ) of ionic step to output charge density and wavefunction. 0: output only when ion steps are finished
-out_chg                        0 3  #>0 output charge density for selected electron steps, second parameter controls the precision, default is 3.
+out_chg                        0 3  #> 0 output charge density for selected electron steps, second parameter controls the precision, default is 3.
 out_pot                        0 #output realspace potential
 out_wfc_pw                     0 #output wave functions
 out_wfc_r                      0 #output wave functions in realspace
@@ -396,6 +399,7 @@ exx_distribute_type            htime #exx_distribute_type
 exx_opt_orb_lmax               0 #the maximum l of the spherical Bessel functions for opt ABFs
 exx_opt_orb_ecut               0 #the cut-off of plane wave expansion for opt ABFs
 exx_opt_orb_tolerence          0 #the threshold when solving for the zeros of spherical Bessel functions for opt ABFs
+exx_symmetry_realspace         1 #whether to reduce real-space sector in Hexx calculation
 rpa_ccp_rmesh_times            10 #how many times larger the radial mesh required for calculating Columb potential is to that of atomic orbitals
 
 #Parameters (16.dft+u)
@@ -455,7 +459,6 @@ pexsi_zero_thr                 1e-10 #if the absolute value of matrix element is
 #Parameters (20.Test)
 out_alllog                     0 #output information for each processor, when parallel
 nurse                          0 #for coders
-colour                         0 #for coders, make their live colourful
 t_in_h                         1 #calculate the kinetic energy or not
 vl_in_h                        1 #calculate the local potential or not
 vnl_in_h                       1 #calculate the nonlocal potential or not

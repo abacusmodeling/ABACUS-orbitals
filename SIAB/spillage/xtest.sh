@@ -12,3 +12,4 @@ python3 orbscreen.py -v
 python3 radial.py -v
 python3 spillage.py -v
 python3 struio.py -v
+python3 lcao_wfc_analysis.py -v
