@@ -320,8 +320,13 @@ import unittest
 class _TestOrbIO(unittest.TestCase):
 
     def test_read_param(self):
-        param = read_param('./testfiles/ORBITAL_RESULTS.txt')
-    
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        jobdir = os.path.join(here, 'testfiles')
+
+        #param = read_param('./testfiles/ORBITAL_RESULTS.txt')
+        param = read_param(os.path.join(jobdir, 'ORBITAL_RESULTS.txt'))
+
         self.assertEqual(param['elem'], 'In')
         self.assertEqual(param['rcut'], 10.0)
         self.assertEqual(param['sigma'], 0.1)
@@ -343,8 +348,14 @@ class _TestOrbIO(unittest.TestCase):
 
 
     def test_write_param(self):
-        param = read_param('./testfiles/ORBITAL_RESULTS.txt')
-        tmpfile = './testfiles/ORBITAL_RESULTS.txt.tmp'
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        jobdir = os.path.join(here, 'testfiles')
+
+        #param = read_param('./testfiles/ORBITAL_RESULTS.txt')
+        param = read_param(os.path.join(jobdir, 'ORBITAL_RESULTS.txt'))
+        #tmpfile = './testfiles/ORBITAL_RESULTS.txt.tmp'
+        tmpfile = os.path.join(jobdir, 'ORBITAL_RESULTS.txt.tmp')
         write_param(tmpfile, **param)
         param2 = read_param(tmpfile)
         os.remove(tmpfile)
@@ -352,8 +363,13 @@ class _TestOrbIO(unittest.TestCase):
     
     
     def test_read_nao(self):
-        nao = read_nao('./testfiles/In_gga_10au_100Ry_3s3p3d2f.orb')
-    
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        jobdir = os.path.join(here, 'testfiles')
+
+        #nao = read_nao('./testfiles/In_gga_10au_100Ry_3s3p3d2f.orb')
+        nao = read_nao(os.path.join(jobdir, 'In_gga_10au_100Ry_3s3p3d2f.orb'))
+
         self.assertEqual(nao['elem'], 'In')
         self.assertEqual(nao['rcut'], 10.0)
         self.assertEqual(nao['ecut'], 100.0)
@@ -374,8 +390,15 @@ class _TestOrbIO(unittest.TestCase):
 
     
     def test_write_nao(self):
-        nao = read_nao('./testfiles/In_gga_10au_100Ry_3s3p3d2f.orb')
-        tmpfile = './testfiles/In_gga_10au_100Ry_3s3p3d2f.orb.tmp'
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        jobdir = os.path.join(here, 'testfiles')
+
+        #nao = read_nao('./testfiles/In_gga_10au_100Ry_3s3p3d2f.orb')
+        nao = read_nao(os.path.join(jobdir, 'In_gga_10au_100Ry_3s3p3d2f.orb'))
+        #tmpfile = './testfiles/In_gga_10au_100Ry_3s3p3d2f.orb.tmp'
+        tmpfile = os.path.join(jobdir, 'In_gga_10au_100Ry_3s3p3d2f.orb.tmp')
+
         write_nao(tmpfile, **nao)
         nao2 = read_nao(tmpfile)
         os.remove(tmpfile)
@@ -390,7 +413,13 @@ class _TestOrbIO(unittest.TestCase):
 
 
     def test_jygen(self):
-        tmpfile = './testfiles/tmp.orb'
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        jobdir = os.path.join(here, 'testfiles')
+
+        #tmpfile = './testfiles/tmp.orb'
+        tmpfile = os.path.join(jobdir, 'tmp.orb')
+        
         jygen(tmpfile, 7, 0.01, 2, 60, 'Si', False)
 
         nao = read_nao(tmpfile)

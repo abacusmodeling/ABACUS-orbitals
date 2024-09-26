@@ -530,24 +530,32 @@ import os
 class _TestInputIO(unittest.TestCase):
 
     def test_write_input(self):
-        write_input('./testfiles',
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        jobdir = os.path.join(here, 'testfiles')
+        write_input(jobdir,
                     calculation='scf',
                     scf_nmax=100,
                     orbital_dir='./testfiles',
                     pseudo_dir='./testfiles')
 
-        inputs = read_input('./testfiles/INPUT')
+        inputs = read_input(os.path.join(jobdir, 'INPUT'))
 
         self.assertEqual(inputs['calculation'], 'scf')
         self.assertEqual(inputs['scf_nmax'], '100')
         self.assertEqual(inputs['orbital_dir'], './testfiles')
         self.assertEqual(inputs['pseudo_dir'], './testfiles')
 
-        os.remove('./testfiles/INPUT')
+        os.remove(os.path.join(jobdir, 'INPUT'))
 
 
     def test_read_input(self):
-        inputs = read_input('./testfiles/INPUT.test')
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        jobdir = os.path.join(here, 'testfiles')
+        
+        #inputs = read_input('./testfiles/INPUT.test')
+        inputs = read_input(os.path.join(jobdir, 'INPUT.test'))
 
         self.assertEqual(inputs['calculation'], 'scf')
         self.assertEqual(inputs['scf_nmax'], '100')

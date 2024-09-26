@@ -820,7 +820,12 @@ import matplotlib.pyplot as plt
 class _TestSpillage(unittest.TestCase):
 
     def test_initgen_jy_gamma(self):
-        outdir = './testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/'
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        testfiles = os.path.join(here, 'testfiles')
+
+        #outdir = './testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/'
+        outdir = os.path.join(testfiles, 'Si/jy-7au/monomer-gamma/OUT.ABACUS/')
 
         nzeta = [3, 3, 2]
         ibands = range(19)
@@ -841,7 +846,12 @@ class _TestSpillage(unittest.TestCase):
 
 
     def test_initgen_jy_k(self):
-        outdir = './testfiles/Si/jy-7au/monomer-k/OUT.ABACUS/'
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        testfiles = os.path.join(here, 'testfiles')
+
+        #outdir = './testfiles/Si/jy-7au/monomer-k/OUT.ABACUS/'
+        outdir = os.path.join(testfiles, 'Si/jy-7au/monomer-k/OUT.ABACUS/')
 
         nzeta = [3, 3, 2]
         ibands = range(22)
@@ -862,7 +872,12 @@ class _TestSpillage(unittest.TestCase):
 
 
     def test_initgen_pw_gamma(self):
-        orb_matrix = './testfiles/Si/pw/monomer-gamma/orb_matrix.0.dat'
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        testfiles = os.path.join(here, 'testfiles')
+
+        #orb_matrix = './testfiles/Si/pw/monomer-gamma/orb_matrix.0.dat'
+        orb_matrix = os.path.join(testfiles, 'Si/pw/monomer-gamma/orb_matrix.0.dat')
 
         nzeta = [2, 2, 1]
         coef = initgen_pw(orb_matrix, nzeta, diagnosis=False)
@@ -882,9 +897,17 @@ class _TestSpillage(unittest.TestCase):
 
 
     def test_jy_config_add(self):
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        testfiles = os.path.join(here, 'testfiles')
+
+        # outdirs = [
+        #         './testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/',
+        #         './testfiles/Si/jy-7au/dimer-1.8-k/OUT.ABACUS/',
+        #         ]
         outdirs = [
-                './testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/',
-                './testfiles/Si/jy-7au/dimer-1.8-k/OUT.ABACUS/',
+                os.path.join(testfiles, 'Si/jy-7au/monomer-gamma/OUT.ABACUS/'),
+                os.path.join(testfiles, 'Si/jy-7au/dimer-1.8-k/OUT.ABACUS/'),
                 ]
 
         orbgen = Spillage_jy()
@@ -913,10 +936,19 @@ class _TestSpillage(unittest.TestCase):
 
 
     def test_tab_frozen(self):
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        testfiles = os.path.join(here, 'testfiles')
+
+        # outdirs = [
+        #         './testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/',
+        #         './testfiles/Si/jy-7au/dimer-1.8-k/OUT.ABACUS/',
+        #         ]
         outdirs = [
-                './testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/',
-                './testfiles/Si/jy-7au/dimer-1.8-k/OUT.ABACUS/',
+                os.path.join(testfiles, 'Si/jy-7au/monomer-gamma/OUT.ABACUS/'),
+                os.path.join(testfiles, 'Si/jy-7au/dimer-1.8-k/OUT.ABACUS/'),
                 ]
+
 
         orbgen = Spillage_jy()
 
@@ -944,9 +976,17 @@ class _TestSpillage(unittest.TestCase):
 
 
     def test_tab_deriv(self):
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        testfiles = os.path.join(here, 'testfiles')
+
+        # outdirs = [
+        #         './testfiles/Si/jy-7au/monomer-k/OUT.ABACUS/',
+        #         './testfiles/Si/jy-7au/dimer-1.8-gamma/OUT.ABACUS/',
+        #         ]
         outdirs = [
-                './testfiles/Si/jy-7au/monomer-k/OUT.ABACUS/',
-                './testfiles/Si/jy-7au/dimer-1.8-gamma/OUT.ABACUS/',
+                os.path.join(testfiles, 'Si/jy-7au/monomer-k/OUT.ABACUS/'),
+                os.path.join(testfiles, 'Si/jy-7au/dimer-1.8-gamma/OUT.ABACUS/'),
                 ]
 
         orbgen = Spillage_jy()
@@ -1008,7 +1048,12 @@ class _TestSpillage(unittest.TestCase):
         recovers the overlap spillage.
 
         '''
-        outdir = './testfiles/Si/jy-7au/dimer-1.8-gamma/OUT.ABACUS/'
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        testfiles = os.path.join(here, 'testfiles')
+
+        #outdir = './testfiles/Si/jy-7au/dimer-1.8-gamma/OUT.ABACUS/'
+        outdir = os.path.join(testfiles, 'Si/jy-7au/dimer-1.8-gamma/OUT.ABACUS/')
 
         dat = _jy_data_extract(outdir)
         natom, nbes_data, wk, S, C = \
@@ -1056,7 +1101,12 @@ class _TestSpillage(unittest.TestCase):
         recovers the overlap spillage.
 
         '''
-        outdir = './testfiles/Si/jy-7au/dimer-1.8-k/OUT.ABACUS/'
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        testfiles = os.path.join(here, 'testfiles')
+
+        #outdir = './testfiles/Si/jy-7au/dimer-1.8-k/OUT.ABACUS/'
+        outdir = os.path.join(testfiles, 'Si/jy-7au/dimer-1.8-k/OUT.ABACUS/')
 
         dat = _jy_data_extract(outdir)
         natom, nbes_data, wk, S, C = \
@@ -1105,7 +1155,12 @@ class _TestSpillage(unittest.TestCase):
         with finite difference.
 
         '''
-        outdir = './testfiles/Si/jy-7au/dimer-1.8-gamma/OUT.ABACUS/'
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        testfiles = os.path.join(here, 'testfiles')
+
+        #outdir = './testfiles/Si/jy-7au/dimer-1.8-gamma/OUT.ABACUS/'
+        outdir = os.path.join(testfiles, 'Si/jy-7au/dimer-1.8-gamma/OUT.ABACUS/')
         orbgen = Spillage_jy()
         orbgen.config_add(outdir, (0.0, 1.0))
 
@@ -1150,14 +1205,23 @@ class _TestSpillage(unittest.TestCase):
 
     def test_jy_opt(self):
         from listmanip import merge
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        testfiles = os.path.join(here, 'testfiles')
 
+        # outdirs = [
+        #         './testfiles/Si/jy-7au/dimer-1.8-gamma/OUT.ABACUS/',
+        #         './testfiles/Si/jy-7au/dimer-2.8-gamma/OUT.ABACUS/',
+        #         './testfiles/Si/jy-7au/dimer-3.8-gamma/OUT.ABACUS/',
+        #         ]
         outdirs = [
-                './testfiles/Si/jy-7au/dimer-1.8-gamma/OUT.ABACUS/',
-                './testfiles/Si/jy-7au/dimer-2.8-gamma/OUT.ABACUS/',
-                './testfiles/Si/jy-7au/dimer-3.8-gamma/OUT.ABACUS/',
+                os.path.join(testfiles, 'Si/jy-7au/dimer-1.8-gamma/OUT.ABACUS/'),
+                os.path.join(testfiles, 'Si/jy-7au/dimer-2.8-gamma/OUT.ABACUS/'),
+                os.path.join(testfiles, 'Si/jy-7au/dimer-3.8-gamma/OUT.ABACUS/'),
                 ]
 
-        outdir_init = './testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/'
+        #outdir_init = './testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/'
+        outdir_init = os.path.join(testfiles, 'Si/jy-7au/monomer-gamma/OUT.ABACUS/')
 
         orbgen = Spillage_jy()
         for outdir in outdirs:
@@ -1218,12 +1282,20 @@ class _TestSpillage(unittest.TestCase):
 
 
     def test_pw_config_add_gamma(self):
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        testfiles = os.path.join(here, 'testfiles')
         # Only gamma-only calculation is supported at this stage;
         # will be extended to multi-k calculations in the future.
+        # outdirs = [
+        #         './testfiles/Si/pw/dimer-1.8-gamma/',
+        #         './testfiles/Si/pw/dimer-2.8-gamma/',
+        #         './testfiles/Si/pw/dimer-3.8-gamma/',
+        #         ]
         outdirs = [
-                './testfiles/Si/pw/dimer-1.8-gamma/',
-                './testfiles/Si/pw/dimer-2.8-gamma/',
-                './testfiles/Si/pw/dimer-3.8-gamma/',
+                os.path.join(testfiles, 'Si/pw/dimer-1.8-gamma/'),
+                os.path.join(testfiles, 'Si/pw/dimer-2.8-gamma/'),
+                os.path.join(testfiles, 'Si/pw/dimer-3.8-gamma/'),
                 ]
 
         orbgen = Spillage_pw()
@@ -1254,11 +1326,19 @@ class _TestSpillage(unittest.TestCase):
 
     def test_pw_opt(self):
         from listmanip import merge
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        testfiles = os.path.join(here, 'testfiles')
 
+        # outdirs = [
+        #         './testfiles/Si/pw/dimer-1.8-gamma/',
+        #         './testfiles/Si/pw/dimer-2.8-gamma/',
+        #         './testfiles/Si/pw/dimer-3.8-gamma/',
+        #         ]
         outdirs = [
-                './testfiles/Si/pw/dimer-1.8-gamma/',
-                './testfiles/Si/pw/dimer-2.8-gamma/',
-                './testfiles/Si/pw/dimer-3.8-gamma/',
+                os.path.join(testfiles, 'Si/pw/dimer-1.8-gamma/'),
+                os.path.join(testfiles, 'Si/pw/dimer-2.8-gamma/'),
+                os.path.join(testfiles, 'Si/pw/dimer-3.8-gamma/'),
                 ]
 
         orbgen = Spillage_pw()
@@ -1266,7 +1346,8 @@ class _TestSpillage(unittest.TestCase):
             orbgen.config_add(outdir + 'orb_matrix.0.dat',
                               outdir + 'orb_matrix.1.dat')
 
-        orb_matrix_init = './testfiles/Si/pw/monomer-gamma/orb_matrix.0.dat'
+        #orb_matrix_init = './testfiles/Si/pw/monomer-gamma/orb_matrix.0.dat'
+        orb_matrix_init = os.path.join(testfiles, 'Si/pw/monomer-gamma/orb_matrix.0.dat')
         nzeta = [2, 2, 1]
 
         # coef_init[l][z][q] -> float
