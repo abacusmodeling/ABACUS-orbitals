@@ -5,11 +5,11 @@ on:
     types: [synchronize]
 
 jobs:
-  run-script:
-    runs-on: ubuntu-latest
+  run-unit-tests:
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v2         # Specify version for best practices
+        uses: actions/checkout@v4         # Specify version for best practices
 
       - name: Set up Conda
         uses: conda-incubator/setup-miniconda@v3  # Specify version here as well
