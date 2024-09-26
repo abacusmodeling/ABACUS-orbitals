@@ -20,19 +20,22 @@ jobs:
         use-only-tar-bz2: true
 
     - name: Install prerequisite by conda
-      run: conda install pytorch torchvision torchaudio cpuonly -c pytorch
+      run: |
+        conda init
+        conda activate orbgen
+        conda install pytorch torchvision torchaudio cpuonly -c pytorch
 
-    - name: Activate conda virtual environment
-      run: conda activate orbgen
-    
     - name: Install the package
-      run: pip install -e .
+      run: |
+        conda activate orbgen
+        pip install -e .
 
     - name: Set up permissions for execute
       run: chmod +x ./.github/tests/xtest.sh
 
     - name: Run xtest.sh shell script
       run: |
+        conda activate orbgen
         output=$(./.github/tests/xtest.sh)
         exit_code=$?
         echo "$output"
