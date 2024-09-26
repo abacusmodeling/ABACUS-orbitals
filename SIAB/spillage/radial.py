@@ -619,9 +619,14 @@ class _TestRadial(unittest.TestCase):
 
     def test_build_raw(self):
         from orbio import read_param, read_nao
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        jobdir = os.path.join(here, 'testfiles')
 
-        param = read_param('./testfiles/ORBITAL_RESULTS.txt')
-        nao = read_nao('./testfiles/In_gga_10au_100Ry_3s3p3d2f.orb')
+        #param = read_param('./testfiles/ORBITAL_RESULTS.txt')
+        param = read_param(os.path.join(jobdir, 'ORBITAL_RESULTS.txt'))
+        #nao = read_nao('./testfiles/In_gga_10au_100Ry_3s3p3d2f.orb')
+        nao = read_nao(os.path.join(jobdir, 'In_gga_10au_100Ry_3s3p3d2f.orb'))
 
         nr = int(param['rcut']/nao['dr'])+1
         r = np.linspace(0, param['rcut'], nr)

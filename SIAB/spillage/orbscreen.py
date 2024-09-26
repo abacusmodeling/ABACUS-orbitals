@@ -29,7 +29,13 @@ class _TestScreen(unittest.TestCase):
 
 
     def test_screen(self):
-        T_In = screen('./testfiles/In_gga_10au_100Ry_3s3p3d2f.orb', item="T")
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        jobdir = os.path.join(here, 'testfiles')
+        
+        T_In = screen(os.path.join(jobdir, 'In_gga_10au_100Ry_3s3p3d2f.orb'), item="T")
+        #T_In = screen('./testfiles/In_gga_10au_100Ry_3s3p3d2f.orb', item="T")
+        
         self.assertEqual([len(T_l) for T_l in T_In], [3, 3, 3, 2])
 
 

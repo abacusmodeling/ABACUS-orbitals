@@ -281,7 +281,12 @@ import os
 class _TestStruIO(unittest.TestCase):
 
     def test_read_stru(self):
-        stru = read_stru('./testfiles/STRU.test')
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        testfiles = os.path.join(here, 'testfiles')
+
+        #stru = read_stru('./testfiles/STRU.test')
+        stru = read_stru(os.path.join(testfiles, 'STRU.test'))
 
         self.assertEqual(stru['lat']['const'], 20.0)
         self.assertEqual(stru['lat']['vec'],
@@ -324,7 +329,12 @@ class _TestStruIO(unittest.TestCase):
 
 
     def test_write_stru(self):
-        jobdir = './testfiles/'
+        import os
+        here = os.path.dirname(os.path.abspath(__file__))
+        testfiles = os.path.join(here, 'testfiles')
+
+        #jobdir = './testfiles/'
+        jobdir = testfiles
 
         stru = {
                 'lat': {
