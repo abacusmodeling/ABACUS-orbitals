@@ -59,8 +59,11 @@ from SIAB.spillage.datparse import read_wfc_lcao_txt, read_triu, \
 class TestLCAOWfcAnalysis(unittest.TestCase):
 
     def test_wll_gamma(self):
-        outdir = './testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/'
-
+        import os
+        here = os.path.dirname(__file__)
+        # outdir = os.path.join(here, 'testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/')
+        # outdir = './testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/'
+        outdir = '/root/documents/simulation/orbgen/test_temp/jy/Si-dimer-1.82-6au/OUT.Si-dimer-1.82-6au/'
         wfc = read_wfc_lcao_txt(outdir + 'WFC_NAO_GAMMA1.txt')[0]
         S = read_triu(outdir + 'data-0-S')
         dat = read_running_scf_log(outdir + 'running_scf.log')
@@ -70,7 +73,7 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
         for ib, wb in enumerate(wll):
             self.assertAlmostEqual(np.sum(wb.real), 1.0, places=6)
 
-        return # suppress output
+        # return # suppress output
 
         for ib, wb in enumerate(wll):
             wl_row_sum = np.sum(wb.real, 0)
@@ -82,7 +85,10 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
 
 
     def test_wll_multi_k(self):
-        outdir = './testfiles/Si/jy-7au/dimer-2.8-k/OUT.ABACUS/'
+        import os
+        here = os.path.dirname(__file__)
+        outdir = os.path.join(here, 'testfiles/Si/jy-7au/dimer-2.8-k/OUT.ABACUS/')
+        #outdir = './testfiles/Si/jy-7au/dimer-2.8-k/OUT.ABACUS/'
 
         wfc = read_wfc_lcao_txt(outdir + 'WFC_NAO_K6.txt')[0]
         S = read_triu(outdir + 'data-5-S')
