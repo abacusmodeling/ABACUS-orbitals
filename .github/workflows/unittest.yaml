@@ -1,0 +1,19 @@
+name: unittest-on-commit
+
+on:
+  pull_request:
+    types: [synchronize]
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      
+    - name: Set up permissions for execute
+      run: chmod +x ./SIAB/spillage/xtest.sh
+      
+    - name: Run xtest.sh shell script
+      run: ./SIAB/spillage/xtest.sh
+      
