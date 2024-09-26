@@ -60,10 +60,10 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
 
     def test_wll_gamma(self):
         import os
-        here = os.path.dirname(__file__)
-        # outdir = os.path.join(here, 'testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/')
+        here = os.path.dirname(os.path.abspath(__file__))
+        outdir = os.path.join(here, 'testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/')
         # outdir = './testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/'
-        outdir = '/root/documents/simulation/orbgen/test_temp/jy/Si-dimer-1.82-6au/OUT.Si-dimer-1.82-6au/'
+        
         wfc = read_wfc_lcao_txt(outdir + 'WFC_NAO_GAMMA1.txt')[0]
         S = read_triu(outdir + 'data-0-S')
         dat = read_running_scf_log(outdir + 'running_scf.log')
@@ -86,7 +86,7 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
 
     def test_wll_multi_k(self):
         import os
-        here = os.path.dirname(__file__)
+        here = os.path.dirname(os.path.abspath(__file__))
         outdir = os.path.join(here, 'testfiles/Si/jy-7au/dimer-2.8-k/OUT.ABACUS/')
         #outdir = './testfiles/Si/jy-7au/dimer-2.8-k/OUT.ABACUS/'
 
