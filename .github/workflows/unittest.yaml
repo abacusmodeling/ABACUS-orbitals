@@ -22,10 +22,11 @@ jobs:
     - name: Install prerequisite by conda
       run: conda install pytorch torchvision torchaudio cpuonly -c pytorch
 
+    - name: Activate conda virtual environment
+      run: conda activate orbgen
+    
     - name: Install the package
-      run: |
-        conda activate orbgen
-        pip install -e .
+      run: pip install -e .
 
     - name: Set up permissions for execute
       run: chmod +x ./.github/tests/xtest.sh
