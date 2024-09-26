@@ -57,12 +57,10 @@ def _coef_opt(rcut: float, siab_settings: dict, folders: list, jy: bool = False)
     """
     import os
     import numpy as np
-    from SIAB.spillage.spillage import Spillage_jy, Spillage_pw, initgen_jy, initgen_pw\
-    , flatten
+    from SIAB.spillage.spillage import Spillage_jy, Spillage_pw, flatten
     from SIAB.spillage.datparse import read_orb_mat
     from SIAB.spillage.listmanip import merge
 
-    initgen = initgen_jy if jy else initgen_pw
     Spillage = Spillage_jy if jy else Spillage_pw
 
     print(f"ORBGEN: Optimizing orbitals for rcut = {rcut} au", flush = True)
