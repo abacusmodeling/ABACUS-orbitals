@@ -77,7 +77,7 @@ def _jy_data_extract(outdir):
             'S': np.array(S), 'T': np.array(T), 'C': np.array(C)}
 
 
-def _initgen_core(nzeta, nbes_data, ref_jy, wk, nbes_gen, diagosis):
+def _initgen_core(nzeta, nbes_data, ref_jy, wk, nbes_gen, diagnosis):
     '''
     Computational core of initgen_jy and initgen_pw.
 
@@ -97,7 +97,7 @@ def _initgen_core(nzeta, nbes_data, ref_jy, wk, nbes_gen, diagosis):
             Weights of k points.
         nbes_gen : list of int
             Number of spherical Bessel components for each l to generate.
-        diagosis : bool
+        diagnosis : bool
             If true, print for each l the largest nzeta[l] eigenvalues of
 
                     sum_k wk * Y[l,k].T.conj() @ Y[l,k]
@@ -139,14 +139,14 @@ def _initgen_core(nzeta, nbes_data, ref_jy, wk, nbes_gen, diagosis):
         # eigenvectors corresponding to the largest nzeta eigenvalues
         coef.append(vec[:,-nzeta_l:][:,::-1].T.tolist())
 
-        if diagosis:
+        if diagnosis:
             print( "initgen: <jy|ref><ref|jy> eigval diagnosis:")
             print(f"         l = {l}: {val[-nzeta_l:][::-1]}")
 
     return coef
 
 
-def initgen_jy(outdir, nzeta, ibands='all', nbes_gen=None, diagosis=False):
+def initgen_jy(outdir, nzeta, ibands='all', nbes_gen=None, diagnosis=False):
     '''
     Generates an initial guess of the spherical Bessel coefficients from
     single-atom overlap data.
@@ -170,7 +170,7 @@ def initgen_jy(outdir, nzeta, ibands='all', nbes_gen=None, diagosis=False):
             If a list, nbes_gen[l] is the number corresponding to l;
             If None, nbes_gen is assumed to be the same as what is given
             in the single-atom data.
-        diagosis : bool
+        diagnosis : bool
             See _initgen_jy_core for details.
 
     Returns
@@ -228,10 +228,10 @@ def initgen_jy(outdir, nzeta, ibands='all', nbes_gen=None, diagosis=False):
     assert all(0 <= ib < ref_jy.shape[1] for ib in ibands)
 
     return _initgen_core(nzeta, nbes_data, ref_jy[:,ibands,:],
-                         wk, nbes_gen, diagosis)
+                         wk, nbes_gen, diagnosis)
 
 
-def initgen_pw(orb_mat, nzeta, ibands='all', nbes_gen=None, diagosis=False):
+def initgen_pw(orb_mat, nzeta, ibands='all', nbes_gen=None, diagnosis=False):
     '''
     Generates an initial guess of the spherical Bessel coefficients from
     single-atom overlap data.
@@ -256,7 +256,7 @@ def initgen_pw(orb_mat, nzeta, ibands='all', nbes_gen=None, diagosis=False):
             If a list, nbes_gen[l] is the number corresponding to l;
             If None, nbes_gen is assumed to be the same as what is given
             in the single-atom data.
-        diagosis : bool
+        diagnosis : bool
             See _initgen_jy_core for details.
 
     Returns
@@ -319,7 +319,7 @@ def initgen_pw(orb_mat, nzeta, ibands='all', nbes_gen=None, diagosis=False):
     assert all(0 <= ib < ref_jy.shape[1] for ib in ibands)
 
     return _initgen_core(nzeta, nbes_data, ref_jy[:,ibands,:],
-                         wk, nbes_gen, diagosis)
+                         wk, nbes_gen, diagnosis)
 
 
 def _overlap_spillage(natom, nbes, jy_jy, ref_jy, ref_ref, wk,
@@ -824,7 +824,7 @@ class _TestSpillage(unittest.TestCase):
 
         nzeta = [3, 3, 2]
         ibands = range(19)
-        coef = initgen_jy(outdir, nzeta, ibands=ibands, diagosis=False)
+        coef = initgen_jy(outdir, nzeta, ibands=ibands, diagnosis=False)
 
         self.assertEqual(len(coef), len(nzeta))
         self.assertEqual([len(coef_l) for coef_l in coef], nzeta)
@@ -845,7 +845,7 @@ class _TestSpillage(unittest.TestCase):
 
         nzeta = [3, 3, 2]
         ibands = range(22)
-        coef = initgen_jy(outdir, nzeta, ibands=ibands, diagosis=False)
+        coef = initgen_jy(outdir, nzeta, ibands=ibands, diagnosis=False)
 
         self.assertEqual(len(coef), len(nzeta))
         self.assertEqual([len(coef_l) for coef_l in coef], nzeta)
@@ -865,7 +865,7 @@ class _TestSpillage(unittest.TestCase):
         orb_matrix = './testfiles/Si/pw/monomer-gamma/orb_matrix.0.dat'
 
         nzeta = [2, 2, 1]
-        coef = initgen_pw(orb_matrix, nzeta, diagosis=False)
+        coef = initgen_pw(orb_matrix, nzeta, diagnosis=False)
 
         self.assertEqual(len(coef), len(nzeta))
         self.assertEqual([len(coef[l]) for l in range(len(nzeta))], nzeta)
@@ -1270,7 +1270,7 @@ class _TestSpillage(unittest.TestCase):
         nzeta = [2, 2, 1]
 
         # coef_init[l][z][q] -> float
-        coef_init = initgen_pw(orb_matrix_init, nzeta, diagosis=False)
+        coef_init = initgen_pw(orb_matrix_init, nzeta, diagnosis=False)
 
         nthreads = 2
         options = {'ftol': 0, 'gtol': 1e-6, 'maxiter': 2000,

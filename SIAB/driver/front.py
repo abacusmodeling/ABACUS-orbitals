@@ -1,5 +1,5 @@
 # interface to initialize
-import SIAB.io.read_input as siri
+
 def initialize(version: str = "0.1.0",
                fname: str = "./SIAB_INPUT"):
     """initialization of numerical atomic orbitals generation task, 
@@ -23,26 +23,33 @@ def initialize(version: str = "0.1.0",
         input filename, default is "./SIAB_INPUT"
     """
     import os
+    from SIAB.io.read_input import read, parse
+
     fname = fname.strip().replace("\\", "/")
-    user_settings = siri.read_siab_inp(fname=fname, version=version)
-    
+    user_settings = read(fname=fname, version=version)
+    structures, abacus, siab, env, general = parse(user_settings)
+
+    # FIXME
+    # This following code will be replaced by ABACUS-Pseudopot-Nao-Square CODE
+    # the AtomSpeciesGenerator systematically in the future.
+
     # pseudopotential existence check
-    fpseudo = user_settings["pseudo_dir"]+"/"+user_settings["pseudo_name"]
+    fpseudo = os.path.join(user_settings["pseudo_dir"], user_settings["pseudo_name"])
     if not os.path.exists(fpseudo): # check the existence of pseudopotential file
         raise FileNotFoundError("Pseudopotential file %s not found"%fpseudo)
-    structures, abacus, siab, env, general = siri.unpack_siab_input(user_settings)
-    lmaxmax = max([dftparam.get("lmaxmax", 1) for dftparam in abacus])
-
+    
     ##################################################
     # NEW FEATURE in SIAB-v3.0: support for jy basis #
     ##################################################
     from SIAB.spillage.api import _coef_gen, _save_orb
-    use_jy = user_settings.get("basis_type", "jy") == "jy" \
+    # in case some user will type jY, jy, JY, Jy, etc.
+    use_jy = user_settings.get("fit_basis", "jy").lower() == "jy" \
         and user_settings.get("optimizer", "pytorch.SWAT") != "none" 
     # if user only want jy, will generate elsewhere
     ecut = user_settings.get("ecutwfc", 100)
     rcuts = user_settings.get("bessel_nao_rcut", [6.0])
     if use_jy: # only if use_jy, will generate jy basis
+        lmaxmax = max([dftparam.get("lmaxmax", 1) for dftparam in abacus])
         fjy = [_save_orb(
             _coef_gen(rcut, ecut, lmaxmax)[0], general["element"], ecut, rcut, "jy", 
             user_settings.get("jy_type", "reduced")) for rcut in rcuts]
@@ -53,10 +60,10 @@ def initialize(version: str = "0.1.0",
     # basis_type: pw -> lcao
     # ks_solver: dav -> genelpa
     # and add a new key: orbital_dir, which is the directory of jy basis
+
     return structures, abacus, siab, env, general
 
 # interface to abacus
-import SIAB.interface.abacus as sia
 def abacus(general: dict,
            structures: list,
            calculation_settings: list,
@@ -97,16 +104,15 @@ def abacus(general: dict,
     test: bool
         whether to run in test mode, default is True
     """
-    return sia.run_all(general=general,
-                       structures=structures,
-                       calculation_settings=calculation_settings,
-                       env_settings=env_settings,
-                       test=test)
+    from SIAB.interface.abacus import run_all
+    folders = run_all(general=general,
+                      structures=structures,
+                      calculation_settings=calculation_settings,
+                      env_settings=env_settings,
+                      test=test)
+    
+    return folders
 
-# interface to Spillage optimization
-
-import SIAB.spillage.pytorch_swat.api as ssps_api  # old version of backend
-import SIAB.spillage.api as ss_api  # new version of backend
 def spillage(folders: list,
              calculation_settings: list,
              siab_settings: dict):
@@ -150,6 +156,9 @@ def spillage(folders: list,
     }
     ```
     """
+    # interface to Spillage optimization
+    import SIAB.spillage.pytorch_swat.api as ssps_api  # old version of backend
+    import SIAB.spillage.api as ss_api  # new version of backend
     # iteratively generate numerical atomic orbitals here
     optimizer = siab_settings.get("optimizer", "none").lower()
     caller_map = {

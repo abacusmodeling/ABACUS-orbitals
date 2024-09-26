@@ -388,6 +388,7 @@ def run_all(general: dict,
         # Skipping calculations as per the configuration to optimize performance
         print("INFO: required by orbital generation setting the 'optimizer' = 'none'/'restart', skip abacus.", flush=True)
         return [[f"{element}-virtual-folder"]]
+
     for isp, shape in enumerate(structures):
         shape, bond_lengths = shape
         folders_istructure = []
@@ -396,6 +397,10 @@ def run_all(general: dict,
         # deal with "auto" keyword
         if bond_lengths == "auto":
             bond_lengths = "default" if element in DEFAULT_BOND_LENGTH.get(shape, {}) else "scan"
+        
+        #########################
+        # Bond length scan task #
+        #########################
         if (bond_lengths == "scan" and shape != "monomer"):
             """search bond lengths"""
             if bond_lengths == "default": 
@@ -408,6 +413,10 @@ def run_all(general: dict,
                                         stepsize=[0.2, 0.5],
                                         ener_thr=1.5,
                                         test=test)
+        
+        ################
+        # Routine task #
+        ################
         else:
             bond_lengths = bond_lengths if shape != "monomer" else [0.0]
             bond_lengths = DEFAULT_BOND_LENGTH.get(shape, {})[element] if bond_lengths == "default" else bond_lengths
@@ -419,6 +428,7 @@ def run_all(general: dict,
                                         calculation_setting=calculation_settings[isp],
                                         env_settings=env_settings,
                                         test=test)
+            
         folders.append(folders_istructure)
     return folders
 
@@ -747,8 +757,8 @@ def normal(general: dict,
             print("""
 # ----------------------------------------------- #
 # Run ABACUS calculation on reference structure.  #
-# Reference structure: %s                         #
-# Bond length: %s                                 #
+# Reference structure: %10s                 #
+# Bond length: %4.2f                               #
 # ----------------------------------------------- #
 """%(reference_shape, bond_length), flush=True)
     

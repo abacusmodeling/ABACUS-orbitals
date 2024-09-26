@@ -29,7 +29,7 @@ def read_siab_json(fname: str = ""):
     return result
 
 import os
-def read_siab_inp(fname: str = "", version: str = "0.1.0"):
+def read(fname: str = "", version: str = "0.1.0"):
     """default value setting is absent"""
     print(f"""
 Parsing SIAB input file {fname} with version {version}
@@ -310,10 +310,34 @@ def siab_settings(user_settings: dict, minimal_basis: list, z_val: float = 0):
         "jY_type": user_settings.get("jY_type", "reduced")
     }
     shapes = [rs["shape"] for rs in user_settings["reference_systems"]]
-    # for determining the nzeta, there are two ways supported, one is specifying the zeta_notation,
-    # the other is specifying the nzeta directly
+
+    #####################################################################################
+    #                  CHANGE LOG: infer nzeta, since ABACUS-ORBGEN v3.0                #
+    #                                        * * *                                      #
+    # the `nzeta` is not necessary to be inferred here, but lmaxmax is really           #
+    # compulsory. But because the conversion from input to runtime setting is designed  #
+    # to be complete as early as possible, so the nzeta is inferred here. For           #
+    # determining the nzeta, there are three ways supported:                            #
+    # 1. infer from zeta_notation and minimal_basis. The latter is read from            #
+    # pseudopotential (and if not possible , will raise some errors).                   #
+    # 2. specifying the nzeta directly                                                  #
+    # 3. (for jy) decompose bands in range (0, nbands_ref) into contributions from      #
+    #    each angular momentum, then make average to get the nzeta.                     #
+    #                                                                                   #
+    # Here it is before performing calculation by ABACUS, therefore only the former two #
+    # are implemented here.                                                             #
+    #####################################################################################
+
     for iorb, orbital in enumerate(user_settings["orbitals"]):
-        result["orbitals"][iorb]["nzeta"] = nzetagen(orbital["zeta_notation"], minimal_basis)
+        # here the nzeta is the first time to be inferred. Since SIAB-v3.0, the nzeta can
+        # be inferred after DFT calculation, the only thing can always be known now is
+        # the dependency between orbitals, therefore the function `nzetagen` is allowed
+        # to return index of orbitals if it is for handling `orb_ref` instead of `zeta_
+        # notation`.
+        tmp = nzetagen(orbital["zeta_notation"], minimal_basis)\
+            if orbital["zeta_notation"] != "auto" else "auto"
+        assert not isinstance(tmp, int), "`zeta_notation` should not be inferred as an integer"
+        result["orbitals"][iorb]["nzeta"] = tmp
         result["orbitals"][iorb]["nzeta_from"] = None \
             if orbital["orb_ref"] == "none" \
             else nzetagen(orbital["orb_ref"], minimal_basis)
@@ -327,24 +351,51 @@ def siab_settings(user_settings: dict, minimal_basis: list, z_val: float = 0):
         assert len(nbands_ref) == len(shape), "nbands_ref should have the same length as shape"
         result["orbitals"][iorb]["nbands_ref"] = [nbands_from_str(n, s, z_val) for n, s in zip(nbands_ref, shape)]
         result["orbitals"][iorb]["folder"] = index
+        
+    # indexing the nzeta_from -> nzeta
+    nzeta = [orb["nzeta"] for orb in result["orbitals"]]
+    for orb in result["orbitals"]:
+        if isinstance(orb["nzeta_from"], list):
+            orb["nzeta_from"] = nzeta.index(orb["nzeta_from"])
     return result
 
 def nzetagen(zeta_notation, minimal_basis: list):
-    """generate the nzeta from the zeta_notation"""
+    """generate the nzeta from the zeta_notation. zeta_notation can be of three formats: 
+    2s2p1d, DZP or [2, 2, 1].
+    
+    Parameters
+    ----------
+    zeta_notation: str or list
+        the zeta notation, can be of three formats: 2s2p1d, DZP or [2, 2, 1]
+    minimal_basis: list
+        the minimal basis read from pseudopotential, like [2, 2, 1]
+    
+    Returns
+    -------
+    list of int
+        the nzeta, like [2, 2, 1]
+    """
     import re
     assert isinstance(minimal_basis, list), "minimal_basis should be a list"
-    # zeta_notation can be of three formats: 2s2p1d, DZP or [2, 2, 1]
+
+    # 
     if isinstance(zeta_notation, list) and all([isinstance(v, int) for v in zeta_notation]):
         return zeta_notation
-    if re.match(r"([SDTQ5-9]?Z)(([SDTQ5-9]?P)*)", zeta_notation):
+    if isinstance(zeta_notation, str) and re.match(r"([SDTQ5-9]?Z)(([SDTQ5-9]?P)*)", zeta_notation):
         return siptb.orbconf_fromxzyp(zeta_notation, minimal_basis, as_list=True)
-    if re.match(r"(\d+[a-z])+", zeta_notation):
+    if isinstance(zeta_notation, str) and re.match(r"(\d+[a-z])+", zeta_notation):
         spectra = ["s", "p", "d", "f", "g", "h", "i", "k", "l", "m", "n", "o"]
         result = {v[-1]: int(v[:-1]) for v in re.findall(r"\d+[a-z]", zeta_notation)}
         result = [result.get(s, 0) for s in spectra]
         while result[-1] == 0:
             result.pop()
         return result
+    # change log: the dependency between orbitals now can support "auto" or index, because 
+    # the connection is known before performing DFT calculations, while the nzeta might be
+    # unknown. Support since SIAB-v3.0
+    if isinstance(zeta_notation, int):
+        return zeta_notation
+    
     assert False, "ERROR: \"zeta_notation\" is not in the correct format. It should be like \"2s2p1d\" or \"DZP\" or [2, 2, 1]"
 
 def environment_settings(user_settings: dict):
@@ -401,20 +452,27 @@ def description(symbol: str, user_settings: dict):
     }
 
 def skip_ppread(user_settings: dict):
-    """subroutine for determining whether to skip the pseudopotential read because
-    it is too-format specific and brings about trouble for general use.
-    The psesudopotential read-in procedure will be skipped only if:
-    1. all `nbands` and `nbands_ref` were specified with specific values, instead of
-    strings like `auto`, `occ` or something.
-    2. all `lmaxmax` were specified with a specific value for each reference_system
-    3. all `zeta_notation` were specified either with a list of integers or a string
-    like SsPpDdFf, in which the capitalized letter here presents the number of orbitals
-    4. all `orb_ref` were specified with a string like `none` or a zeta_notation (that
-    can meet the requirement of 2)
+    """check if the pseudopotential read-in can be skipped or not
+
+    Parameters
+    ----------
+    user_settings: dict
+        the user settings
+    
+    Returns
+    -------
+    bool
+        True if the pseudopotential read-in can be skipped, False otherwise
     """
     import re
     skip = True
     # case 1
+    # if nbands is specified as auto, occ, all, it must requires the number of valence
+    # electrons, therefore it is not possible to skip the pseudopotential read-in
+    # case 2
+    # for both jy and pw, lmaxmax is compulsory. for pw, lmaxmax is needed in INPUT file
+    # , for jy, lmaxmax is needed as LCAO basis. If not specified, it is not possible to
+    # skip the pseudopotential read-in
     for shape in user_settings["reference_systems"]:
         if shape["nbands"] in ["auto", "occ", "all"]:
             skip = False
@@ -424,7 +482,15 @@ def skip_ppread(user_settings: dict):
             skip = False
             print("AUTOSET: `lmaxmax` is not specified => AUTOSET", flush=True)
             break
-    # case 2
+    # case 3
+    # there is a strategy from SIAB-v2.0 that taking the valence electron configuration
+    # as minimal basis, then generate orbitals based on it like SZ is itself, DZ is its
+    # doubled, DZP is DZ with an additional orbital with angular momentum plus one. In
+    # SIAB-v1.0, one should always specify something like SsPpDd..., in which S, P, D 
+    # stands the number of orbitals with angular momentum s(0), p(1), d(2) respectively.
+    # The conversion from SsPpDd... to list [S, P, D, ...] is trivial, thus if the
+    # zeta_notation is not specified as either a list of integers or a string like SsPpDd,
+    # it is not possible to skip the pseudopotential read-in
     orbpat = r"(\d+[spdfgh])+" # like 2s2p1d
     for orbital in user_settings["orbitals"]:
         z = orbital["zeta_notation"]
@@ -433,11 +499,16 @@ def skip_ppread(user_settings: dict):
                 print("AUTOSET: `zeta_notation` is not specified with a list of integers => AUTOSET", flush=True)
                 skip = False
                 break
-        elif isinstance(z, str) and not re.match(orbpat, z):
+        # changlog: if `fit_basis jy`, the nzeta can be inferred by doing angular momentum
+        # band decomposition. Accumulating the occ of each l and divide by degeneracy (1, 3, 5
+        # ... for s, p, d), taking powered averge between kpoints and algebraic average between
+        # structures, then we can get the nzeta. This is implemented in SIAB-v3.0
+        elif isinstance(z, str) and not re.match(orbpat, z) and z != "auto":
             skip = False
             print("AUTOSET: `zeta_notation` is not specified with a string like 2s2p1d => AUTOSET", flush=True)
             break
-    # case 3, the value can be "none"
+    # case 4
+    # the same as case 3, but for `orb_ref`.
     for orbital in user_settings["orbitals"]:
         z = orbital["orb_ref"]
         if isinstance(z, list):
@@ -445,13 +516,22 @@ def skip_ppread(user_settings: dict):
                 print("AUTOSET: `orb_ref` is not specified with a list of integers => AUTOSET", flush=True)
                 skip = False
                 break
-        elif isinstance(z, str) and z != "none" and not re.match(orbpat, z):
-                print("AUTOSET: `orb_ref` is not specified with a string like 2s2p1d => AUTOSET", flush=True)
-                skip = False
-                break
+        elif isinstance(z, str) and z not in ["none", "auto"] and not re.match(orbpat, z):
+            print("AUTOSET: `orb_ref` is not specified with a string like 2s2p1d => AUTOSET", flush=True)
+            skip = False
+            break
+        elif isinstance(z, int) and (z < 0 or z >= len(user_settings["orbitals"])):
+            print("AUTOSET: `orb_ref` is specified as an index, but the index is out of range => AUTOSET", flush=True)
+            skip = False
+            break
+        # changelog: with `fit_basis jy` and `zeta_notation auto`, the nzeta can be inferred,
+        # the hierarchy of orbitals now is defined by `nbands_ref` and not-known before the
+        # DFT calculation being performed. We should allow the case that the link/dependency
+        # between orbitals is "auto" or specified as an index (because the orbital is defined
+        # in a list in input, therefore the index is known).
     return skip
 
-def unpack_siab_input(user_settings: dict):
+def parse(user_settings: dict):
     """unpack the SIAB input to structure (shape as key and bond lengths are list as value),
     input setting of abacus, orbital generation settings, environmental settings and general description
     """
@@ -969,7 +1049,7 @@ class TestReadInput(unittest.TestCase):
         fsiab = str(uuid.uuid4())
         with open(fsiab, "w") as f:
             f.write(example)
-        result = read_siab_inp(fsiab)
+        result = read(fsiab)
         os.remove(fsiab)
         self.assertDictEqual(result,
                             {'environment': '', 
@@ -1038,7 +1118,7 @@ STRU4       trimer      18      2       1      2.6 3.2 3.8
         fsiab = str(uuid.uuid4())
         with open(fsiab, "w") as f:
             f.write(example)
-        result = read_siab_inp(fsiab)
+        result = read(fsiab)
         os.remove(fsiab)
         print(result)
 
@@ -1056,8 +1136,8 @@ STRU4       trimer      18      2       1      2.6 3.2 3.8
             "val_conf": [["1S"], ["1P"]],
             "z_val": 4.0
         }
-        result = read_siab_inp("SIAB/example_Si/SIAB_INPUT")
-        result = unpack_siab_input(result, pseudo)
+        result = read("SIAB/example_Si/SIAB_INPUT")
+        result = parse(result, pseudo)
         self.assertEqual(len(result), 5)
         self.assertEqual(result[0], list(zip(['dimer', 'trimer'], [[1.8, 2.0, 2.3, 2.8, 3.8], [1.9, 2.1, 2.6]])))
         self.assertListEqual(result[1], [
@@ -1157,7 +1237,7 @@ STRU4       trimer      18      2       1      2.6 3.2 3.8
         result = convert_oldinp_tojson(clean_oldversion_input)
 
     def test_abacus_settings(self):
-        user_settings = read_siab_inp("SIAB/example_Si/SIAB_INPUT")
+        user_settings = read("SIAB/example_Si/SIAB_INPUT")
         result = abacus_settings(user_settings, 
                                  minimal_basis=[["2S"], ["2P"]],
                                  z_val=4.0)
