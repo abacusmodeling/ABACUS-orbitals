@@ -15,5 +15,12 @@ jobs:
       run: chmod +x ./SIAB/spillage/xtest.sh
       
     - name: Run xtest.sh shell script
-      run: ./SIAB/spillage/xtest.sh
+      run: |
+        output=$(./SIAB/spillage/xtest.sh)
+        exit_code=$?
+        echo "$output"
+        if [ $exit_code -ne 0 ]; then
+          echo "Tests failed with exit code $exit_code"
+          exit $exit_code
+        fi
       
