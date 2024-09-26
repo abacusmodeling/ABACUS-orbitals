@@ -25,7 +25,7 @@ jobs:
 
       - name: Install the package
         run: |
-          pip install -e .
+          pip install .
 
       - name: Set up permissions for execute
         run: chmod +x ./.github/tests/xtest.sh
