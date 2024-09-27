@@ -4,7 +4,8 @@ with the driver of SIAB"""
 def _coef_gen(rcut: float, ecut: float, lmax: int, value: str = "eye"):
     """Directly generate the coefficients of the orbitals instead of performing optimization
     
-    Args:
+    Parameters
+    ----------
     rcut: float
         the cutoff radius
     ecut: float
@@ -12,10 +13,11 @@ def _coef_gen(rcut: float, ecut: float, lmax: int, value: str = "eye"):
     lmax: int
         the maximum angular momentum
     value: str
-        the value to be generated, can be "eye"
-
-    Returns:
-    list of list of list of list of float: the coefficients of the orbitals
+        the value to be returned, can be "eye"
+    
+    Returns
+    -------
+    list: the value requested
     """
     from SIAB.spillage.radial import _nbes
     import numpy as np
@@ -33,13 +35,35 @@ def _coef_gen(rcut: float, ecut: float, lmax: int, value: str = "eye"):
         raise ValueError("Only 'eye' is supported for value presently")
 
 def _coef_restart(fcoef: str):
-    """get coefficients from SIAB dumped ORBITAL_RESULTS.txt file"""
+    """get coefficients from SIAB dumped jy coefficients file
+    
+    Parameters
+    ----------
+    fcoef: str
+        the file name of the coefficients
+    
+    Returns
+    -------
+    list: the coefficients of the orbitals
+    """
     from SIAB.spillage.orbio import read_param
     return read_param(fcoef)
 
 def _coef_opt_env_init(siab_settings: dict, folders: list):
     """the length of this function will continuously increase once there are new
-    feature requests"""
+    feature requests
+    
+    Parameters
+    ----------
+    siab_settings: dict
+        the settings for SIAB optimization
+    folders: list
+        the folders where the ABACUS run information are stored
+    
+    Returns
+    -------
+    list[list[list[int]]]: the band indexes for each shell of orbitals
+    """
     from SIAB.spillage.spillage import flatten
     # Request: taking different geometry configurations into account
     ibands = [[] for _ in range(len(siab_settings['orbitals']))]
@@ -53,6 +77,27 @@ def _coef_opt_env_init(siab_settings: dict, folders: list):
     return ibands
 
 def _coef_opt_jy(rcut, siab_settings, folders, options, nthreads):
+    """for fit_basis jy case, optimize Spillage function to get contraction coefficients of jy for one single rcut value
+    
+    Parameters
+    ----------
+    rcut: float
+        the cutoff radius
+    siab_settings: dict
+        the settings for SIAB optimization
+    folders: list[list[str]]
+        the folders where the ABACUS run information are stored. The first level of list
+        is the geometry like dimer, trimer, etc, the second level is the folders of the
+        deformation of the geometry, such as stretching, bending, etc.
+    options: dict
+        the options for optimization
+    nthreads: int
+        the number of threads used in optimization
+    
+    Returns
+    -------
+    list[list[list[float]]]: the coefficients of the orbitals
+    """
     import os
     import numpy as np
     from SIAB.spillage.spillage import Spillage_jy, flatten
@@ -102,6 +147,27 @@ def _coef_opt_jy(rcut, siab_settings, folders, options, nthreads):
                          guess)
 
 def _coef_opt_pw(rcut, siab_settings, folders, options, nthreads):
+    """for fit_basis pw case, optimize Spillage function to get contraction coefficients of pw for one single rcut value
+    
+    Parameters
+    ----------
+    rcut: float
+        the cutoff radius
+    siab_settings: dict
+        the settings for SIAB optimization
+    folders: list[list[str]]
+        the folders where the ABACUS run information are stored. The first level of list
+        is the geometry like dimer, trimer, etc, the second level is the folders of the
+        deformation of the geometry, such as stretching, bending, etc.
+    options: dict
+        the options for optimization
+    nthreads: int
+        the number of threads used in optimization
+    
+    Returns
+    -------
+    list[list[list[float]]]: the coefficients of the orbitals
+    """
     import os
     import numpy as np
     from SIAB.spillage.spillage import Spillage_pw, flatten
@@ -262,6 +328,19 @@ def _coef_opt(rcut: float, siab_settings: dict, folders: list, jy: bool = False)
     return call(rcut, siab_settings, folders, option, nthreads)
 
 def _peel(coef, nzeta_lvl_tot):
+    """peel the coefficients of the orbitals to different levels
+    
+    Parameters
+    ----------
+    coef: list[list[list[float]]]
+        the coefficients of the orbitals
+    nzeta_lvl_tot: list[list[int]]
+        the number of zeta functions for each l for each shell of orbitals
+    
+    Returns
+    -------
+    list[list[list[list[float]]]]: the coefficients of the orbitals for each level
+    """
     from copy import deepcopy
     coef_lvl = [deepcopy(coef)]
     for nzeta_lvl in reversed(nzeta_lvl_tot):
