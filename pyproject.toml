@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "SIAB"
+version = "3.0-alpha"
+requires-python = "<3.11" # required by SciPy 1.10
+description = ""
+readme = "README.md"
+authors = [
+    { name = "ABACUS-AISI developers", email = "huangyk@aisi.ac.cn" }
+]
+dependencies = [
+    "numpy",
+    "matplotlib",
+    "scipy<1.10", # required by some functionalities employing the old version simpson integral
+    "torch",
+    "torch_optimizer",
+    "torch_complex",
+    "addict"
+]
+
+[project.scripts]
+SIAB_nouvelle = "SIAB.SIAB_nouvelle:main"

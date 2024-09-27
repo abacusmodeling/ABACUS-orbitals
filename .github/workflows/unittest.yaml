@@ -1,0 +1,41 @@
+name: unittest-on-commit
+
+on:
+  pull_request:
+    types: [synchronize]
+
+jobs:
+  run-unit-tests:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4         # Specify version for best practices
+
+      - name: Set up Conda
+        uses: conda-incubator/setup-miniconda@v3  # Specify version here as well
+        with:
+          auto-update-conda: true
+          python-version: '3.10'
+          activate-environment: orbgen
+          use-only-tar-bz2: true
+
+      - name: Install prerequisite by conda
+        run: |
+          conda install pytorch torchvision torchaudio cpuonly -c pytorch
+
+      - name: Install the package
+        run: |
+          pip install .
+
+      - name: Set up permissions for execute
+        run: chmod +x ./.github/tests/xtest.sh
+
+      - name: Run xtest.sh shell script
+        run: |
+          output=$(./.github/tests/xtest.sh)
+          exit_code=$?
+          echo "$output"
+          if [ $exit_code -ne 0 ]; then
+            echo "Tests failed with exit code $exit_code"
+            exit $exit_code
+          fi

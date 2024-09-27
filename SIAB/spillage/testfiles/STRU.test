@@ -1,0 +1,38 @@
+ATOMIC_SPECIES
+In  114.818  In_ONCV_PBE-1.0.upf  upf201
+C    12.011            C.LDA.upf
+O    15.999   O_ONCV_PBE-1.0.upf  upf100
+
+NUMERICAL_ORBITAL
+In_gga_7au_100Ry.orb
+C_gga_7au_100Ry.orb
+O_gga_7au_100Ry.orb
+
+LATTICE_CONSTANT
+20.0
+
+LATTICE_VECTORS
+1.0 0.0 0.0
+0.0 1.0 0.0
+0.0 0.0 1.0
+
+ATOMIC_POSITIONS
+Cartesian_angstrom
+
+In
+0.0
+2
+0.0 0.0 0.0 v 0.0 0.0 -1.0 mag 0.5 angle1 72.0 angle2 36.0
+0.0 0.0 1.0 mag 0.5 0.5 0.5 m 1 1 1 
+
+C
+0.0
+1
+3.0 4.0 5.0 m 0 0 0 v 0.0 0.0 -1.0 mag 0.5
+
+O
+1.0
+3
+0.1 0.2 0.3 mag 0.5
+0.4 0.5 0.6 m 0 0 0 v 0.0 0.0 1.0 mag 1.0 1.0 1.0
+0.7 0.8 0.9 v 0.0 0.0 -1.0 0 0 0
