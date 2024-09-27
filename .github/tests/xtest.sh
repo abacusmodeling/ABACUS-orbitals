@@ -13,3 +13,5 @@ python3 ./SIAB/spillage/radial.py -v
 python3 ./SIAB/spillage/spillage.py -v
 python3 ./SIAB/spillage/struio.py -v
 python3 ./SIAB/spillage/lcao_wfc_analysis.py -v
+
+python3 ./SIAB/spillage/api.py -v
