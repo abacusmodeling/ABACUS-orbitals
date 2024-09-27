@@ -1,8 +1,12 @@
 name: unittest-on-commit
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
-    types: [synchronize]
+    branches:
+      - main
 
 jobs:
   run-unit-tests:
