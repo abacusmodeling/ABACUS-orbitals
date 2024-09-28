@@ -1,4 +1,8 @@
-# interface to initialize
+import os
+from SIAB.io.read_input import read, parse
+from SIAB.interface.abacus import run_all
+import SIAB.spillage.pytorch_swat.api as ssps_api  # old version of backend
+import SIAB.spillage.api as ss_api  # new version of backend
 
 def initialize(version: str = "0.1.0",
                fname: str = "./SIAB_INPUT"):
@@ -22,8 +26,6 @@ def initialize(version: str = "0.1.0",
     fname: str
         input filename, default is "./SIAB_INPUT"
     """
-    import os
-    from SIAB.io.read_input import read, parse
 
     fname = fname.strip().replace("\\", "/")
     user_settings = read(fname=fname, version=version)
@@ -104,7 +106,7 @@ def abacus(general: dict,
     test: bool
         whether to run in test mode, default is True
     """
-    from SIAB.interface.abacus import run_all
+    
     folders = run_all(general=general,
                       structures=structures,
                       calculation_settings=calculation_settings,
@@ -156,9 +158,6 @@ def spillage(folders: list,
     }
     ```
     """
-    # interface to Spillage optimization
-    import SIAB.spillage.pytorch_swat.api as ssps_api  # old version of backend
-    import SIAB.spillage.api as ss_api  # new version of backend
     # iteratively generate numerical atomic orbitals here
     optimizer = siab_settings.get("optimizer", "none").lower()
     caller_map = {

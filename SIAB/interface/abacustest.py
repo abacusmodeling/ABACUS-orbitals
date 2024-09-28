@@ -20,6 +20,10 @@ Example:
     instead of contents of the file
 
 """
+import os
+import json
+import time
+import re
 
 #ABACUS_IMAGE = "registry.dp.tech/deepmodeling/abacus-intel:latest"
 ABACUS_IMAGE = "registry.dp.tech/dptech/abacus:3.6.4" # this is for submit large batch of jobs, but need to always update
@@ -28,8 +32,6 @@ VASP_IMAGE = "registry.dp.tech/dptech/prod-471/abacus-vasp-qe:20230116"
 PYTHON_IMAGE = "python:3.8"
 ABACUS_COMMAND = "OMP_NUM_THREADS=1 mpirun -n 16 abacus | tee out.log"
 
-import os
-import json
 def read_apns_inp(fname: str) -> dict:
     assert os.path.exists(fname), f"File not found: {fname}"
     with open(fname, "r") as f:
@@ -37,7 +39,7 @@ def read_apns_inp(fname: str) -> dict:
     return inp.get("abacustest", {})
 
 def manual_submit(username, password, project_id, ncores, memory, folders):
-    import time, os
+
     assert all([os.path.exists(f) for f in folders]), "Some folders do not exist."
     jobgroup = f"apns_{time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())}"
     run_dft = [{"ifrun": True, "job_folders": folders, "command": ABACUS_COMMAND, "ncores": ncores, "memory": memory}]
@@ -46,7 +48,6 @@ def manual_submit(username, password, project_id, ncores, memory, folders):
                                    rundft=run_dft)
     result_folder = submit(param)
     return result_folder
-
 
 def bohrium_machine(ncores: int, memory: float, device: str, supplier: str):
     """Configure Bohrium machine information
@@ -181,7 +182,7 @@ def write_abacustest_param(jobgroup_name: str, bohrium_login: dict, save_dir: st
     Returns:
         dict: abacustest param.json contents
     """
-    import time
+
     prepare = prepare or {}
     predft = predft or {}
     rundft = rundft or []
@@ -205,7 +206,7 @@ def write_abacustest_param(jobgroup_name: str, bohrium_login: dict, save_dir: st
     return result
 
 def submit(abacustest_param: dict) -> str:
-    import time
+
     fparam = f"param-{time.strftime('%Y-%m-%d_%H-%M-%S', time.localtime())}.json"
     with open(fparam, "w") as f:
         json.dump(abacustest_param, f, indent=4)
@@ -217,7 +218,7 @@ def submit(abacustest_param: dict) -> str:
     return folder
 
 def read_keyvals_frominput(fin, keyword: str = None):
-    import re
+
     kv = r"^([\w_-]+)(\s+)([^#]*)(.*)$"
 
     result = {}
@@ -232,7 +233,7 @@ def read_keyvals_frominput(fin, keyword: str = None):
     return result if keyword is None else result[keyword]
 
 def abacus_default():
-    import os
+
     fthis = os.path.abspath(__file__)
     fabacus = fthis.replace("/abacustest.py", "/abacus_input_example")
     result = read_keyvals_frominput(fabacus).items()
@@ -241,7 +242,6 @@ def abacus_default():
 
 if __name__ == "__main__":
 
-    import os, time
     src = "/root/documents/simulation/orbgen/apns-orbgen-project/nelec_delta_test/lcao-v2.0"
     jobgroup = "u-nspin2_lcao-v2.0"
     fgroup = os.path.join(src, jobgroup)

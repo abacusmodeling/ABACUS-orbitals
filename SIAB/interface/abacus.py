@@ -1,3 +1,11 @@
+import SIAB.interface.env as sienv
+import os
+import numpy as np
+import SIAB.io.read_output as read_output
+import SIAB.data.interface as db
+from scipy.optimize import curve_fit
+import re
+
 BLSCAN_WARNMSG = """
 WARNING: since SIAB version 2.1(2024.6.3), the original functionality invoked by value \"auto\" is replaced by 
         \"scan\", and for dimer the \"auto\" now will directly use in-built dimer database if available, otherwise will 
@@ -355,8 +363,6 @@ def configure(input_setting: dict,
     else:
         yield write(folder, input_setting, stru_setting)
 
-
-import SIAB.interface.env as sienv
 def archive(footer: str = "", env: str = "local"):
 
     """mkdir and move correspnding input files to folder"""
@@ -432,7 +438,6 @@ def run_all(general: dict,
         folders.append(folders_istructure)
     return folders
 
-import os
 def is_duplicate(folder: str, abacus_setting: dict):
     """check if the abacus calculation can be safely (really?)
     skipped"""
@@ -504,10 +509,6 @@ def is_duplicate(folder: str, abacus_setting: dict):
 # TASK KIND1 - blscan                        #
 # DESCRIPTION: search bond lengths           #
 # -------------------------------------------#
-import numpy as np
-import SIAB.io.read_output as read_output
-import SIAB.data.interface as db
-from scipy.optimize import curve_fit
 def blscan(general: dict,                  # general settings
            calculation_setting: dict,      # calculation setting, for setting up INPUT file
            env_settings: dict,             # calculation environment settings
@@ -773,7 +774,6 @@ def normal(general: dict,
     """wait for all jobs to finish"""
     return folders
 
-import re
 def read_INPUT(folder: str = "") -> dict:
     """parse ABACUS INPUT file, return a dict"""
     if folder.startswith("INPUT_PARAMETERS"):

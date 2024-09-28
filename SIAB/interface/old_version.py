@@ -335,7 +335,6 @@ def ov_c_init(orbitals: list, folder: str = None):
     return result
 
 import uuid
-import time
 def convert(calculation_setting: dict,
             siab_settings: dict):
     """
