@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from SIAB.spillage.orbio import read_param, write_nao, write_param
 from SIAB.spillage.spillage import Spillage_jy, Spillage_pw, flatten,\
-    initgen_jy, initgen_pw, flatten
+    initgen_jy, initgen_pw
 from SIAB.spillage.listmanip import merge
 from SIAB.spillage.plot import plot_chi
 from SIAB.spillage.radial import coeff_normalized2raw, coeff_reduced2raw,\
