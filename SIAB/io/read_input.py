@@ -1,4 +1,12 @@
 import re
+import os
+import json
+import SIAB.io.pseudopotential.tools.basic as siptb
+from SIAB.data.interface import PERIODIC_TABLE_TOINDEX
+from SIAB.io.pseudopotential.api import ppinfo
+from numpy import ceil
+import unittest
+import uuid
 
 def read_siab_plaintext(fname: str = ""):
     keyvalue_pattern = r"^(\w+)(\s+)([^#]*)(#.*)?"
@@ -21,14 +29,12 @@ def read_siab_plaintext(fname: str = ""):
     
     return result
 
-import json
 def read_siab_json(fname: str = ""):
     """parse SIAB_INPUT file with version 0.2.0 in json format"""
     with open(fname, "r") as f:
         result = json.load(f)
     return result
 
-import os
 def read(fname: str = "", version: str = "0.1.0"):
     """default value setting is absent"""
     print(f"""
@@ -186,7 +192,7 @@ def natom_from_shape(shape: str):
     return natom.get(shape, 0)
 
 def nbands_from_str(option: str|float|int, shape: str, z_val: float):
-    import re
+
     if isinstance(option, str):
         assert re.match(r"(auto|occ((\+|-)\d+)?|all)", option), f"option should be auto, occ, occ+/-n or all: {option}"
         if option == "auto":
@@ -274,7 +280,6 @@ def abacus_settings(user_settings: dict, minimal_basis: list = None, z_val: floa
             {"lmaxmax": lmax_monomer, "nbands": nbands_monomer})
     return result
 
-import SIAB.io.pseudopotential.tools.basic as siptb
 def siab_settings(user_settings: dict, minimal_basis: list, z_val: float = 0):
     """convert user_settings to SIAB settings the information needed by spillage optimization
     information is organized as follows:
@@ -375,7 +380,7 @@ def nzetagen(zeta_notation, minimal_basis: list):
     list of int
         the nzeta, like [2, 2, 1]
     """
-    import re
+
     assert isinstance(minimal_basis, list), "minimal_basis should be a list"
 
     # 
@@ -464,7 +469,7 @@ def skip_ppread(user_settings: dict):
     bool
         True if the pseudopotential read-in can be skipped, False otherwise
     """
-    import re
+
     skip = True
     # case 1
     # if nbands is specified as auto, occ, all, it must requires the number of valence
@@ -537,9 +542,7 @@ def parse(user_settings: dict):
     """
     # move the information fetch from pseudopotential from front.py here...
     # get value from the dict returned by function from_pseudopotential
-    from SIAB.data.interface import PERIODIC_TABLE_TOINDEX
-    from SIAB.io.pseudopotential.api import ppinfo
-    import os
+
     if skip_ppread(user_settings):
         """the logic here is, because there are pseudopotential can be parsed automatically,
         but the range of supported are limited. For those pseudopotential that is not with
@@ -568,7 +571,6 @@ def parse(user_settings: dict):
     general = description(symbol, user_settings)
     return structures, abacus, siab, env, general
 
-
 def abacus_params():
     pattern = r"^([\w]+)(\s+)([^#]+)(\s*)(#.*)?"
     keys = []
@@ -596,7 +598,7 @@ def cal_nbands_fill_lmax(zval: int, zcore: int, lmax: int, fill_lmax: bool = Tru
     Returns:
         int: the number of bands to include in the calculation
     """
-    from numpy import ceil
+    
     # the first and the last element that fills shell of lmax.
     # S: 1, Hydrogen; P: 5, Boron; D: 21, Scandium; F: 58, Cerium;
     # S: 2, Helium;   P: 10, Neon; D: 30, Zinc;     F: 70, Ytterbium
@@ -995,7 +997,6 @@ qo_switch                      0 #0: no QO analysis; 1: QO analysis
 qo_basis                       hydrogen #type of QO basis function: hydrogen: hydrogen-like basis, pswfc: read basis from pseudopotential
 qo_thr                         1e-06 #accuracy for evaluating cutoff radius of QO basis function"""
 
-import unittest
 class TestReadInput(unittest.TestCase):
 
     """use example input as test material
@@ -1003,7 +1004,7 @@ class TestReadInput(unittest.TestCase):
     """
     
     def test_parse(self):
-        import uuid, os
+        
         self.maxDiff = None
         example = """
 #--------------------------------------------------------------------------------

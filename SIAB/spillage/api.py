@@ -1,5 +1,21 @@
 """this file defines interface between newly implemented spillage optimization algorithm
 with the driver of SIAB"""
+import os
+import re
+from copy import deepcopy
+import numpy as np
+import matplotlib.pyplot as plt
+from SIAB.spillage.orbio import read_param, write_nao, write_param
+from SIAB.spillage.spillage import Spillage_jy, Spillage_pw, flatten,\
+    initgen_jy, initgen_pw, flatten
+from SIAB.spillage.listmanip import merge
+from SIAB.spillage.plot import plot_chi
+from SIAB.spillage.radial import coeff_normalized2raw, coeff_reduced2raw,\
+    build_raw, build_reduced, _nbes
+from SIAB.spillage.datparse import read_wfc_lcao_txt, read_triu, \
+    read_running_scf_log, read_input_script, read_orb_mat
+from SIAB.spillage.lcao_wfc_analysis import _wll
+import unittest
 
 def _coef_gen(rcut: float, ecut: float, lmax: int, value: str = "eye"):
     """Directly generate the coefficients of the orbitals instead of performing optimization
@@ -19,8 +35,7 @@ def _coef_gen(rcut: float, ecut: float, lmax: int, value: str = "eye"):
     -------
     list: the value requested
     """
-    from SIAB.spillage.radial import _nbes
-    import numpy as np
+
     if not isinstance(ecut, (int, float)):
         raise ValueError("Expected ecut to be an integer or float")
     if not isinstance(lmax, int):
@@ -46,17 +61,16 @@ def _coef_restart(fcoef: str):
     -------
     list: the coefficients of the orbitals
     """
-    from SIAB.spillage.orbio import read_param
     return read_param(fcoef)
 
-def _coef_opt_env_init(siab_settings: dict, folders: list):
+def _coef_opt_env_init(orbparam: list, folders: list):
     """the length of this function will continuously increase once there are new
     feature requests
     
     Parameters
     ----------
-    siab_settings: dict
-        the settings for SIAB optimization
+    orbparam: list
+        params set for each orbital
     folders: list
         the folders where the ABACUS run information are stored
     
@@ -64,10 +78,9 @@ def _coef_opt_env_init(siab_settings: dict, folders: list):
     -------
     list[list[list[int]]]: the band indexes for each shell of orbitals
     """
-    from SIAB.spillage.spillage import flatten
     # Request: taking different geometry configurations into account
-    ibands = [[] for _ in range(len(siab_settings['orbitals']))]
-    for iorb, orb in enumerate(siab_settings['orbitals']):
+    ibands = [[] for _ in range(len(orbparam))]
+    for iorb, orb in enumerate(orbparam):
         if isinstance(orb['nbands_ref'], list):
             ibands[iorb] = flatten([[range(n)]*len(folders[find]) \
                             for find, n in zip(orb['folder'], orb['nbands_ref'])])
@@ -98,10 +111,6 @@ def _coef_opt_jy(rcut, siab_settings, folders, options, nthreads):
     -------
     list[list[list[float]]]: the coefficients of the orbitals
     """
-    import os
-    import numpy as np
-    from SIAB.spillage.spillage import Spillage_jy, flatten
-
     minimizer = Spillage_jy()
     print(f"ORBGEN: Optimizing orbitals for rcut = {rcut} au", flush = True)
 
@@ -134,7 +143,7 @@ def _coef_opt_jy(rcut, siab_settings, folders, options, nthreads):
     initdir = os.path.join(initdir, f"OUT.{os.path.basename(initdir)}")
     guess = _initguess(nzeta, initdir, True, True)
 
-    ibands = _coef_opt_env_init(siab_settings, folders)
+    ibands = _coef_opt_env_init(siab_settings['orbitals'], folders)
     deps = [orb['nzeta_from'] for orb in orbparams]
     
     return _do_onion_opt(minimizer, 
@@ -168,10 +177,6 @@ def _coef_opt_pw(rcut, siab_settings, folders, options, nthreads):
     -------
     list[list[list[float]]]: the coefficients of the orbitals
     """
-    import os
-    import numpy as np
-    from SIAB.spillage.spillage import Spillage_pw, flatten
-    from SIAB.spillage.datparse import read_orb_mat
 
     minimizer = Spillage_pw()
     print(f"ORBGEN: Optimizing orbitals for rcut = {rcut} au", flush = True)
@@ -206,7 +211,7 @@ def _coef_opt_pw(rcut, siab_settings, folders, options, nthreads):
     initdir = "-".join([elem, "monomer"])
     initdir = os.path.join(initdir, os.path.basename(fov))
     guess = _initguess(nzeta, initdir, False, True)
-    ibands = _coef_opt_env_init(siab_settings, folders)
+    ibands = _coef_opt_env_init(siab_settings['orbitals'], folders)
     deps = [orb['nzeta_from'] for orb in orbparams]
 
     return _do_onion_opt(minimizer,
@@ -281,7 +286,7 @@ def _do_onion_opt(minimizer, nzeta, iconfs, ibands, deps, nthreads, options, gue
     -------
     list[list[list[float]]]: the coefficients of the orbitals
     """
-    from SIAB.spillage.listmanip import merge
+    
     norb = len(nzeta)
     coefs = [None for _ in range(norb)]
     for iorb, index_, nzeta_, iconfs_, ibands_ in zip(range(norb), deps, nzeta, iconfs, ibands):
@@ -341,7 +346,7 @@ def _peel(coef, nzeta_lvl_tot):
     -------
     list[list[list[list[float]]]]: the coefficients of the orbitals for each level
     """
-    from copy import deepcopy
+    
     coef_lvl = [deepcopy(coef)]
     for nzeta_lvl in reversed(nzeta_lvl_tot):
         coef_lvl.append([[coef_lvl[-1][l].pop(0) for _ in range(nzeta)] for l,nzeta in enumerate(nzeta_lvl)])
@@ -364,8 +369,6 @@ def _coef_guess(guess, nzeta, excluded):
     -------
     list[list[list[float]]]: the coefficients of the orbitals
     """
-    from SIAB.spillage.spillage import initgen_jy, initgen_pw, flatten
-    import os
 
     jy = "orb_mat" not in guess
     initgen = initgen_jy if jy else initgen_pw
@@ -438,8 +441,7 @@ def _orb_matrices(folder: str):
     are the corresponding bessel_nao_rcut and order of derivatives of the
     wavefunctions, presently ranges from 6 to 10 and 0 to 1, respectively.
     """
-    import os
-    import re
+
     old = r"orb_matrix.([01]).dat"
     new = r"orb_matrix_rcut(\d+)deriv([01]).dat"
 
@@ -487,12 +489,6 @@ def _save_orb(coefs, elem, ecut, rcut, folder, jY_type: str = "reduced"):
     ------
     str: the file name of the orbital    
     """
-    import numpy as np
-    import matplotlib.pyplot as plt
-    from SIAB.spillage.plot import plot_chi
-    from SIAB.spillage.orbio import write_nao, write_param
-    from SIAB.spillage.radial import coeff_normalized2raw, coeff_reduced2raw
-    import os
 
     coeff_converter_map = {"reduced": coeff_reduced2raw, 
                            "normalized": coeff_normalized2raw}
@@ -540,8 +536,6 @@ def _build_orb(coefs, rcut, dr: float = 0.01, jY_type: str = "reduced"):
     Returns:
     np.ndarray: the real space grid data
     """
-    from SIAB.spillage.radial import build_raw, build_reduced, coeff_normalized2raw
-    import numpy as np
 
     r = np.linspace(0, rcut, int(rcut/dr)+1) # hard code dr to be 0.01? no...
     if jY_type in ["reduced", "nullspace", "svd"]:
@@ -620,7 +614,6 @@ def _nzeta_mean_conf(nbands, folders):
     nzeta: list[int]
         the inferred nzeta for each folder
     """
-    import numpy as np
 
     assert isinstance(folders, list), f"folders should be a list: {folders}"
     assert all([isinstance(f, str) for f in folders]), f"folders should be a list of strings: {folders}"
@@ -700,7 +693,6 @@ def _wll_fold(wll, nband):
         if specified as list or range, it is the list of band indexes to be
         considered
     """
-    import numpy as np
 
     nband = range(nband) if isinstance(nband, int) else nband
     _, lmax_plus_1, _ = wll.shape
@@ -724,11 +716,7 @@ def _nzeta_analysis(folder, count_thr = 1e-1, itype = 0):
     -------
     list[list[list[int]]]: [l][n][ib] storing the band index(es)
     """
-    import os
-    import numpy as np
-    from SIAB.spillage.datparse import read_wfc_lcao_txt, read_triu, \
-        read_running_scf_log, read_input_script
-    from SIAB.spillage.lcao_wfc_analysis import _wll
+
 
     params = read_input_script(os.path.join(folder, "INPUT"))
     outdir = os.path.abspath(os.path.join(folder, "OUT." + params.get("suffix", "ABACUS")))
@@ -764,11 +752,10 @@ def _nzeta_analysis(folder, count_thr = 1e-1, itype = 0):
                     out[isk % len(wk)][l].append(ib)
     return out
 
-import unittest
 class TestAPI(unittest.TestCase):
 
     def test_orb_matrices(self):
-        import os
+
         test_folder = "test_orb_matrices"
         os.makedirs(test_folder, exist_ok=True)
 
@@ -846,7 +833,7 @@ class TestAPI(unittest.TestCase):
         os.rmdir(test_folder)
 
     def test_nzeta_to_initgen(self):
-        import numpy as np
+
         nz1 = np.random.randint(0, 5, 2).tolist()
         nz2 = np.random.randint(0, 5, 3).tolist()
         nz3 = np.random.randint(0, 5, 4).tolist()
@@ -859,7 +846,7 @@ class TestAPI(unittest.TestCase):
                 nz[iz] if iz < len(nz) else -1 for nz in [nz1, nz2, nz3, nz4]]))
 
     def test_coefs_subset(self):
-        import numpy as np
+
         nz3 = [3, 3, 2]
         nz2 = [2, 2, 1]
         nz1 = [1, 1]
@@ -917,10 +904,7 @@ class TestAPI(unittest.TestCase):
                                    []]])
 
     def test_wll_fold(self):
-        import os
-        from SIAB.spillage.datparse import read_wfc_lcao_txt, read_triu, \
-            read_running_scf_log, read_input_script
-        from SIAB.spillage.lcao_wfc_analysis import _wll
+
         here = os.path.dirname(__file__)
 
         fpath = os.path.join(here, "testfiles/Si/jy-7au/monomer-gamma/")
@@ -944,9 +928,8 @@ class TestAPI(unittest.TestCase):
         self.assertTrue(all([abs(wl - ref[i]) < 1e-8 for i, wl in enumerate(wll_fold)]))
 
     def test_nzeta_infer(self):
-        import os
+
         here = os.path.dirname(__file__)
-        import numpy as np
 
         # gamma case is easy, multi-k case is more difficult
         fpath = os.path.join(here, "testfiles/Si/jy-7au/monomer-gamma/")
@@ -1026,10 +1009,8 @@ class TestAPI(unittest.TestCase):
         self.assertTrue(all([abs(nz - ref[i]) < 1e-3 for i, nz in enumerate(nzeta)]))
 
     def test_nzeta_mean_conf(self):
-        import os
-        here = os.path.dirname(__file__)
 
-        import numpy as np
+        here = os.path.dirname(__file__)
 
         # first test the monomer case at gamma
         fpath = os.path.join(here, "testfiles/Si/jy-7au/monomer-gamma/")
@@ -1184,7 +1165,7 @@ class TestAPI(unittest.TestCase):
                           zip(nzeta_dimer_nbnd10, nzeta_mono_nbnd10)])
 
     def test_nzeta_analysis(self):
-        import os
+
         here = os.path.dirname(__file__)
         fpath = os.path.join(here, "testfiles/Si/jy-7au/monomer-gamma/")
         out = _nzeta_analysis(fpath)

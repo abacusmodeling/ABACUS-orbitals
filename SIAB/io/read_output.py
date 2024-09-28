@@ -1,4 +1,6 @@
 import os
+import unittest
+
 def read_energy(folder: str,
                 suffix: str,
                 calculation: str = "scf"):
@@ -35,7 +37,7 @@ def read_natom(folder: str,
                     return natom
     return -1
 
-import unittest
+
 class TestReadOutput(unittest.TestCase):
 
     def test_read_energy(self):

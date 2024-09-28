@@ -1,11 +1,13 @@
 """this module is for converting common Liunx command to the version
 compatible with High Performance Computing (HPC) system or say for
 Supercomputer."""
+import os
+import subprocess
+import sys
 
 ##############################################
 #                                            #
 ##############################################
-import os
 def submit(folder: str = "", 
            module_load_command: str = "",
            mpi_command: str = "",
@@ -34,8 +36,7 @@ def submit(folder: str = "",
 ##############################################
 #        basic wrapped linux commands        #
 ##############################################
-import subprocess
-import sys
+
 def run(command: str,
         env: str = "local",
         additional_args: list = None,
