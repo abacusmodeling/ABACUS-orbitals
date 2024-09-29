@@ -13,7 +13,7 @@ def read_siab_plaintext(fname: str = ""):
     float_pattern = r"^\d+\.\d*$"
     int_pattern = r"^\d+$"
     scalar_keywords = ["Ecut", "sigma", "element"]
-    result = {}
+    result = {"fit_basis": "pw"}
     if fname == "":
         raise ValueError("No filename provided")
     with open(fname, "r") as f:
@@ -471,6 +471,11 @@ def skip_ppread(user_settings: dict):
     """
 
     skip = True
+    # case 0
+    # if element is not set, it is not possible to skip the pseudopotential read-in
+    if "element" not in user_settings:
+        print("AUTOSET: `element` is not specified => AUTOSET", flush=True)
+        return False
     # case 1
     # if nbands is specified as auto, occ, all, it must requires the number of valence
     # electrons, therefore it is not possible to skip the pseudopotential read-in
@@ -536,10 +541,51 @@ def skip_ppread(user_settings: dict):
         # in a list in input, therefore the index is known).
     return skip
 
+def _validate_param(user_settings: dict):
+    """validate the input parameters
+    
+    Parameters
+    ----------
+    user_settings: dict
+        the user settings
+    
+    Returns
+    -------
+    None
+    """
+    # check if the shape assigned to orbitals is valid
+    shape2index = {rs["shape"]: i for i, rs in enumerate(user_settings["reference_systems"])}
+    for iorb, orb in enumerate(user_settings["orbitals"]):
+        shape = orb["shape"]
+        shape = [shape] if not isinstance(shape, list) else shape
+        for s in shape:
+            assert isinstance(s, (str, int)), f"shape {s} is not a valid shape"
+            if isinstance(s, str):
+                assert s in shape2index, f"shape {s} is not found in reference systems"
+
+    # check if the nbands set for reference system is smaller than
+    # bands needed for fitting orbitals
+    shape2index = {rs["shape"]: i for i, rs in enumerate(user_settings["reference_systems"])}
+    for iorb, orb in enumerate(user_settings["orbitals"]):
+        shape = orb["shape"]
+        shape = [shape] if not isinstance(shape, list) else shape
+        for s in shape:
+            if isinstance(s, str):
+                assert orb["nbands_ref"] <= user_settings["reference_systems"][shape2index[s]]["nbands"], \
+                    f"ERROR: `nbands_ref` for orbital {iorb} is larger than the number of bands set for\
+ reference system `{s}`"
+            elif isinstance(s, int):
+                assert orb["nbands_ref"] <= user_settings["reference_systems"][s]["nbands"], \
+                    f"ERROR: `nbands_ref` for orbital {iorb} is larger than the number of bands set for\
+ reference system `{s}`"
+
+
 def parse(user_settings: dict):
     """unpack the SIAB input to structure (shape as key and bond lengths are list as value),
     input setting of abacus, orbital generation settings, environmental settings and general description
     """
+    _validate_param(user_settings)
+
     # move the information fetch from pseudopotential from front.py here...
     # get value from the dict returned by function from_pseudopotential
 

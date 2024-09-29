@@ -686,6 +686,9 @@ def _nzeta_infer(folder, nband):
     for isk in range(nspin*len(wk)): # loop over (ispin, ik)
         w = wk[isk % len(wk)] # spin-up and spin-down share the wk
         wfc, _, _, _ = read_wfc_lcao_txt(os.path.join(outdir, f"{fwfc}{isk+1}.txt"))
+        assert wfc.shape[1] >= nband, \
+            f"ERROR: number of bands for orbgen is larger than calculated: {nband} > {wfc.shape[1]}"
+
         # the complete return list is (wfc.T, e, occ, k)
         ovlp = read_triu(os.path.join(outdir, f"data-{isk}-S"))
 
