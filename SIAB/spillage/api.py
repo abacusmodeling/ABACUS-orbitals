@@ -119,7 +119,7 @@ def _coef_opt_jy(rcut, orbparams, folders, options, nthreads, spill_coefs = None
     minimizer = Spillage_jy()
     print(f"ORBGEN: Optimizing orbitals for rcut = {rcut} au", flush = True)
     if spill_coefs:
-        print(f"ORBGEN: For jy, spill_coefs is deprecated.", flush = True)
+        print("ORBGEN: For jy, spill_coefs is deprecated.", flush = True)
 
     configs = [folders[indf] for orb in orbparams for indf in orb['folder']]
     configs = list(set([folder for f in configs for folder in f]))
