@@ -48,7 +48,15 @@ Parsing SIAB input file {fname} with version {version}
         result = convert_oldinp_tojson(result) if version == "0.1.0" else result
         result = convert_plaintext_tojson(result) if version != "0.1.0" else result
     # convert `pseudo_dir` to absolute path
-    result["pseudo_dir"] = os.path.abspath(result["pseudo_dir"])
+    # BUG: the os.path.abspath cannot understand the symbol "~"
+    # thus will substitute the symbol with the absolute path of home directory
+    pseudo_dir = result["pseudo_dir"]
+    if not pseudo_dir.startswith("~"):
+        pseudo_dir = os.path.abspath(pseudo_dir)
+    else:
+        pseudo_dir = os.path.expanduser(pseudo_dir)
+    print(f"NOTE: Redirecting `pseudo_dir` to {pseudo_dir}", flush=True)
+    result["pseudo_dir"] = pseudo_dir
     return result
 
 def postprocess_siab_oldinp(inp: dict):
@@ -273,11 +281,29 @@ def abacus_settings(user_settings: dict, minimal_basis: list = None, z_val: floa
         for key, value in refsys[irs].items():
             if key in all_params and key not in ["shape", "nbands", "nspin"]:
                 result[irs][key] = value
+    
     # set monomer
+    #####################################################################################
+    #                  CHANGE LOG: infer nzeta, since ABACUS-ORBGEN v3.0                #
+    #                                        * * *                                      #
+    # Since ABACUS-ORBGEN v3.0, with only nbands_ref, can calculate the nzeta, then     #
+    # program will extract corresponding number of bands (for each angular momentum)    #
+    # from monomer DFT calculation. Therefore the number of bands of monomer should be  #
+    # set large enough.                                                                 #
+    # There are several ways to set the number of bands of monomer:                     #
+    # 1. directly set a large number                                                    #
+    # 2. estimate with the number of bands of dimer, trimer, etc.                       #
+    # 3. from nzeta inferred from practical DFT calculation of dimer, ... etc,          #
+    #    precisely calculate the number of bands of monomer.                            #
+    # here we implement a mixed way of 1 and 2.                                         #
+    #####################################################################################
     if autoset_monomer:
-        nbands_monomer = cal_nbands_fill_lmax(z_val, z_core, lmax_monomer) # fill the lmax shell
-        result[shape_index_mapping.index("monomer")].update(
-            {"lmaxmax": lmax_monomer, "nbands": nbands_monomer})
+        nbands_lmax = cal_nbands_fill_lmax(z_val, z_core, lmax_monomer) # fill the lmax shell
+        nbands_shapemax = max([i["nbands"]/natom_from_shape(j["shape"]) + 20
+                               for i, j in zip(result, refsys)])
+        nbands = nbands_lmax if user_settings.get("fit_basis", "pw") == "pw" else nbands_shapemax
+        result[shape_index_mapping.index("monomer")].update({"lmaxmax": lmax_monomer, 
+                                                             "nbands": nbands})
     return result
 
 def siab_settings(user_settings: dict, minimal_basis: list, z_val: float = 0):

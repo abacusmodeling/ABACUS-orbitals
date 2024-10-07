@@ -389,6 +389,13 @@ def _coef_guess(guess, nzeta, excluded):
         ib = [[ibsp[l][(2*l+1)*nz0:(2*l+1)*nz] for l, (nz, nz0) in enumerate(zip(nzeta, excluded))]
                for ibsp in ib]
         ib = [flatten(ibsp) for ibsp in ib]
+        errmsg = f"""ERROR: no band index found: {ib}.
+This may happen for two reasons:
+1. not enough bands can be used to generate initial guess => increase the number of bands to calculate 
+   for atomic guess (monomer).
+2. two levels of orbitals are actually identical => check the zeta_notation and nbands_ref setting in
+   input."""
+        assert len(ib[0]) > 0, errmsg
         print(f"ORBGEN: initial guess based on isolated atom band-pick, indexes: {ib[0]}", flush=True)
         coef_init = initgen(**(guess|{"ibands": ib[0]}))
     else:
