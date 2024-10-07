@@ -386,6 +386,7 @@ def _coef_guess(guess, nzeta, excluded):
     if jy:
         excluded = [0] * len(nzeta) if excluded is None else excluded
         ib = _nzeta_analysis(os.path.dirname(guess["outdir"])) # indexed by [ispin][l] -> list of band index
+        assert len(ib) > 0, "ERROR: no band index found"
         ib = [[ibsp[l][(2*l+1)*nz0:(2*l+1)*nz] for l, (nz, nz0) in enumerate(zip(nzeta, excluded))]
                for ibsp in ib]
         ib = [flatten(ibsp) for ibsp in ib]

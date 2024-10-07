@@ -47,14 +47,9 @@ Parsing SIAB input file {fname} with version {version}
         result = postprocess_siab_oldinp(result) if version == "0.1.0" else result
         result = convert_oldinp_tojson(result) if version == "0.1.0" else result
         result = convert_plaintext_tojson(result) if version != "0.1.0" else result
+
     # convert `pseudo_dir` to absolute path
-    # BUG: the os.path.abspath cannot understand the symbol "~"
-    # thus will substitute the symbol with the absolute path of home directory
-    pseudo_dir = result["pseudo_dir"]
-    if not pseudo_dir.startswith("~"):
-        pseudo_dir = os.path.abspath(pseudo_dir)
-    else:
-        pseudo_dir = os.path.expanduser(pseudo_dir)
+    pseudo_dir = os.path.abspath(os.path.expanduser(result["pseudo_dir"]))
     print(f"NOTE: Redirecting `pseudo_dir` to {pseudo_dir}", flush=True)
     result["pseudo_dir"] = pseudo_dir
     return result
@@ -299,7 +294,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list = None, z_val: floa
     #####################################################################################
     if autoset_monomer:
         nbands_lmax = cal_nbands_fill_lmax(z_val, z_core, lmax_monomer) # fill the lmax shell
-        nbands_shapemax = max([i["nbands"]/natom_from_shape(j["shape"]) + 20
+        nbands_shapemax = max([i["nbands"]//natom_from_shape(j["shape"]) + 20
                                for i, j in zip(result, refsys)])
         if user_settings.get("fit_basis", "pw") == "jy":
             print(f"""AUTOSET: jy case,`nbands` for monomer is overwritten to {nbands_shapemax},
@@ -585,7 +580,7 @@ def _validate_param(user_settings: dict):
     """
     # check if the shape assigned to orbitals is valid
     shape2index = {rs["shape"]: i for i, rs in enumerate(user_settings["reference_systems"])}
-    for iorb, orb in enumerate(user_settings["orbitals"]):
+    for orb in user_settings["orbitals"]:
         shape = orb["shape"]
         shape = [shape] if not isinstance(shape, list) else shape
         for s in shape:
@@ -700,7 +695,7 @@ def cal_nbands_fill_lmax(zval: int, zcore: int, lmax: int, fill_lmax: bool = Tru
     nbands += 5 if nelec == zval else 0 # for the case low lmax is specified
     nbands *= 5 if lmax > 3 else 1 # for g-orbital which is definitely not possible for all ground state atoms
     
-    return int(nbands)
+    return round(nbands)
 
 ABACUS_INPUT_TEMPLATE = """INPUT_PARAMETERS
 #Parameters (1.General)
