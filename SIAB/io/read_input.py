@@ -13,7 +13,7 @@ def read_siab_plaintext(fname: str = ""):
     float_pattern = r"^\d+\.\d*$"
     int_pattern = r"^\d+$"
     scalar_keywords = ["Ecut", "sigma", "element"]
-    result = {}
+    result = {"fit_basis": "pw"}
     if fname == "":
         raise ValueError("No filename provided")
     with open(fname, "r") as f:
@@ -47,8 +47,11 @@ Parsing SIAB input file {fname} with version {version}
         result = postprocess_siab_oldinp(result) if version == "0.1.0" else result
         result = convert_oldinp_tojson(result) if version == "0.1.0" else result
         result = convert_plaintext_tojson(result) if version != "0.1.0" else result
+
     # convert `pseudo_dir` to absolute path
-    result["pseudo_dir"] = os.path.abspath(result["pseudo_dir"])
+    pseudo_dir = os.path.abspath(os.path.expanduser(result["pseudo_dir"]))
+    print(f"NOTE: Redirecting `pseudo_dir` to {pseudo_dir}", flush=True)
+    result["pseudo_dir"] = pseudo_dir
     return result
 
 def postprocess_siab_oldinp(inp: dict):
@@ -273,11 +276,33 @@ def abacus_settings(user_settings: dict, minimal_basis: list = None, z_val: floa
         for key, value in refsys[irs].items():
             if key in all_params and key not in ["shape", "nbands", "nspin"]:
                 result[irs][key] = value
+    
     # set monomer
+    #####################################################################################
+    #                  CHANGE LOG: infer nzeta, since ABACUS-ORBGEN v3.0                #
+    #                                        * * *                                      #
+    # Since ABACUS-ORBGEN v3.0, with only nbands_ref, can calculate the nzeta, then     #
+    # program will extract corresponding number of bands (for each angular momentum)    #
+    # from monomer DFT calculation. Therefore the number of bands of monomer should be  #
+    # set large enough.                                                                 #
+    # There are several ways to set the number of bands of monomer:                     #
+    # 1. directly set a large number                                                    #
+    # 2. estimate with the number of bands of dimer, trimer, etc.                       #
+    # 3. from nzeta inferred from practical DFT calculation of dimer, ... etc,          #
+    #    precisely calculate the number of bands of monomer.                            #
+    # here we implement a mixed way of 1 and 2.                                         #
+    #####################################################################################
     if autoset_monomer:
-        nbands_monomer = cal_nbands_fill_lmax(z_val, z_core, lmax_monomer) # fill the lmax shell
-        result[shape_index_mapping.index("monomer")].update(
-            {"lmaxmax": lmax_monomer, "nbands": nbands_monomer})
+        nbands_lmax = cal_nbands_fill_lmax(z_val, z_core, lmax_monomer) # fill the lmax shell
+        nbands_shapemax = max([i["nbands"]//natom_from_shape(j["shape"]) + 20
+                               for i, j in zip(result, refsys)])
+        if user_settings.get("fit_basis", "pw") == "jy":
+            print(f"""AUTOSET: jy case,`nbands` for monomer is overwritten to {nbands_shapemax},
+         IGNORE number of bands that can fill lmax-layer being estimated to be {nbands_lmax}""",
+                  flush=True)
+        nbands = nbands_lmax if user_settings.get("fit_basis", "pw") == "pw" else nbands_shapemax
+        result[shape_index_mapping.index("monomer")].update({"lmaxmax": lmax_monomer, 
+                                                             "nbands": nbands})
     return result
 
 def siab_settings(user_settings: dict, minimal_basis: list, z_val: float = 0):
@@ -471,6 +496,11 @@ def skip_ppread(user_settings: dict):
     """
 
     skip = True
+    # case 0
+    # if element is not set, it is not possible to skip the pseudopotential read-in
+    if "element" not in user_settings:
+        print("AUTOSET: `element` is not specified => AUTOSET", flush=True)
+        return False
     # case 1
     # if nbands is specified as auto, occ, all, it must requires the number of valence
     # electrons, therefore it is not possible to skip the pseudopotential read-in
@@ -536,10 +566,51 @@ def skip_ppread(user_settings: dict):
         # in a list in input, therefore the index is known).
     return skip
 
+def _validate_param(user_settings: dict):
+    """validate the input parameters
+    
+    Parameters
+    ----------
+    user_settings: dict
+        the user settings
+    
+    Returns
+    -------
+    None
+    """
+    # check if the shape assigned to orbitals is valid
+    shape2index = {rs["shape"]: i for i, rs in enumerate(user_settings["reference_systems"])}
+    for orb in user_settings["orbitals"]:
+        shape = orb["shape"]
+        shape = [shape] if not isinstance(shape, list) else shape
+        for s in shape:
+            assert isinstance(s, (str, int)), f"shape {s} is not a valid shape"
+            if isinstance(s, str):
+                assert s in shape2index, f"shape {s} is not found in reference systems"
+
+    # check if the nbands set for reference system is smaller than
+    # bands needed for fitting orbitals
+    shape2index = {rs["shape"]: i for i, rs in enumerate(user_settings["reference_systems"])}
+    for iorb, orb in enumerate(user_settings["orbitals"]):
+        shape = orb["shape"]
+        shape = [shape] if not isinstance(shape, list) else shape
+        for s in shape:
+            if isinstance(s, str):
+                assert orb["nbands_ref"] <= user_settings["reference_systems"][shape2index[s]]["nbands"], \
+                    f"ERROR: `nbands_ref` for orbital {iorb} is larger than the number of bands set for\
+ reference system `{s}`"
+            elif isinstance(s, int):
+                assert orb["nbands_ref"] <= user_settings["reference_systems"][s]["nbands"], \
+                    f"ERROR: `nbands_ref` for orbital {iorb} is larger than the number of bands set for\
+ reference system `{s}`"
+
+
 def parse(user_settings: dict):
     """unpack the SIAB input to structure (shape as key and bond lengths are list as value),
     input setting of abacus, orbital generation settings, environmental settings and general description
     """
+    _validate_param(user_settings)
+
     # move the information fetch from pseudopotential from front.py here...
     # get value from the dict returned by function from_pseudopotential
 
@@ -624,7 +695,7 @@ def cal_nbands_fill_lmax(zval: int, zcore: int, lmax: int, fill_lmax: bool = Tru
     nbands += 5 if nelec == zval else 0 # for the case low lmax is specified
     nbands *= 5 if lmax > 3 else 1 # for g-orbital which is definitely not possible for all ground state atoms
     
-    return int(nbands)
+    return round(nbands)
 
 ABACUS_INPUT_TEMPLATE = """INPUT_PARAMETERS
 #Parameters (1.General)
