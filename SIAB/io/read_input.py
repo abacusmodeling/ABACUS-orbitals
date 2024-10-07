@@ -301,6 +301,10 @@ def abacus_settings(user_settings: dict, minimal_basis: list = None, z_val: floa
         nbands_lmax = cal_nbands_fill_lmax(z_val, z_core, lmax_monomer) # fill the lmax shell
         nbands_shapemax = max([i["nbands"]/natom_from_shape(j["shape"]) + 20
                                for i, j in zip(result, refsys)])
+        if user_settings.get("fit_basis", "pw") == "jy":
+            print(f"""AUTOSET: jy case,`nbands` for monomer is overwritten to {nbands_shapemax},
+         IGNORE number of bands that can fill lmax-layer being estimated to be {nbands_lmax}""",
+                  flush=True)
         nbands = nbands_lmax if user_settings.get("fit_basis", "pw") == "pw" else nbands_shapemax
         result[shape_index_mapping.index("monomer")].update({"lmaxmax": lmax_monomer, 
                                                              "nbands": nbands})
