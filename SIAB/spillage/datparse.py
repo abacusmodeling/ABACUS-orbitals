@@ -327,11 +327,13 @@ def read_running_scf_log(fname):
     status = {key: False for key in keywords}
     with open(fname, 'r') as f:
         for line in f:
-            if 'nspin' in line:
+            # if 'nspin' in line: # does not work for cases `nspin` in path
+            if re.match(r'^\s*nspin\s*=\s*\d+\s*$', line):
                 nspin = int(line.split()[-1])
                 status['nspin'] = True
 
-            if 'ntype' in line:
+            # if 'ntype' in line: # similarly...
+            if re.match(r'^\s*ntype\s*=\s*\d+\s*$', line):
                 nzeta = []
                 natom = []
                 ntype = int(line.split()[-1])
@@ -348,7 +350,8 @@ def read_running_scf_log(fname):
 
                 status['nzeta'] = True
 
-            if 'nkstot now' in line:
+            # if 'nkstot now' in line: # similarly...
+            if re.match(r'^\s*nkstot now\s*=\s*\d+\s*$', line):
                 nk = int(line.split()[-1])
                 next(f); next(f)
                 wk = [float(next(f).split()[-1]) for _ in range(nk)]
