@@ -653,7 +653,7 @@ def _nzeta_mean_conf(nbands, folders):
     
     return [nz/len(folders) for nz in nzeta]
 
-def _nzeta_infer(folder, nband):
+def _nzeta_infer(folder, nband, kernel = 'svd'):
     """infer nzeta based on one structure whose calculation result is stored
     in the folder
     
@@ -674,7 +674,8 @@ def _nzeta_infer(folder, nband):
     import numpy as np
     from SIAB.spillage.datparse import read_wfc_lcao_txt, read_triu, \
         read_running_scf_log, read_input_script
-    from SIAB.spillage.lcao_wfc_analysis import _wll
+    from SIAB.spillage.lcao_wfc_analysis import _wll, _svd_on_wfc
+    infer_map = {"svd": _svd_on_wfc, "wll": _wll}
 
     # read INPUT and running_*.log
     params = read_input_script(os.path.join(folder, "INPUT"))
@@ -700,13 +701,13 @@ def _nzeta_infer(folder, nband):
         # the complete return list is (wfc.T, e, occ, k)
         ovlp = read_triu(os.path.join(outdir, f"data-{isk}-S"))
 
-        nz = _wll_fold(_wll(wfc, ovlp, running["natom"], running["nzeta"]), nband)
+        nz = _wll_fold(_wll(wfc, ovlp, running["natom"], running["nzeta"]), nband)/running["natom"][0]
         nzeta = np.resize(nzeta, np.maximum(nzeta.shape, nz.shape)) + nz * w / nspin
 
     # count the number of atoms
     assert len(running["natom"]) == 1, f"multiple atom types are not supported: {running['natom']}"
 
-    return nzeta/running["natom"][0]
+    return nzeta
 
 def _wll_fold(wll, nband):
     """One of strategy for inferring nzeta from wll matrix. This function
@@ -721,6 +722,10 @@ def _wll_fold(wll, nband):
         if specified as int, it is the highest band index to be considered. 
         if specified as list or range, it is the list of band indexes to be
         considered
+    
+    Returns
+    -------
+    np.ndarray: the folded wll matrix in shape of 1*(lmax+1)
     """
 
     nband = range(nband) if isinstance(nband, int) else nband
