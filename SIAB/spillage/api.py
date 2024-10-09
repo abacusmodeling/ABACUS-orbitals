@@ -648,12 +648,12 @@ def _nzeta_mean_conf(nbands, folders):
     nbands = [nbands] * len(folders) if isinstance(nbands, int) else nbands
 
     for folder, nband in zip(folders, nbands):
-        nzeta_ = np.array(_nzeta_infer(folder, nband))
+        nzeta_ = np.array(_nzeta_infer(folder, nband, 'wll'))
         nzeta = np.resize(nzeta, np.maximum(nzeta.shape, nzeta_.shape)) + nzeta_
     
     return [nz/len(folders) for nz in nzeta]
 
-def _nzeta_infer(folder, nband, kernel = 'svd'):
+def _nzeta_infer(folder, nband, pop = 'svd'):
     """infer nzeta based on one structure whose calculation result is stored
     in the folder
     
@@ -665,6 +665,9 @@ def _nzeta_infer(folder, nband, kernel = 'svd'):
         if specified as int, it is the highest band index to be considered. 
         if specified as list or range, it is the list of band indexes to be
         considered
+    pop: str, optional
+        the population analysis method used to infer nzeta, can be 'svd' or 'wll',
+        default is 'svd'
 
     Returns
     -------
@@ -674,8 +677,11 @@ def _nzeta_infer(folder, nband, kernel = 'svd'):
     import numpy as np
     from SIAB.spillage.datparse import read_wfc_lcao_txt, read_triu, \
         read_running_scf_log, read_input_script
-    from SIAB.spillage.lcao_wfc_analysis import _wll, _svd_on_wfc
-    infer_map = {"svd": _svd_on_wfc, "wll": _wll}
+    from SIAB.spillage.lcao_wfc_analysis import _wll, _rad_svd
+
+    def _wll_kernel(C, S, nbands, natom, nzeta, **kwargs):
+        return _wll_fold(_wll(C, S, natom, nzeta), nbands) / natom[0]
+    infer_kernel = {"svd": _rad_svd, "wll": _wll_kernel}
 
     # read INPUT and running_*.log
     params = read_input_script(os.path.join(folder, "INPUT"))
@@ -701,7 +707,7 @@ def _nzeta_infer(folder, nband, kernel = 'svd'):
         # the complete return list is (wfc.T, e, occ, k)
         ovlp = read_triu(os.path.join(outdir, f"data-{isk}-S"))
 
-        nz = _wll_fold(_wll(wfc, ovlp, running["natom"], running["nzeta"]), nband)/running["natom"][0]
+        nz = infer_kernel[pop](wfc, ovlp, nband, running["natom"], running["nzeta"])
         nzeta = np.resize(nzeta, np.maximum(nzeta.shape, nz.shape)) + nz * w / nspin
 
     # count the number of atoms
@@ -1004,13 +1010,13 @@ class TestAPI(unittest.TestCase):
 
         # gamma case is easy, multi-k case is more difficult
         fpath = os.path.join(here, "testfiles/Si/jy-7au/monomer-gamma/")
-        nzeta = _nzeta_infer(fpath, 4)
+        nzeta = _nzeta_infer(fpath, 4, 'wll')
         ref = [1, 1, 0]
         self.assertTrue(all([abs(nz - ref[i]) < 1e-8 for i, nz in enumerate(nzeta)]))
-        nzeta = _nzeta_infer(fpath, 5)
+        nzeta = _nzeta_infer(fpath, 5, 'wll')
         ref = [2, 1, 0]
         self.assertTrue(all([abs(nz - ref[i]) < 1e-8 for i, nz in enumerate(nzeta)]))
-        nzeta = _nzeta_infer(fpath, 10)
+        nzeta = _nzeta_infer(fpath, 10, 'wll')
         ref = [2, 1, 1]
         self.assertTrue(all([abs(nz - ref[i]) < 1e-8 for i, nz in enumerate(nzeta)]))
 
@@ -1064,18 +1070,18 @@ class TestAPI(unittest.TestCase):
         degen = np.array([2*i + 1 for i in range(3)], dtype=float)
 
         nbnd = 4
-        nzeta = _nzeta_infer(fpath, nbnd)
+        nzeta = _nzeta_infer(fpath, nbnd, 'wll')
         ref = np.sum(np.array([np.sum(refdata[i, :nbnd, :], 0) / degen * wk[i] for i in range(4)]), 0)
         self.assertTrue(all([abs(nz - ref[i]) < 1e-3 for i, nz in enumerate(nzeta)]))
         # because we use the data only has ndigits=3, so we can only compare to 1e-3
 
         nbnd = 5
-        nzeta = _nzeta_infer(fpath, nbnd)
+        nzeta = _nzeta_infer(fpath, nbnd, 'wll')
         ref = np.sum(np.array([np.sum(refdata[i, :nbnd, :], 0) / degen * wk[i] for i in range(4)]), 0)
         self.assertTrue(all([abs(nz - ref[i]) < 1e-3 for i, nz in enumerate(nzeta)]))
 
         nbnd = 10
-        nzeta = _nzeta_infer(fpath, nbnd)
+        nzeta = _nzeta_infer(fpath, nbnd, 'wll')
         ref = np.sum(np.array([np.sum(refdata[i, :nbnd, :], 0) / degen * wk[i] for i in range(4)]), 0)
         self.assertTrue(all([abs(nz - ref[i]) < 1e-3 for i, nz in enumerate(nzeta)]))
 

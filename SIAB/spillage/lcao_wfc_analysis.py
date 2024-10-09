@@ -61,8 +61,8 @@ def _mean_max(a):
     '''
     return np.max(np.abs(a), axis=0)
 
-def _wfc_interp(C, nbands, natom, nzeta, view = 'reduce'):
-    '''interpret wavefunction coefficients in different view, rearrange
+def _wfc_reinterp(C, nbands, natom, nzeta, view = 'reduce'):
+    '''reinterpret wavefunction coefficients in different view, rearrange
     and concatenate the wavefunction coefficients of all bands into a 
     matrix
     
@@ -104,15 +104,16 @@ def _wfc_interp(C, nbands, natom, nzeta, view = 'reduce'):
                 Ct[it][l][m, iz, iaib] = C[i, ib]
     return Ct
 
-def _svd_on_wfc(C, 
-                S,
-                nbands,
-                natom, 
-                nzeta, 
-                fold_m = 'rotational-invariant',
-                svd_view = 'reduce'):
+def _rad_svd(C, 
+             S,
+             nbands,
+             natom, 
+             nzeta, 
+             fold_m = 'rotational-invariant',
+             reinterp_view = 'reduce'):
     '''perform svd on the wave function coefficients, return the
-    singular value for each atomtype and each l, each zeta function
+    singular value of zeta function of each atomtype each l, which 
+    represents the weight.
     
     Parameters
     ----------
@@ -131,8 +132,8 @@ def _svd_on_wfc(C,
         fold_m : str
             Method to average over m for each l. Options are
             'rotational-invariant' and 'max'.
-        svd_view : str
-            Method to concatenate the wave function coefficients. Options are
+        reinterp_view : str
+            Method to reinterpret the wave function coefficients. Options are
             'decompose' and 'reduce'.
     
     Returns
@@ -143,19 +144,21 @@ def _svd_on_wfc(C,
     mean_map = {'rotational-invariant': _mean_rotinv,
                 'max': _mean_max}
 
+    # orthogonalize the wave function coefficients
     C = la.sqrtm(S) @ C
 
     lmax = [len(nz) - 1 for nz in nzeta]
 
     ntyp = len(natom)
-    Ct = _wfc_interp(C, nbands, natom, nzeta, svd_view)
+
+    C = _wfc_reinterp(C, nbands, natom, nzeta, reinterp_view)
 
     mat_tlm = [[np.zeros(shape=(2*l+1, nz)) # nz = nzeta[it][l] 
                 for l, nz in enumerate(nzeta[it])] for it in range(ntyp)]
     for it in range(ntyp):
         for l in range(lmax[it]+1):
             for m in range(2*l+1):
-                mat_tlm[it][l][m] = la.svd(Ct[it][l][m], compute_uv=False)
+                mat_tlm[it][l][m] = la.svd(C[it][l][m], compute_uv=False)
     
     mean = mean_map[fold_m]
     out = [[mean(mat_tlm[it][l]) for l in range(len(nzeta[it]))] for it in range(ntyp)]
@@ -207,7 +210,7 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
         dat = read_running_scf_log(outdir + 'running_scf.log')
         nbands = 25
 
-        sigma = _svd_on_wfc(wfc, S, nbands, 
+        sigma = _rad_svd(wfc, S, nbands, 
                             dat['natom'], 
                             dat['nzeta'], 
                             'rotational-invariant',
