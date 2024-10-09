@@ -677,11 +677,14 @@ def _nzeta_infer(folder, nband, pop = 'svd'):
     import numpy as np
     from SIAB.spillage.datparse import read_wfc_lcao_txt, read_triu, \
         read_running_scf_log, read_input_script
-    from SIAB.spillage.lcao_wfc_analysis import _wll, _rad_svd
+    from SIAB.spillage.lcao_wfc_analysis import _wll, _svdlz
 
     def _wll_kernel(C, S, nbands, natom, nzeta, **kwargs):
         return _wll_fold(_wll(C, S, natom, nzeta), nbands) / natom[0]
-    infer_kernel = {"svd": _rad_svd, "wll": _wll_kernel}
+    def _svd_kernel(C, S, nbands, natom, nzeta, **kwargs):
+        out = _svdlz(C, S, nbands, natom, nzeta)[0]
+        return np.array([len(np.where(out_l > 1e-2)[0]) for out_l in out])
+    infer_kernel = {"svd": _svd_kernel, "wll": _wll_kernel}
 
     # read INPUT and running_*.log
     params = read_input_script(os.path.join(folder, "INPUT"))
@@ -1017,6 +1020,16 @@ class TestAPI(unittest.TestCase):
         ref = [2, 1, 0]
         self.assertTrue(all([abs(nz - ref[i]) < 1e-8 for i, nz in enumerate(nzeta)]))
         nzeta = _nzeta_infer(fpath, 10, 'wll')
+        ref = [2, 1, 1]
+        self.assertTrue(all([abs(nz - ref[i]) < 1e-8 for i, nz in enumerate(nzeta)]))
+
+        nzeta = _nzeta_infer(fpath, 4, 'svd')
+        ref = [1, 1, 0]
+        self.assertTrue(all([abs(nz - ref[i]) < 1e-8 for i, nz in enumerate(nzeta)]))
+        nzeta = _nzeta_infer(fpath, 5, 'svd')
+        ref = [2, 1, 0]
+        self.assertTrue(all([abs(nz - ref[i]) < 1e-8 for i, nz in enumerate(nzeta)]))
+        nzeta = _nzeta_infer(fpath, 10, 'svd')
         ref = [2, 1, 1]
         self.assertTrue(all([abs(nz - ref[i]) < 1e-8 for i, nz in enumerate(nzeta)]))
 
