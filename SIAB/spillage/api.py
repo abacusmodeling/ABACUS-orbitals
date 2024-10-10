@@ -683,7 +683,7 @@ def _nzeta_infer(folder, nband, pop = 'svd'):
         return _wll_fold(_wll(C, S, natom, nzeta), nbands) / natom[0]
     def _svd_kernel(C, S, nbands, natom, nzeta, **kwargs):
         out = _svdlz(C, S, nbands, natom, nzeta)[0]
-        return np.array([len(np.where(out_l > 1e-2)[0]) for out_l in out])
+        return np.array([len(np.where(out_l + 1.0e-6 >= 1.0)[0]) for out_l in out])
     infer_kernel = {"svd": _svd_kernel, "wll": _wll_kernel}
 
     # read INPUT and running_*.log
