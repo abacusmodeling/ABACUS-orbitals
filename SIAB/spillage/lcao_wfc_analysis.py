@@ -137,9 +137,9 @@ def _svdlz(C,
     assert nbands <= nbands_max, 'nbands selected is larger than the total nbands'
     assert reinterp_view in ['decompose', 'reduce']
 
-    # orthogonalize the wave function coefficients
-    L = la.cholesky(S, lower=True)
-    C = la.solve_triangular(L, C, lower=True)
+    # coderabbit.ai recommends the Cholesky decomposition with triangular_solve
+    # but the result is not correct at all.
+    C = la.sqrtm(S) @ C
 
     lmax = [len(nz) - 1 for nz in nzeta]
     ntyp = len(natom)
