@@ -384,5 +384,34 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
             print(f"    sum = {np.sum(wl_row_sum):6.3f}")
             print('')
 
+    def est_single_case(self):
+        
+        outdir = 'Si-dimer-15.00-8au/OUT.ABACUS/'
+
+        wfc = read_wfc_lcao_txt(outdir + 'WFC_NAO_GAMMA1.txt')[0]
+        S = read_triu(outdir + 'data-0-S')
+        dat = read_running_scf_log(outdir + 'running_scf.log')
+
+        import matplotlib.pyplot as plt
+        sigmas = []
+        fig, ax = plt.subplots(1, 3, figsize=(18, 6))
+        for nbnd in range(7, 20, 5):
+            sigma = _svdlz(wfc, S, nbnd, dat['natom'], dat['nzeta'], 'max', 'reduce')
+            for i, (nt, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
+                for l in range(len(nz)):
+                    print(sigma[i][l])
+                    ax[l].plot(np.log10(sigma[i][l]), '-o', label=f'nbnd={nbnd}')
+                    # ax[l].set_yscale('log')
+                    thrs = [1.0, 0.5, 0.1, 0.01]
+                    for thr in thrs:
+                        ax[l].axhline(np.log10(thr), color='k', linestyle='--')
+                    ax[l].legend()
+                    ax[l].set_xlim(0, 12)
+                    ax[l].set_ylim(-3, 0.5)
+
+        plt.show()
+        #plt.savefig('test_single_case.png')
+        #plt.close()
+        
 if __name__ == '__main__':
     unittest.main()
