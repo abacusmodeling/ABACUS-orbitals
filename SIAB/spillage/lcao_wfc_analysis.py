@@ -138,7 +138,8 @@ def _svdlz(C,
     assert reinterp_view in ['decompose', 'reduce']
 
     # orthogonalize the wave function coefficients
-    C = la.sqrtm(S) @ C
+    L = la.cholesky(S, lower=True)
+    C = la.solve_triangular(L, C, lower=True)
 
     lmax = [len(nz) - 1 for nz in nzeta]
     ntyp = len(natom)
