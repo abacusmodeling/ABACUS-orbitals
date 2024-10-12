@@ -609,7 +609,6 @@ def parse(user_settings: dict):
     """unpack the SIAB input to structure (shape as key and bond lengths are list as value),
     input setting of abacus, orbital generation settings, environmental settings and general description
     """
-    _validate_param(user_settings)
 
     # move the information fetch from pseudopotential from front.py here...
     # get value from the dict returned by function from_pseudopotential
@@ -640,6 +639,9 @@ def parse(user_settings: dict):
     siab = siab_settings(user_settings, minimal_basis, z_val)
     env = environment_settings(user_settings)
     general = description(symbol, user_settings)
+
+    _validate_param(user_settings)
+    
     return structures, abacus, siab, env, general
 
 def abacus_params():

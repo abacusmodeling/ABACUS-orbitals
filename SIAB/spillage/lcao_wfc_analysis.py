@@ -94,6 +94,148 @@ def _wfc_reinterp(C, nbands, natom, nzeta, pop_view = 'reduce'):
 
     return Ct
 
+def _svd_aniso_max(C, S, nband, natom, nzeta):
+    '''perform svd-based analysis on wfc with anisotropicity of m for each l,
+    based on taking the maximal singular value of m for each l, returning the
+    nzeta for each type for each l.'''
+
+    nao, nbands_max = C.shape
+    nbands = nbands_max if nband == 'all' else nband
+    assert nbands <= nbands_max, 'nbands selected is larger than the total nbands'
+
+    C = la.sqrtm(S) @ C
+
+    lmax = [len(nz) - 1 for nz in nzeta]
+    ntyp = len(natom)
+
+    lin2comp = _lin2comp(natom, nzeta)
+    comp2lin = sorted([((it, l, m, iz, ia), i)
+                        for i, (it, ia, l, iz, m) in enumerate(lin2comp)])
+    mu = 0
+    Ct = [[[] for _ in nzeta[it]] for it in range(ntyp)]
+    while mu < nao:
+        it, l, _, _, _ = comp2lin[mu][0]
+        stride = natom[it] * nzeta[it][l]
+        idx = [comp2lin[mu+i][1] for i in range(stride)]
+        Ct[it][l].append(C[idx, :nbands].reshape(nzeta[it][l], -1))
+        mu += stride
+    
+    sigma_tlm = [[[] for _ in range(len(nzeta[it]))] for it in range(ntyp)]
+    for it in range(ntyp):
+        for l in range(lmax[it]+1):
+            for m in range(2*l+1):
+                sigma_tlm[it][l].append(la.svd(Ct[it][l][m], compute_uv=False))
+
+    return [[np.linalg.norm(sigma_tlm[it][l], axis=0, ord=np.inf)
+             for l in range(len(nzeta[it]))] for it in range(ntyp)]
+
+def _svd_aniso_svd(C, S, nband, natom, nzeta):
+    '''perform svd-based analysis on wfc with anisotropicity of m for each l,
+    based on svd on m for each l, returning the nzeta for each type for each l.'''
+
+    nao, nbands_max = C.shape
+    nbands = nbands_max if nband == 'all' else nband
+    assert nbands <= nbands_max, 'nbands selected is larger than the total nbands'
+
+    C = la.sqrtm(S) @ C
+
+    lmax = [len(nz) - 1 for nz in nzeta]
+    ntyp = len(natom)
+
+    lin2comp = _lin2comp(natom, nzeta)
+    comp2lin = sorted([((it, l, iz, m, ia), i)
+                        for i, (it, ia, l, iz, m) in enumerate(lin2comp)])
+    mu = 0
+    Ct = [[[] for _ in nzeta[it]] for it in range(ntyp)]
+    while mu < nao:
+        it, l, _, _, _ = comp2lin[mu][0]
+        stride = natom[it] * nzeta[it][l] * (2*l+1) # consider all m of present l
+        idx = [comp2lin[mu+i][1] for i in range(stride)]
+        Ct[it][l] = C[idx, :nbands].reshape(nzeta[it][l], -1) # (nz, nat*nbnd*2l+1)
+        mu += stride
+    
+    sigma_tlm = [[[] for _ in range(len(nzeta[it]))] for it in range(ntyp)]
+    for it in range(ntyp):
+        for l in range(lmax[it]+1):
+            sigma_tlm[it][l] = la.svd(Ct[it][l], compute_uv=False)
+    return sigma_tlm
+
+def _svd_iso(C, S, nband, natom, nzeta):
+    '''perform svd-based analysis on wfc with isotropicity of m for each l,
+    based on averaging over all m for each l, returning the nzeta for each
+    type for each l.'''
+
+    nao, nbands_max = C.shape
+    nbands = nbands_max if nband == 'all' else nband
+    assert nbands <= nbands_max, 'nbands selected is larger than the total nbands'
+
+    C = la.sqrtm(S) @ C
+
+    lmax = [len(nz) - 1 for nz in nzeta]
+    ntyp = len(natom)
+
+    lin2comp = _lin2comp(natom, nzeta)
+    comp2lin = sorted([((it, l, m, iz, ia), i)
+                        for i, (it, ia, l, iz, m) in enumerate(lin2comp)])
+    mu = 0
+    Ct = [[[] for _ in nzeta[it]] for it in range(ntyp)]
+    while mu < nao:
+        it, l, _, _, _ = comp2lin[mu][0]
+        stride = natom[it] * nzeta[it][l]
+        idx = [comp2lin[mu+i][1] for i in range(stride)]
+        Ct[it][l].append(C[idx, :nbands].reshape(nzeta[it][l], -1))
+        mu += stride
+    
+    sigma_tlm = [[[] for _ in range(len(nzeta[it]))] for it in range(ntyp)]
+    for it in range(ntyp):
+        for l in range(lmax[it]+1):
+            for m in range(2*l+1):
+                sigma_tlm[it][l].append(la.svd(Ct[it][l][m], compute_uv=False) / np.sqrt(2*l+1))
+
+    return [[np.linalg.norm(sigma_tlm[it][l], axis=0, ord=2)
+             for l in range(len(nzeta[it]))] for it in range(ntyp)]
+
+def _svd_atomic(C, S, nband, natom, nzeta):
+    '''perform svd-based analysis to get the significance of each zeta func
+    for each atom. Then '''
+
+    nao, nbands_max = C.shape
+    nbands = nbands_max if nband == 'all' else nband
+    assert nbands <= nbands_max, 'nbands selected is larger than the total nbands'
+
+    C = la.sqrtm(S) @ C
+
+    lmax = [len(nz) - 1 for nz in nzeta]
+    ntyp = len(natom)
+
+    lin2comp = _lin2comp(natom, nzeta)
+    comp2lin = sorted([((it, l, ia, m, iz), i)
+                        for i, (it, ia, l, iz, m) in enumerate(lin2comp)])
+    mu = 0
+    Ct = [[[] for _ in nzeta[it]] for it in range(ntyp)]
+    while mu < nao:
+        it, l, m, ia, iz = comp2lin[mu][0]
+        stride = natom[it] * nzeta[it][l] * (2*l+1)
+        idx = [comp2lin[mu+i][1] for i in range(stride)]
+        Ct[it][l] = C[idx, :nbands].reshape(natom[it], 2*l+1, nzeta[it][l], -1)
+        mu += stride
+    # then we only svd on the last two dimensions (nzeta[it][l], nbands)
+    # for m, we use rotational-invariant method to average over m
+    out = [[] for it in range(ntyp)]
+    for it in range(ntyp):
+        for l in range(lmax[it]+1):
+            s_tl = [0] * nzeta[it][l]
+            for ia in range(natom[it]):
+                s_tla = np.linalg.norm(
+                    [la.svd(Ct[it][l][ia, m], compute_uv=False) for m in range(2*l+1)], 
+                    axis=0, ord=2) / np.sqrt(2*l+1)
+                # only when this atom has sig >= 0.9, we consider it significant
+                s_tla = np.where(s_tla >= 0.9, s_tla, 0)
+                s_tla = np.concatenate([s_tla, [0] * (nzeta[it][l] - len(s_tla))])
+                s_tl = [max(s_tl[i], s_tla[i]) for i in range(nzeta[it][l])]
+            out[it].append(s_tl)
+    return out
+
 def _svdlz(C, 
            S,
            nbands,
@@ -121,7 +263,12 @@ def _svdlz(C,
             angular momentum l of type i. len(nzeta) must equal len(natom).
         l_isotrop : str
             Method to average over m for each l (remove anisotropicity). 
-            Options are 'rotational-invariant' and 'max'.
+            Options are 'rotational-invariant', 'max' and 'aniso'. 
+            'rotational-invariant' averages over m by taking abs of each m, 
+            then summing over all their squares, then multplying by 1/sqrt(2l+1).
+            'max' only extracts the maximum value of m. 
+            'aniso' does not average over m, but only get the largest 
+            contribution.
         reinterp_view : str
             Method to reinterpret the wave function coefficients. Options are
             'decompose' and 'reduce'.
@@ -156,10 +303,11 @@ def _svdlz(C,
     Ct = [[[] for _ in nzeta[it]] for it in range(ntyp)]
     while mu < nao:
         it, l, _, _, _ = comp2lin[mu][0]
+        svdblk_shape = (-1, nbands) if reinterp_view == 'decompose' else (nzeta[it][l], -1)
+
         stride = natom[it] * nzeta[it][l]
         idx = [comp2lin[mu+i][1] for i in range(stride)]
-        tlm_shape = (-1, nbands) if reinterp_view == 'decompose' else (nzeta[it][l], -1)
-        Ct[it][l].append(C[idx, :nbands].reshape(tlm_shape))
+        Ct[it][l].append(C[idx, :nbands].reshape(svdblk_shape))
         mu += stride
     # return Ct
 
@@ -168,7 +316,12 @@ def _svdlz(C,
     sigma_tlm = [[[] for _ in range(len(nzeta[it]))] for it in range(ntyp)]
     for it in range(ntyp):
         for l in range(lmax[it]+1):
-            pref = 1 if l_isotrop == 'max' else 1 / np.sqrt(2*l+1)
+            if l_isotrop == 'aniso':
+                sigma_tlm[it][l] = [
+                    la.svd(np.array(Ct[it][l]).reshape(nzeta[it][l], -1), compute_uv=False)]
+                continue
+            # otherwise, average over m
+            pref = 1 if l_isotrop in ['max', 'aniso'] else 1 / np.sqrt(2*l+1)
             for m in range(2*l+1):
                 sigma_tlm[it][l].append(la.svd(Ct[it][l][m], compute_uv=False) * pref)
     
@@ -188,11 +341,11 @@ from SIAB.spillage.datparse import read_wfc_lcao_txt, read_triu, \
 
 class TestLCAOWfcAnalysis(unittest.TestCase):
 
-    def test_wll_gamma(self):
+    def est_wll_gamma(self):
         
-        here = os.path.dirname(os.path.abspath(__file__))
-        outdir = os.path.join(here, 'testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/')
-        # outdir = './testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/'
+        #here = os.path.dirname(os.path.abspath(__file__))
+        #outdir = os.path.join(here, 'testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/')
+        outdir = '/root/documents/simulation/orbgen/Test1Aluminum-20241011/Al-dimer-2.00-10au/OUT.Al-dimer-2.00-10au/'
         
         wfc = read_wfc_lcao_txt(outdir + 'WFC_NAO_GAMMA1.txt')[0]
         S = read_triu(outdir + 'data-0-S')
@@ -203,7 +356,7 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
         for ib, wb in enumerate(wll):
             self.assertAlmostEqual(np.sum(wb.real), 1.0, places=6)
 
-        return # suppress output
+        # return # suppress output
 
         for ib, wb in enumerate(wll):
             wl_row_sum = np.sum(wb.real, 0)
@@ -213,7 +366,7 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
             print(f"    sum = {np.sum(wl_row_sum):6.3f}")
             print('')
 
-    def test_wfc_reinterp(self):
+    def est_wfc_reinterp(self):
             # nbands
         C = [[ 1,  2,  3], # 1s 
              [ 4,  5,  6], # 2s
@@ -297,10 +450,11 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
                     #print(Ct[it][l][m].tolist(), Cref[it][l][m])
                     self.assertTrue(np.allclose(Ct[it][l][m].tolist(), Cref[it][l][m]))
         
-    def test_svdlz_rotinv_decomp(self):
+    def est_svdlz_rotinv_decomp(self):
         
-        here = os.path.dirname(os.path.abspath(__file__))
-        outdir = os.path.join(here, 'testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/')
+        #here = os.path.dirname(os.path.abspath(__file__))
+        #outdir = os.path.join(here, 'testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/')
+        outdir = '/root/documents/simulation/orbgen/Test1Aluminum-20241011/Al-dimer-2.00-10au/OUT.Al-dimer-2.00-10au/'
 
         wfc = read_wfc_lcao_txt(outdir + 'WFC_NAO_GAMMA1.txt')[0]
         S = read_triu(outdir + 'data-0-S')
@@ -328,16 +482,18 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
                 print(f'sum = {np.sum(s):6.3f}\n')
             print('')
 
-    def test_svdlz_max_reduce(self):
+    def est_svdlz_max_reduce(self):
         
-        here = os.path.dirname(os.path.abspath(__file__))
-        outdir = os.path.join(here, 'testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/')
+        # here = os.path.dirname(os.path.abspath(__file__))
+        # outdir = os.path.join(here, 'testfiles/Si/jy-7au/monomer-k/OUT.ABACUS/')
+        outdir = '/root/documents/simulation/orbgen/Test1Aluminum-20241011/Al-dimer-2.00-10au/OUT.Al-dimer-2.00-10au/'
+        # outdir = 'testfiles/Si/jy-7au/monomer-k/OUT.ABACUS/'
 
         wfc = read_wfc_lcao_txt(outdir + 'WFC_NAO_GAMMA1.txt')[0]
         S = read_triu(outdir + 'data-0-S')
         dat = read_running_scf_log(outdir + 'running_scf.log')
 
-        sigma = _svdlz(wfc, S, 'all', 
+        sigma = _svdlz(wfc, S, 22, 
                        dat['natom'], 
                        dat['nzeta'], 
                        'max',
@@ -346,7 +502,7 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
         for i, (nt, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
             self.assertEqual(len(sigma[i]), len(nz)) # number of l orbitals
         
-        return # suppress output
+        # return # suppress output
         for i, (nt, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
             print(f"Atom type {i+1}")
             for l, s in enumerate(sigma[i]):
@@ -359,14 +515,14 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
                 print(f'sum = {np.sum(s):6.3f}\n')
             print('')
 
-    def test_wll_multi_k(self):
+    def est_wll_multi_k(self):
         
         here = os.path.dirname(os.path.abspath(__file__))
-        outdir = os.path.join(here, 'testfiles/Si/jy-7au/dimer-2.8-k/OUT.ABACUS/')
+        outdir = os.path.join(here, 'testfiles/Si/jy-7au/monomer-k/OUT.ABACUS/')
         #outdir = './testfiles/Si/jy-7au/dimer-2.8-k/OUT.ABACUS/'
 
-        wfc = read_wfc_lcao_txt(outdir + 'WFC_NAO_K6.txt')[0]
-        S = read_triu(outdir + 'data-5-S')
+        wfc = read_wfc_lcao_txt(outdir + 'WFC_NAO_K2.txt')[0]
+        S = read_triu(outdir + 'data-1-S')
         dat = read_running_scf_log(outdir + 'running_scf.log')
 
         wll = _wll(wfc, S, dat['natom'], dat['nzeta'])
@@ -374,7 +530,7 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
         for ib, wb in enumerate(wll):
             self.assertAlmostEqual(np.sum(wb.real), 1.0, places=6)
 
-        return # suppress output
+        # return # suppress output
 
         for ib, wb in enumerate(wll):
             wl_row_sum = np.sum(wb.real, 1)
@@ -384,22 +540,25 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
             print(f"    sum = {np.sum(wl_row_sum):6.3f}")
             print('')
 
-    def est_single_case(self):
+    def est_nzeta_nband_plt(self):
         
-        outdir = 'Si-dimer-15.00-8au/OUT.ABACUS/'
+        outdir = '/root/documents/simulation/orbgen/Test1Aluminum-20241011/Al-dimer-2.00-10au/OUT.Al-dimer-2.00-10au/'
 
         wfc = read_wfc_lcao_txt(outdir + 'WFC_NAO_GAMMA1.txt')[0]
         S = read_triu(outdir + 'data-0-S')
         dat = read_running_scf_log(outdir + 'running_scf.log')
 
+        nao, nbands = wfc.shape
+
         import matplotlib.pyplot as plt
         sigmas = []
         fig, ax = plt.subplots(1, 3, figsize=(18, 6))
-        for nbnd in range(7, 20, 5):
+        for nbnd in range(4, nbands, 5):
             sigma = _svdlz(wfc, S, nbnd, dat['natom'], dat['nzeta'], 'max', 'reduce')
             for i, (nt, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
                 for l in range(len(nz)):
-                    print(sigma[i][l])
+                    #print(f"atom type {i+1}, l={l}, nbnd={nbnd}")
+                    #print(sigma[i][l])
                     ax[l].plot(np.log10(sigma[i][l]), '-o', label=f'nbnd={nbnd}')
                     # ax[l].set_yscale('log')
                     thrs = [1.0, 0.5, 0.1, 0.01]
@@ -408,10 +567,54 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
                     ax[l].legend()
                     ax[l].set_xlim(0, 12)
                     ax[l].set_ylim(-3, 0.5)
+                    ax[l].set_title(f'atom type {i+1}, l={l}')
+                    ax[l].set_xlabel('zeta functions')
+                    ax[l].set_ylabel('log10(sigma)')
 
         plt.show()
         #plt.savefig('test_single_case.png')
         #plt.close()
-        
+    
+    def est_svd_atomic(self):
+        here = os.path.dirname(os.path.abspath(__file__))
+        outdir = os.path.join(here, 'testfiles/Si/jy-7au/monomer-k/OUT.ABACUS/')
+
+        wfc = read_wfc_lcao_txt(outdir + 'WFC_NAO_K2.txt')[0]
+        S = read_triu(outdir + 'data-1-S')
+        dat = read_running_scf_log(outdir + 'running_scf.log')
+
+        sigma = _svd_atomic(wfc, S, 'all', dat['natom'], dat['nzeta'])
+        self.assertEqual(len(sigma), len(dat['natom'])) # number of atom types
+        for i, (nt, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
+            self.assertEqual(len(sigma[i]), len(nz)) # number of l orbitals
+    
+    def est_svd_aniso_max(self):
+        here = os.path.dirname(os.path.abspath(__file__))
+        outdir = os.path.join(here, 'testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/')
+
+        wfc = read_wfc_lcao_txt(outdir + 'WFC_NAO_GAMMA1.txt')[0]
+        S = read_triu(outdir + 'data-0-S')
+        dat = read_running_scf_log(outdir + 'running_scf.log')
+
+        sigma = _svd_aniso_max(wfc, S, 'all', dat['natom'], dat['nzeta'])
+        print(sigma)
+        self.assertEqual(len(sigma), len(dat['natom']))
+        for i, (nt, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
+            self.assertEqual(len(sigma[i]), len(nz))
+    
+    def test_svd_aniso_svd(self):
+        # here = os.path.dirname(os.path.abspath(__file__))
+        # outdir = os.path.join(here, 'testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/')
+        outdir = outdir = '/root/documents/simulation/orbgen/Test1Aluminum-20241011/Al-dimer-2.00-10au/OUT.Al-dimer-2.00-10au/'
+        wfc = read_wfc_lcao_txt(outdir + 'WFC_NAO_GAMMA1.txt')[0]
+        S = read_triu(outdir + 'data-0-S')
+        dat = read_running_scf_log(outdir + 'running_scf.log')
+
+        sigma = _svd_aniso_svd(wfc, S, 12, dat['natom'], dat['nzeta'])
+        for sigma_t in sigma:
+            for l, sigma_l in enumerate(sigma_t):
+                print(f'l = {l}')
+                print(sigma_l**2)
+
 if __name__ == '__main__':
     unittest.main()
