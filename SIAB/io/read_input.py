@@ -144,7 +144,7 @@ def convert_oldinp_tojson(inp: dict):
 
 def convert_plaintext_tojson(inp: dict):
     """especially for version 0.2.0"""
-    
+    result = {"reference_systems": [], "orbitals": []}
     shapes = ["dimer", "trimer", "tetramer"]
 
     def is_reference_systems_line(key, value):
@@ -155,7 +155,15 @@ def convert_plaintext_tojson(inp: dict):
                         if isinstance(value[2], list):
                             return True
         return False
-    
+
+    #               STRU1      dimer     8       2       1   1.8  2.0  2.3  2.8  3.8
+    refsys = r'^\s*(STRU\d+)\s+(\w+)\s+(\d+)\s+(\d+)\s+(\d+)\s+((\d+\.\d+\s+)+)$'
+    #             Level1      STRU1       4      none    1s1p   
+    orb = r'^\s*(Level\d+)\s+(STRU\d+)\s+(\d+)\s+(\w+)\s+([a-z0-9]+)$'
+    #         Save2    Level2      DZP
+    save = r'^\s*(Save\d+)\s+(Level\d+)\s+([A-Z0-9]+)$'
+    zeta = r'^([SDTQ56789]?Z([SDTQ56789]?P)?)'
+
     def is_orbitals_line(key, value):
         zeta_pattern = r"^(\s*)([SDTQ56789]?Z([SDTQ56789]?P)?)"
         match = re.match(zeta_pattern, key)
@@ -167,10 +175,7 @@ def convert_plaintext_tojson(inp: dict):
                             return True
         return False
 
-    result = {
-        "reference_systems": [],
-        "orbitals": []
-    }
+    
     for key, value in inp.items():
         if is_reference_systems_line(key, value):
             result["reference_systems"].append({
@@ -209,10 +214,7 @@ def nbands_from_str(option: str|float|int, shape: str, z_val: float):
 
 def abacus_settings(user_settings: dict, minimal_basis: list = None, z_val: float = 0, z_core: float = 0):
 
-    # copy all possible shared parameters (shared by all reference systems)
-    all_params = abacus_params()
-    template = {key: value for key, value in user_settings.items() if key in all_params}
-    # then create copies for each reference system
+    # create copies for each reference system
     refsys = user_settings.get("reference_systems", [])
     autoset_monomer = bool(user_settings.get("spill_guess", "random") == "atomic" \
          and len([True for s in refsys if s["shape"] == "monomer"]) == 0)
@@ -224,6 +226,9 @@ def abacus_settings(user_settings: dict, minimal_basis: list = None, z_val: floa
     b2 = (nsystem > 1 and autoset_monomer)
     assert (b1 or b2), "number of reference systems should be at least 2 if spill_guess is atomic, otherwise at least 1"
 
+    # copy all possible shared parameters (shared by all reference systems)
+    all_params = abacus_params()
+    template = {key: value for key, value in user_settings.items() if key in all_params}
     result = [template.copy() for _ in range(nsystem)]
     # then parameters cannot share
     shape_index_mapping = [v["shape"] for v in refsys]
@@ -257,8 +262,7 @@ def abacus_settings(user_settings: dict, minimal_basis: list = None, z_val: floa
         # auto set nbands if for reference system the nbands is set to "auto"
         nbands = refsys[irs].get("nbands", "auto")
         if nbands == "auto":
-            shape = refsys[irs]["shape"]
-            nelec_tot = natom_from_shape(shape)*z_val
+            nelec_tot = natom_from_shape(refsys[irs]["shape"])*z_val
             if nelec_tot < 1:
                 print("WARNING: program possibly cannot grep reasonable `z_valence` from pseudopotential.")
             nbands = int(max(nelec_tot, 2))
@@ -379,7 +383,11 @@ def siab_settings(user_settings: dict, minimal_basis: list, z_val: float = 0):
         nbands_ref = orbital["nbands_ref"]
         nbands_ref = [nbands_ref] if not isinstance(nbands_ref, list) else nbands_ref
         assert len(nbands_ref) == len(shape), "nbands_ref should have the same length as shape"
-        result["orbitals"][iorb]["nbands_ref"] = [nbands_from_str(n, s, z_val) for n, s in zip(nbands_ref, shape)]
+        # CHANGE LOG: ABACUS-ORBGEN v3.0, the `nbands_ref` is not necessary to be inferred here
+        # the following line is deprecated, for optimizer = pytorch.SWAT and bfgs, they both
+        # have their own parser to support the "auto" option.
+        # result["orbitals"][iorb]["nbands_ref"] = [nbands_from_str(n, s, z_val) for n, s in zip(nbands_ref, shape)]
+        result["orbitals"][iorb]["nbands_ref"] = nbands_ref # so copy the original value directly
         result["orbitals"][iorb]["folder"] = index
         
     # indexing the nzeta_from -> nzeta

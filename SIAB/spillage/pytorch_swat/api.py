@@ -58,7 +58,7 @@ def run(params: dict = None, cache_dir: str = "./", ilevel: int = 0, nlevel: int
 
 import SIAB.interface.old_version as siov
 import sys
-def iter(siab_settings, calculation_settings, folders):
+def run(siab_settings, calculation_settings, folders):
     """iterate on siab_settings, can support parallelization according to user settings"""
     import SIAB.spillage.util as ssu
     siab_settings = ssu.initialize(calculation_settings, siab_settings, folders)

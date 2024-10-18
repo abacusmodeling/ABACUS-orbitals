@@ -118,7 +118,7 @@ def abacus(general: dict,
 def spillage(folders: list,
              calculation_settings: list,
              siab_settings: dict):
-    """spillage interface
+    """Interface to Spillage Optimization task runners
 
     Parameters
     ----------
@@ -160,11 +160,8 @@ def spillage(folders: list,
     """
     # iteratively generate numerical atomic orbitals here
     optimizer = siab_settings.get("optimizer", "none").lower()
-    caller_map = {
-        "pytorch.swat": ssps_api.iter,
-        "none": ss_api.iter,
-        "restart": ss_api.iter,
-        "bfgs": ss_api.iter
-    }
-    caller_map[optimizer](siab_settings, calculation_settings, folders)
+    assert optimizer in ["pytorch.swat", "none", "restart", "bfgs"], "optimizer not supported"
+    branch = "v2.0" if optimizer == "pytorch.swat" else "v3.0"
+    run = ssps_api.run if branch == "v2.0" else ss_api.run
+    run(siab_settings, calculation_settings, folders)
 

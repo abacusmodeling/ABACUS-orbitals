@@ -46,7 +46,7 @@ Make sure in your input the following tags are correctly set:
     "orbitals": [
         {
             "zeta_notation": [S#]s[P#]p[D#]d[F#]f,
-            "nbands": NUMBER,
+            "nbands_ref": NUMBER,
             "orb_ref": "none" or [S#']s[P#']p[D#']d[F#']f,
             "shape": (the same),
         },
