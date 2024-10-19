@@ -825,7 +825,8 @@ def _nzeta_analysis(folder, count_thr = 1e-1, itype = 0):
 
 class TestAPI(unittest.TestCase):
 
-    def est_coef_gen(self):
+    # @unittest.skip('Skip for developement')
+    def test_coef_gen(self):
 
         rcut = 3.0
         ecut = 10.0
@@ -839,7 +840,8 @@ class TestAPI(unittest.TestCase):
             self.assertEqual(dim1, dim2)
             self.assertEqual(coefs[0][l], np.eye(dim1).tolist())
     
-    def est_band_indexing(self):
+    # @unittest.skip('Skip for developement')
+    def test_band_indexing(self):
 
         folders = [["folder1", "folder2"], ["folder3", "folder4"]]
         # test single folder
@@ -847,7 +849,8 @@ class TestAPI(unittest.TestCase):
         # test multiple folders
         self.assertEqual(_band_indexing([10, 12], [0, 1], folders), [range(10), range(10), range(12), range(12)])
 
-    def est_make_guess(self):
+    # @unittest.skip('Skip for developement')
+    def test_make_guess(self):
 
         nzeta = [[3, 3, 2], [2, 2, 1], [1, 1]]
         initdir = "initdir"
@@ -862,7 +865,8 @@ class TestAPI(unittest.TestCase):
         self.assertEqual(guess["diagnosis"], True)
         self.assertEqual(guess["orb_mat"], "initdir")
 
-    def est_orb_matrices(self):
+    # @unittest.skip('Skip for developement')
+    def test_orb_matrices(self):
 
         test_folder = "test_orb_matrices"
         os.makedirs(test_folder, exist_ok=True)
@@ -940,7 +944,8 @@ class TestAPI(unittest.TestCase):
         # remove the folder
         os.rmdir(test_folder)
 
-    def est_nzeta_to_initgen(self):
+    # @unittest.skip('Skip for developement')
+    def test_nzeta_to_initgen(self):
 
         nz1 = np.random.randint(0, 5, 2).tolist()
         nz2 = np.random.randint(0, 5, 3).tolist()
@@ -953,7 +958,8 @@ class TestAPI(unittest.TestCase):
             self.assertEqual(total_init[iz], max([
                 nz[iz] if iz < len(nz) else -1 for nz in [nz1, nz2, nz3, nz4]]))
 
-    def est_coefs_subset(self):
+    # @unittest.skip('Skip for developement')
+    def test_coefs_subset(self):
 
         nz3 = [3, 3, 2]
         nz2 = [2, 2, 1]
@@ -1011,7 +1017,9 @@ class TestAPI(unittest.TestCase):
                                    [data[1][1]],
                                    []]])
 
-    def est_wll_fold(self):
+    @unittest.skip('wll_fold is deprecated, therefore not needed to\
+        test this function')
+    def test_wll_fold(self):
 
         here = os.path.dirname(__file__)
 
@@ -1035,7 +1043,8 @@ class TestAPI(unittest.TestCase):
         ref = [2, 1, 1]
         self.assertTrue(all([abs(wl - ref[i]) < 1e-8 for i, wl in enumerate(wll_fold)]))
 
-    def est_nzeta_infer(self):
+    @unittest.skip('still under development')
+    def test_nzeta_infer(self):
 
         here = os.path.dirname(__file__)
 
@@ -1126,7 +1135,8 @@ class TestAPI(unittest.TestCase):
         ref = np.sum(np.array([np.sum(refdata[i, :nbnd, :], 0) / degen * wk[i] for i in range(4)]), 0)
         self.assertTrue(all([abs(nz - ref[i]) < 1e-3 for i, nz in enumerate(nzeta)]))
 
-    def est_nzeta_infer_occ(self):
+    @unittest.skip('still under development')
+    def test_nzeta_infer_occ(self):
         here = os.path.dirname(__file__)
 
         # gamma case is easy, multi-k case is more difficult
@@ -1134,7 +1144,8 @@ class TestAPI(unittest.TestCase):
         nzeta = _nzeta_infer(fpath, 'occ', 'wll')
         print(nzeta)
 
-    def est_nzeta_mean_conf(self):
+    @unittest.skip('still under development')
+    def test_nzeta_mean_conf(self):
 
         here = os.path.dirname(__file__)
 
@@ -1290,7 +1301,7 @@ class TestAPI(unittest.TestCase):
                          [(a+b)/2 for a, b in\
                           zip(nzeta_dimer_nbnd10, nzeta_mono_nbnd10)])
 
-    def est_nzeta_analysis(self):
+    def test_nzeta_analysis(self):
 
         here = os.path.dirname(__file__)
         fpath = os.path.join(here, "testfiles/Si/jy-7au/monomer-gamma/")
@@ -1301,39 +1312,96 @@ class TestAPI(unittest.TestCase):
                            [1, 2, 3, 10, 11, 12, 19, 20, 21], 
                            [5, 6, 7, 8, 9, 13, 14, 15, 16, 17, 22, 23, 24]]])
 
-    def est_single_case(self):
-        fpath = 'Test1Aluminum-20241011/Al-dimer-2.00-6au'
-        wfc = read_wfc_lcao_txt(os.path.join(fpath, "OUT.Al-dimer-2.00-6au/WFC_NAO_GAMMA1.txt"))[0]
-        ovlp = read_triu(os.path.join(fpath, "OUT.Al-dimer-2.00-6au/data-0-S"))
-        running = read_running_scf_log(os.path.join(fpath, "OUT.Al-dimer-2.00-6au/running_scf.log"))
-        wll = _wll(wfc, ovlp, running["natom"], running["nzeta"])
-        for ib, wb in enumerate(wll):
-            wl_row_sum = np.sum(wb.real, 1)
-            print(f"Band {ib+1}    ", end='')
-            for x in wl_row_sum:
-                print(f"{x:6.3f} ", end='')
-            print(f"    sum = {np.sum(wl_row_sum):6.3f}")
-            print('')
+    @unittest.skip('This is not a unittest. Instead, this\
+     is a minimal example to investigate the synergetic\
+     effect of the two parameters, nzeta and nband on the\
+     orbital generation task.')
+    def test_sigma_nzeta_nbands(self):
+        '''for doing numerical experiments, according to sigma value,
+        determine the nzeta that can produce the best orbital genreation
+        results. Possible adjustable parameters are mainly in two 
+        aspects:
+        - nband
+        - nzeta
+        
+        that is, the range of bands to be considered
+        and the number of zeta to be generated.
 
-        print(_nzeta_infer(fpath, 22, 'wll'))
+        The initial guess also matters but it is clear.
+        '''
+        from SIAB.spillage.datparse import read_istate_info
+        from SIAB.spillage.lcao_wfc_analysis import _svd_aniso_max,\
+        _svd_aniso_svd, _svd_iso, _svd_atomic
 
-    @unittest.skip('This is not a unittest!')
-    def test_pick_run(self):
-        '''run onion_opt with given parameters'''
-        minimizer = Spillage_jy()
-        nzeta = [
-            [2, 2, 0], 
-            [2, 2, 1], 
-            [3, 3, 2]
-        ]
-        iconfs = []
-        ibands = []
-        deps = []
+        rcut = 6
+        nzeta = [2, 1, 0]
+        # Al: 2s 2p valence electrons
+        # 1s2, 2s2, 2p6, 3s2, 3p1
+        ibands_atom = [0, 1, 2, 3, 4]
+        jobdir = '/root/documents/simulation/orbgen/Test1Aluminum-20241011'
+        outdir = [f'Al-dimer-2.00-{rcut}au',
+                  f'Al-dimer-2.50-{rcut}au',
+                  f'Al-dimer-3.00-{rcut}au',
+                  f'Al-dimer-3.75-{rcut}au',
+                  f'Al-dimer-4.50-{rcut}au']
+        occ_thr = 1e-1 # threshold on occ to determine nbands
+
         nthreads = 4
-        options = {'method': 'svd', 'guess': 'mean'}
-        guess = {''}
-        coefs = _do_onion_opt(minimizer, nzeta, iconfs, ibands, deps, nthreads, options, guess)
+        option = {"maxiter": 2000, "disp": False, "ftol": 0, 
+                  "gtol": 1e-6, 'maxcor': 20}
 
+        #######
+        # Run #
+        #######
+        minimizer = Spillage_jy()
+        nbands = [0] * len(outdir)
+        for i, f in enumerate(outdir):
+            suffix = f
+            d = os.path.join(jobdir, f, f'OUT.{suffix}')
+            _, _, occ = read_istate_info(os.path.join(d, 'istate.info'))
+            print(f'For {f}, occ:')
+            for isp, occ_sp in enumerate(occ):
+                print(f'spin = {isp}')
+                for ik, occ_k in enumerate(occ_sp):
+                    print(f'k = {ik}')
+                    for io, o in enumerate(occ_k):
+                        print(f'{o:.4e}', end=' ')
+                        if io % 5 == 4:
+                            print('')
+                    print('')
+                print('')
+            print('')
+            nbands[i] = len(np.where(np.array(occ) > occ_thr)[0])
+            minimizer.config_add(d)
+
+        # svd
+        for i, f in enumerate(outdir):
+            nbnd = nbands[i]
+            d = os.path.join(jobdir, f, f'OUT.{f}')
+            wfc = read_wfc_lcao_txt(os.path.join(d, "WFC_NAO_GAMMA1.txt"))[0]
+            ovlp = read_triu(os.path.join(d, "data-0-S"))
+            running = read_running_scf_log(os.path.join(d, "running_scf.log"))
+            sigma = _svd_atomic(wfc, ovlp, nbnd, running["natom"],
+                                running["nzeta"], 0.5)
+            print(f'For {f}, nbnd = {nbnd}, sigma:')
+            for l, s in enumerate(sigma[0]):
+                print(f'l = {l}')
+                for i, si in enumerate(s):
+                    print(f'{si:.4e}', end=' ')
+                    if i % 5 == 4:
+                        print('')
+                print('')
+            print('')
+        ibands = [range(n) for n in nbands]
+
+        suffix = f'Al-monomer-{rcut}au'
+        coef_init = initgen_jy(os.path.join(jobdir, suffix, f'OUT.{suffix}'),
+                               nzeta,
+                               ibands=ibands_atom,
+                               diagnosis=True)
+        coefs = minimizer.opt([coef_init], None, 'all', ibands, option, nthreads)
+                
+        _save_orb(coefs[0], 'Al', 100, rcut, os.getcwd())
 
 
 if __name__ == "__main__":
