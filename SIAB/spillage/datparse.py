@@ -392,6 +392,46 @@ def read_input_script(fname, k = None):
     
     return result if k is None else result[k]
 
+def read_istate_info(fname):
+    '''read ABACUS istate.info file, return one nested lists storing kpoint 
+    coordinates, two nested lists ener and occ, that can be indexed by 
+    [is][ik][ib], is for spin, ik for kpoint, ib for band.
+    
+    Parameters
+    ----------
+    fname : str
+        path to the istate.info file
+        
+    Returns
+    -------
+    kpt : list of list of float
+        kpoint coordinates
+    ener : list of list of list of float
+        energies of the bands
+    occ : list of list of list of float
+        occupations of the bands
+    '''
+    with open(fname, "r") as f:
+        lines = [line.strip() for line in f.readlines()]
+    lines = [line for line in lines if len(line) > 0]
+    
+    kpt = [line for line in lines if line.startswith("BAND")]
+    bands = [line for line in lines if not line.startswith("BAND")]
+    title = r'^(BAND\s+(Spin\sup\s)?Energy\(ev\)\s+Occupation\s+(Spin\sdown\sEnergy\(ev\)\s+Occupation\s+)?Kpoint\s=\s\d+\s+)(\(.*\))$'
+    assert all([re.match(title, line) for line in kpt])
+    kpt = [list(map(float, re.match(title, line).group(4)[1:-1].split())) for line in kpt]
+
+    nk = len(kpt)
+    nbands = (len(lines) - nk) // nk
+    assert nbands == len(bands) // nk
+
+    bands = [list(map(float, line.split())) for line in bands]
+    bands = np.array(bands).reshape(nk, nbands, -1)
+    occ = [bands[:, :, i].tolist() for i in range(2, bands.shape[-1], 2)]
+    ener = [bands[:, :, i].tolist() for i in range(1, bands.shape[-1], 2)]
+
+    return kpt, ener, occ
+
 ############################################################
 #                           Test
 ############################################################
@@ -566,6 +606,51 @@ class _TestDatParse(unittest.TestCase):
         self.assertEqual(dat['orbital_dir'], './testfiles')
         self.assertEqual(dat['kspacing'], '0.1 0.1 0.1')
         self.assertEqual(len(dat), 4)
+
+    def test_read_istate_info(self):
+        import os
+        here = os.path.dirname(__file__)
+        kpt, ener, occ = read_istate_info(os.path.join(here, 
+            'testfiles/Si/jy-7au/dimer-3.8-gamma/OUT.ABACUS/istate.info'))
+        self.assertEqual(len(kpt), 1) # only one kpoint
+        self.assertEqual(len(ener), 1) # only one spin
+        self.assertEqual(len(occ), 1) # only one spin
+        self.assertEqual(len(kpt[0]), 3) # kx, ky, kz
+        self.assertEqual(len(ener[0]), 1) # only one kpoint
+        self.assertEqual(len(occ[0]), 1) # only one kpoint
+        self.assertEqual(len(ener[0][0]), 50) # 50 bands
+        self.assertEqual(len(occ[0][0]), 50) # 50 bands
+
+        kpt, ener, occ = read_istate_info(os.path.join(here, 
+            'testfiles/Si/jy-7au/dimer-1.8-k/OUT.ABACUS/istate.info'))
+        self.assertEqual(len(kpt), 6) # 6 kpoints
+        self.assertEqual(len(ener), 1)
+        self.assertEqual(len(occ), 1)
+        for k in kpt:
+            self.assertEqual(len(k), 3)
+        self.assertEqual(len(ener[0]), 6)
+        self.assertEqual(len(occ[0]), 6)
+        for e in ener[0]:
+            self.assertEqual(len(e), 50)
+        for o in occ[0]:
+            self.assertEqual(len(o), 50)
+        
+        kpt, ener, occ = read_istate_info(os.path.join(here, 
+            'testfiles/Si/jy-7au/dimer-2.8-k/OUT.ABACUS/istate.info'))
+        self.assertEqual(len(kpt), 6)
+        self.assertEqual(len(ener), 2) # two spins
+        self.assertEqual(len(occ), 2)
+        for k in kpt:
+            self.assertEqual(len(k), 3)
+        self.assertEqual(len(ener[0]), 6)
+        self.assertEqual(len(occ[0]), 6)
+        for e_s in ener:
+            for e in e_s:
+                self.assertEqual(len(e), 50)
+        for o_s in occ:
+            for o in o_s:
+                self.assertEqual(len(o), 50)
+
 
 if __name__ == '__main__':
     unittest.main()
