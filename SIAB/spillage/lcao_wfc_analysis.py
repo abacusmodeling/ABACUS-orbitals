@@ -435,7 +435,7 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
         fig, ax = plt.subplots(1, 3, figsize=(18, 6))
         for nbnd in range(4, nbands, 5):
             sigma = method(wfc, S, nbnd, dat['natom'], dat['nzeta'])
-            for i, (nt, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
+            for i, (_, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
                 for l in range(len(nz)):
                     #print(f"atom type {i+1}, l={l}, nbnd={nbnd}")
                     #print(sigma[i][l])
@@ -467,7 +467,7 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
         self.assertEqual(len(sigma), len(dat['natom']))
 
         print(f'Method: svd-iso')
-        for i, (nt, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
+        for i, (_, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
             print(f'atom type {i+1}')
             for l in range(len(nz)):
                 print(f'l = {l}')
@@ -483,11 +483,11 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
 
         sigma = _svd_atomic(wfc, S, 'all', dat['natom'], dat['nzeta'])
         self.assertEqual(len(sigma), len(dat['natom'])) # number of atom types
-        for i, (nt, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
+        for i, (_, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
             self.assertEqual(len(sigma[i]), len(nz)) # number of l orbitals
 
         print(f'Method: svd-atomic')
-        for i, (nt, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
+        for i, (_, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
             print(f'atom type {i+1}')
             for l in range(len(nz)):
                 print(f'l = {l}')
@@ -503,11 +503,11 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
 
         sigma = _svd_aniso_max(wfc, S, 'all', dat['natom'], dat['nzeta'])
         self.assertEqual(len(sigma), len(dat['natom']))
-        for i, (nt, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
+        for i, (_, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
             self.assertEqual(len(sigma[i]), len(nz))
 
         print(f'Method: svd-aniso-max')
-        for i, (nt, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
+        for i, (_, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
             print(f'atom type {i+1}')
             for l in range(len(nz)):
                 print(f'l = {l}')
@@ -524,11 +524,11 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
         sigma = _svd_aniso_svd(wfc, S, 'all', dat['natom'], dat['nzeta'])
 
         self.assertEqual(len(sigma), len(dat['natom']))
-        for i, (nt, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
+        for i, (_, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
             self.assertEqual(len(sigma[i]), len(nz))
         
         print(f'Method: svd-aniso-svd')
-        for i, (nt, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
+        for i, (_, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
             print(f'atom type {i+1}')
             for l in range(len(nz)):
                 print(f'l = {l}')
