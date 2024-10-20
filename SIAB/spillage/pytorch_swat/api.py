@@ -4,7 +4,7 @@ import SIAB.spillage.orbscreen as sso
 import multiprocessing
 import torch
 
-def run(params: dict = None, cache_dir: str = "./", ilevel: int = 0, nlevel: int = 3):
+def opt(params: dict = None, cache_dir: str = "./", ilevel: int = 0, nlevel: int = 3):
     """Run the spillage calculation
     
     Args:
@@ -114,7 +114,7 @@ nrcuts_toparallel: {nrcuts_toparallel} (number of rcuts that can be parallelized
     if be_serial:
         for old_input, cache_dir, ilevel in siov.convert(calculation_setting=calculation_settings[0],
                                                          siab_settings=siab_settings):
-            orb_out = run(params=old_input, cache_dir=cache_dir, ilevel=ilevel, nlevel=nlevel)
+            orb_out = opt(params=old_input, cache_dir=cache_dir, ilevel=ilevel, nlevel=nlevel)
             postprocess(orb_out)
     else:
         orbgen_plans = []
@@ -150,7 +150,7 @@ NOTE: for parallelized run, the stdout and stderr will be redirected to log.[ipr
                     torch.set_num_threads(nthreads_rcut)
                     inp, cdir, ilv = orbgen_plans[ircut][ilevel]
                     # create a process and also get its return value
-                    proc = multiprocessing.Process(target=run, args=(inp, cdir, ilv, nlevel))
+                    proc = multiprocessing.Process(target=opt, args=(inp, cdir, ilv, nlevel))
                     # redirect stdout to log.[iproc].txt and stderr to err.[iproc].txt for each process
                     sys.stdout = open("log.%d.txt"%ircut, "a+")
                     sys.stderr = open("err.%d.txt"%ircut, "a+")
