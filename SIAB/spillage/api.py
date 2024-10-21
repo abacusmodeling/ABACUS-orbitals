@@ -63,6 +63,7 @@ def _coef_restart(fcoef: str):
     """
     return read_param(fcoef)
 
+# this function has been refactored in spillage.jy_expmt, the _ibands function
 def _band_indexing(nbands, indexes, folders):
     """calculate the band indexes for orbital optimization. 
     
@@ -150,7 +151,7 @@ def _coef_opt_jy(rcut, orbparams, folders, options, nthreads, spill_coefs = None
     elem = flatten(folders)[0].split("-")[0]
     initdir = "-".join([elem, "monomer", f"{rcut}au"])
     initdir = os.path.join(initdir, f"OUT.{os.path.basename(initdir)}")
-    guess = _make_guess(nzeta, initdir, True, True)
+    guess = _plan_guess(nzeta, initdir, True, True)
 
     ibands = [_band_indexing(orb['nbands_ref'], orb['folder'], folders) for orb in orbparams]
     deps = [orb['nzeta_from'] for orb in orbparams]
@@ -215,7 +216,7 @@ def _coef_opt_pw(rcut, orbparams, folders, options, nthreads, spill_coefs = None
     elem = flatten(folders)[0].split("-")[0]
     initdir = "-".join([elem, "monomer"])
     initdir = os.path.join(initdir, os.path.basename(fov))
-    guess = _make_guess(nzeta, initdir, False, True)
+    guess = _plan_guess(nzeta, initdir, False, True)
     ibands = [_band_indexing(orb['nbands_ref'], orb['folder'], folders) for orb in orbparams]
     ideps = [orb['nzeta_from'] for orb in orbparams]
 
@@ -228,7 +229,7 @@ def _coef_opt_pw(rcut, orbparams, folders, options, nthreads, spill_coefs = None
                          options,
                          guess)
 
-def _make_guess(nzeta, folder, jy = True, diagnosis = True):
+def _plan_guess(nzeta, folder, jy = True, diagnosis = True):
     """initialize the coef_guess for both jy and pw basis. calculate the maximal
     number of zeta func needed by each angular momentum.
     
@@ -282,7 +283,7 @@ def _do_onion_opt(minimizer, nzeta, iconfs, ibands, deps, nthreads, options, gue
     options: dict
         the options for optimization
     guess: dict
-        the initial guess configuration, see function _make_guess for details
+        the initial guess configuration, see function _plan_guess for details
 
     Returns
     -------
@@ -467,8 +468,8 @@ def _orb_matrices(folder: str):
     wavefunctions, presently ranges from 6 to 10 and 0 to 1, respectively.
     """
 
-    old = r"orb_matrix.([01]).dat"
-    new = r"orb_matrix_rcut(\d+)deriv([01]).dat"
+    old = r'orb_matrix.([01]).dat'
+    new = r'orb_matrix_rcut(\d+)deriv([01]).dat'
 
     files = [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
     # convert to absolute path
@@ -524,7 +525,7 @@ def _save_orb(coefs, elem, ecut, rcut, folder, jY_type: str = "reduced"):
     folder = os.path.abspath(folder)
     os.makedirs(folder, exist_ok=True)
 
-    chi = _build_orb([coefs], rcut, 0.01, jY_type)
+    chi = _coef_griddata([coefs], rcut, 0.01, jY_type)
     # however, we should not bundle orbitals of different atomtypes together
 
     suffix = "".join([f"{len(coef)}{sym}" for coef, sym in zip(coefs, syms)])
@@ -543,7 +544,7 @@ def _save_orb(coefs, elem, ecut, rcut, folder, jY_type: str = "reduced"):
 
     return forb
 
-def _build_orb(coefs, rcut, dr: float = 0.01, jY_type: str = "reduced"):
+def _coef_griddata(coefs, rcut, dr: float = 0.01, jY_type: str = "reduced"):
     """build real space grid orbital based on the coefficients of the orbitals,
     rcut and grid spacing dr. The coefficients should be in the form of
     [it][l][zeta][q].
@@ -843,25 +844,27 @@ class TestAPI(unittest.TestCase):
     
     @unittest.skip('Skip for developement')
     def test_band_indexing(self):
-
-        folders = [["folder1", "folder2"], ["folder3", "folder4"]]
+                    # pert1     pert2
+        folders = [["folder1", "folder2"], # geom1
+                   ["folder3", "folder4"]] # geom2
         # test single folder
         self.assertEqual(_band_indexing(10, [0], folders), 10)
         # test multiple folders
-        self.assertEqual(_band_indexing([10, 12], [0, 1], folders), [range(10), range(10), range(12), range(12)])
+        self.assertEqual(_band_indexing([10, 12], [0, 1], folders), 
+                         [range(10), range(10), range(12), range(12)])
 
     @unittest.skip('Skip for developement')
-    def test_make_guess(self):
+    def test_plan_guess(self):
 
         nzeta = [[3, 3, 2], [2, 2, 1], [1, 1]]
         initdir = "initdir"
-        guess = _make_guess(nzeta, initdir, True, True)
+        guess = _plan_guess(nzeta, initdir, True, True)
         self.assertEqual(guess["nzeta"], [3, 3, 2])
         self.assertEqual(guess["diagnosis"], True)
         self.assertEqual(guess["outdir"], "initdir")
 
         nzeta = [[3, 1, 2], [2, 2, 1], [4, 1]]
-        guess = _make_guess(nzeta, initdir, False, True)
+        guess = _plan_guess(nzeta, initdir, False, True)
         self.assertEqual(guess["nzeta"], [4, 2, 2])
         self.assertEqual(guess["diagnosis"], True)
         self.assertEqual(guess["orb_mat"], "initdir")
@@ -1340,7 +1343,7 @@ class TestAPI(unittest.TestCase):
         # Al: 2s 2p valence electrons
         # 1s2, 2s2, 2p6, 3s2, 3p1
         ibands_atom = [0, 4, 1, 2, 3, 5, 6, 7]
-        jobdir = '/home/kirk0830/documents/simulation/orbgen/Test1Aluminum-20241011'
+        jobdir = '/root/documents/simulation/orbgen/Test1Aluminum-20241011'
         outdir = [f'Al-dimer-2.00-{rcut}au',
                   f'Al-dimer-2.50-{rcut}au',
                   f'Al-dimer-3.00-{rcut}au',
@@ -1414,13 +1417,9 @@ class TestAPI(unittest.TestCase):
                                        ibands=ib,
                                        diagnosis=True)
                 coef_init[l].append(c[l][0])
-
-        # coef_init = initgen_jy(os.path.join(jobdir, suffix, f'OUT.{suffix}'),
-        #                        nzeta,
-        #                        ibands=ibands_atom,
-        #                        diagnosis=True)
         
-        _save_orb(coef_init, 'Al(init)', 100, rcut, os.getcwd())
+        # suppress the plotting of initial guess
+        # _save_orb(coef_init, 'Al(init)', 100, rcut, os.getcwd())
         coefs = minimizer.opt([coef_init], None, 'all', ibands, option, nthreads)
 
         _save_orb(coefs[0], 'Al', 100, rcut, os.getcwd())
