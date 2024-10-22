@@ -1,0 +1,72 @@
+{
+  "file_list": {
+    "origin": [
+      "../OUT.W-STRU1-7-1.8/orb_matrix.0.dat",
+      "../OUT.W-STRU1-7-2.0/orb_matrix.0.dat",
+      "../OUT.W-STRU1-7-2.5/orb_matrix.0.dat",
+      "../OUT.W-STRU1-7-3.3/orb_matrix.0.dat",
+      "../OUT.W-STRU1-7-4.5/orb_matrix.0.dat"
+    ],
+    "linear": [
+      [
+        "../OUT.W-STRU1-7-1.8/orb_matrix.1.dat",
+        "../OUT.W-STRU1-7-2.0/orb_matrix.1.dat",
+        "../OUT.W-STRU1-7-2.5/orb_matrix.1.dat",
+        "../OUT.W-STRU1-7-3.3/orb_matrix.1.dat",
+        "../OUT.W-STRU1-7-4.5/orb_matrix.1.dat"
+      ]
+    ]
+  },
+  "info": {
+    "Nt_all": [
+      "W"
+    ],
+    "Nu": {
+      "W": [
+        4,
+        2,
+        2,
+        2,
+        1
+      ]
+    },
+    "Rcut": {
+      "W": 7
+    },
+    "dr": {
+      "W": 0.01
+    },
+    "Ecut": {
+      "W": 100
+    },
+    "lr": 0.02,
+    "cal_T": false,
+    "cal_smooth": true,
+    "max_steps": 9000
+  },
+  "weight": {
+    "stru": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "bands_file": [
+      "../OUT.W-STRU1-7-1.8/istate.info",
+      "../OUT.W-STRU1-7-2.0/istate.info",
+      "../OUT.W-STRU1-7-2.5/istate.info",
+      "../OUT.W-STRU1-7-3.3/istate.info",
+      "../OUT.W-STRU1-7-4.5/istate.info"
+    ]
+  },
+  "C_init_info": {
+    "init_from_file": true,
+    "C_init_file": "Level1.ORBITAL_RESULTS.txt",
+    "opt_C_read": false
+  },
+  "V_info": {
+    "init_from_file": true,
+    "same_band": true
+  }
+}

@@ -1,0 +1,2 @@
+# Delta_pwlcao, orbtype:DZP, pspType:Dojo-NC-SR-V180302+La, pwEcut:100, orbEcut:100, lcaoEcut:[100.1, 100], lcaoEcutString:E100.1-100, rcutlist:[6, 7, 8, 9, 10, 11, 12]
+57            La            nan           nan           25.871        15.163        9.69          nan           nan         

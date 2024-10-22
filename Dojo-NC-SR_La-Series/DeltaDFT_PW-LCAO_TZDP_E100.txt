@@ -1,0 +1,17 @@
+# Delta_pwlcao, orbtype:TZDP, pspType:Dojo-NC-SR-V180302+La, pwEcut:100, orbEcut:100, lcaoEcut:[100.1, 100], lcaoEcutString:E100.1-100, rcutlist:[6, 7, 8, 9, 10, 11, 12]
+57            La            nan           nan           18.882        5.166         2.046         nan           nan         
+58            Ce            nan           nan           14.149        3.302         2.22          nan           nan         
+59            Pr            nan           nan           43.427        26.337        3.604         nan           nan         
+60            Nd            nan           nan           54.912        3.82          0.506         nan           nan         
+61            Pm            nan           nan           nan           nan           nan           nan           nan         
+62            Sm            nan           nan           2.458         328.283       0.716         nan           nan         
+63            Eu            nan           nan           21.579        9.22          12.048        nan           nan         
+64            Gd            nan           nan           4.461         2.442         5.097         nan           nan         
+65            Tb            nan           nan           7.584         2.643         0.376         nan           nan         
+66            Dy            nan           nan           7.048         1.885         1.345         nan           nan         
+67            Ho            nan           nan           7.09          2.991         1.055         nan           nan         
+68            Er            nan           nan           7.233         2.355         1.118         nan           nan         
+69            Tm            nan           nan           6.405         2.933         1.096         nan           nan         
+70            Yb            nan           nan           52.954        4.217         0.386         nan           nan         
+71            Lu            nan           nan           7.338         0.839         0.201         nan           nan         
+
