@@ -13,9 +13,13 @@ from SIAB.spillage.plot import plot_chi
 from SIAB.spillage.radial import coeff_normalized2raw, coeff_reduced2raw,\
     build_raw, build_reduced, _nbes
 from SIAB.spillage.datparse import read_wfc_lcao_txt, read_triu, \
-    read_running_scf_log, read_input_script, read_orb_mat
+    read_running_scf_log, read_input_script, read_orb_mat,\
+    read_istate_info
 from SIAB.spillage.lcao_wfc_analysis import _wll
+from SIAB.spillage.lcao_wfc_analysis import api as wfc_analysis_api
 import unittest
+from SIAB.spillage.jy_expmt import _coef_init as _coef_init_jy
+from SIAB.spillage.jy_expmt import _ibands
 
 def _coef_gen(rcut: float, ecut: float, lmax: int, value: str = "eye"):
     """Directly generate the coefficients of the orbitals instead of performing optimization
@@ -63,38 +67,6 @@ def _coef_restart(fcoef: str):
     """
     return read_param(fcoef)
 
-# this function has been refactored in spillage.jy_expmt, the _ibands function
-def _band_indexing(nbands, indexes, folders):
-    """calculate the band indexes for orbital optimization. 
-    
-    Parameters
-    ----------
-    nbands: int|list[int]
-        the number of bands for each geometry
-    indexes: list[int]
-        the indexes of the geometries
-    folders: list[list[str]]
-        the folders where the ABACUS run information are stored. The first level of list
-        is the geometry like dimer, trimer, etc, the second level is the folders of the
-        deformation of the geometry, such as stretching, bending, etc.
-
-    Returns
-    -------
-    list: the band indexes for each geometry
-
-    Notes
-    -----
-    This function now handles two circumstances: 
-    1. nbands is a list.
-       this means there are multiple geometries were set as reference structures, 
-       and the elem of list specifies the number of bands for each geometry.
-    2. nbands is an scalar.
-    """
-    if isinstance(nbands, list):
-        return flatten([[range(n)]*len(folders[i]) for i, n in zip(indexes, nbands)])
-    else:
-        return nbands
-
 def _coef_opt_jy(rcut, orbparams, folders, options, nthreads, spill_coefs = None):
     """for fit_basis jy case, optimize Spillage function to get contraction coefficients of jy for one single rcut value
     
@@ -138,12 +110,12 @@ def _coef_opt_jy(rcut, orbparams, folders, options, nthreads, spill_coefs = None
                     for iorb, orb in enumerate(orbparams)]
     
     # nzeta infer...
-    nzeta = [orb['nzeta'] if orb['nzeta'] != "auto" else\
-                _nzeta_mean_conf(flatten(nbands_ref[iorb]), 
-                                 flatten([folders[i] for i in orb['folder']]),
-                                 'max',
-                                 'svd-aniso-svd')\
-                for iorb, orb in enumerate(orbparams)]
+    nzeta = [_nzeta_mean_conf(flatten(nbands_ref[iorb]), 
+                              flatten([folders[i] for i in orb['folder']]),
+                              'max',
+                              'svd-max',
+                              [orb['nzeta']]) # currently only one atomtype
+             for iorb, orb in enumerate(orbparams)]
     # use int(ceil()) to filter nzeta values
     nzeta = [[int(np.ceil(nz)) for nz in nzeta_orb] for nzeta_orb in nzeta]
 
@@ -153,7 +125,8 @@ def _coef_opt_jy(rcut, orbparams, folders, options, nthreads, spill_coefs = None
     initdir = os.path.join(initdir, f"OUT.{os.path.basename(initdir)}")
     guess = _plan_guess(nzeta, initdir, True, True)
 
-    ibands = [_band_indexing(orb['nbands_ref'], orb['folder'], folders) for orb in orbparams]
+    ibands = [_ibands(orb['nbands_ref'], orb['folder'], [len(f) for f in folders if f]) 
+              for orb in orbparams]
     deps = [orb['nzeta_from'] for orb in orbparams]
     
     return _do_onion_opt(minimizer, 
@@ -217,7 +190,7 @@ def _coef_opt_pw(rcut, orbparams, folders, options, nthreads, spill_coefs = None
     initdir = "-".join([elem, "monomer"])
     initdir = os.path.join(initdir, os.path.basename(fov))
     guess = _plan_guess(nzeta, initdir, False, True)
-    ibands = [_band_indexing(orb['nbands_ref'], orb['folder'], folders) for orb in orbparams]
+    ibands = [_ibands(orb['nbands_ref'], orb['folder'], [len(f) for f in folders if f]) for orb in orbparams]
     ideps = [orb['nzeta_from'] for orb in orbparams]
 
     return _do_onion_opt(minimizer,
@@ -296,7 +269,8 @@ def _do_onion_opt(minimizer, nzeta, iconfs, ibands, deps, nthreads, options, gue
         nzeta_inner = None if index_ is None else nzeta[index_]
         print(f"""ORBGEN: optimization on level {iorb + 1} (with # of zeta functions for each l: {nzeta_}), 
         based on orbital ({nzeta_inner})""", flush = True)
-        coef_init = _coef_guess(guess, nzeta_, excluded=nzeta_inner)
+        coef_init = _coef_subset(nzeta, nzeta_inner, initgen_pw(**guess)) if 'orb_mat' in guess \
+            else [_coef_init_jy(guess['outdir'], nzeta_, nzeta_inner, True)]
 
         coef_inner = coefs[deps[iorb]] if deps[iorb] is not None else None
         coefs_shell = minimizer.opt(coef_init, 
@@ -345,70 +319,6 @@ def _coef_opt(rcut, orbparams, folders, maxiter, nthreads, jy, spill_coefs = Non
                 option, 
                 nthreads, 
                 spill_coefs)
-
-def _peel(coef, nzeta_lvl_tot):
-    """peel the coefficients of the orbitals to different levels
-    
-    Parameters
-    ----------
-    coef: list[list[list[float]]]
-        the coefficients of the orbitals
-    nzeta_lvl_tot: list[list[int]]
-        the number of zeta functions for each l for each shell of orbitals
-    
-    Returns
-    -------
-    list[list[list[list[float]]]]: the coefficients of the orbitals for each level
-    """
-    
-    coef_lvl = [deepcopy(coef)]
-    for nzeta_lvl in reversed(nzeta_lvl_tot):
-        coef_lvl.append([[coef_lvl[-1][l].pop(0) for _ in range(nzeta)] for l,nzeta in enumerate(nzeta_lvl)])
-    return coef_lvl[1:][::-1]
-
-def _coef_guess(guess, nzeta, excluded):
-    """generate initial guess for jy basis to contract.
-    This function is only implemented for jy presently.
-    
-    Parameters
-    ----------
-    guess: dict
-        the recipe to generate initial guess
-    nzeta: list[int]
-        the number of zeta functions for each l
-    excluded: list[int]
-        the number of zeta functions for each l
-
-    Returns
-    -------
-    list[list[list[float]]]: the coefficients of the orbitals
-    """
-
-    jy = "orb_mat" not in guess
-    initgen = initgen_jy if jy else initgen_pw
-    if jy:
-        excluded = [0] * len(nzeta) if excluded is None else excluded
-        ib = _nzeta_analysis(os.path.dirname(guess["outdir"])) # indexed by [ispin][l] -> list of band index
-        assert len(ib) > 0, "ERROR: no band index found"
-        ib = [[ibsp[l][(2*l+1)*nz0:(2*l+1)*nz] for l, (nz, nz0) in enumerate(zip(nzeta, excluded))]
-               for ibsp in ib]
-        ib = [flatten(ibsp) for ibsp in ib]
-        errmsg = f"""ERROR: no band index found: {ib}.
-This may happen for two reasons:
-1. not enough bands can be used to generate initial guess => increase the number of bands to calculate 
-   for atomic guess (monomer).
-2. two levels of orbitals are actually identical => check the zeta_notation and nbands_ref setting in
-   input."""
-        assert len(ib[0]) > 0, errmsg
-        print(f"ORBGEN: initial guess based on isolated atom band-pick, indexes: {ib[0]}", flush=True)
-        _nzeta = [nz - nz0 for nz, nz0 in zip(nzeta, excluded)]
-        coef_init = initgen(**(guess|{"ibands": ib[0], "nzeta": _nzeta}))
-        # coef_init = initgen(**(guess|{"ibands": ib[0]}))
-    else:
-        coef_init = initgen(**guess)
-    # print(_coef_subset(nzeta, excluded, coef_init))
-    # return _coef_subset(nzeta, excluded, coef_init)
-    return [coef_init] if jy else _coef_subset(nzeta, excluded, coef_init)
 
 def _coef_subset(nzeta, nzeta0, data):
     """
@@ -630,9 +540,11 @@ def run(siab_settings: dict, calculation_settings: list, folders: list):
                 _ = _save_orb(coefs_it, elem, ecut, rcut, folder, jY_type)
     return
 
-def _nzeta_mean_conf(nbands, folders, 
+def _nzeta_mean_conf(nbands, 
+                     folders, 
                      statistics = 'max',
-                     pop = 'svd-aniso-svd'):
+                     pop = 'svd-fold',
+                     filter = 1.0):
     """infer the nzeta from given folders with some strategy. If there are
     multiple kpoints calculated, for each folder the result will be firstly
     averaged and used to represent the `nzeta` inferred from the whole folder
@@ -648,7 +560,16 @@ def _nzeta_mean_conf(nbands, folders,
         the folders where the ABACUS run information are stored.
     statistics: str
         the statistics method used to infer nzeta, can be 'max' or 'mean'
-        
+    pop: str
+        the population analysis method used to infer nzeta, can be 'svd-fold'
+        or 'svd-max'
+    filter: float|list[float]|list[list[int]]|None
+        can be either float or list of floats, which means the threshold for 
+        the significance for each atomtype. 
+        If it is a list[list[int]], it should be the nzeta for each atomtype, 
+        then the loss will be evaluated based on it. If it is None, will be 
+        overwritten to the list[float] case in which all elements are 1.0
+
     Returns
     -------
     nzeta: list[int]
@@ -664,16 +585,15 @@ def _nzeta_mean_conf(nbands, folders,
 
     max_shape = (0,) # 1D array
     for folder, nband in zip(folders, nbands):
-        nzeta_ = np.array(_nzeta_infer(folder, nband, pop))
+        nzeta_ = np.array(_nzeta_infer(folder, nband, pop, filter=filter))
         max_shape = np.maximum(max_shape, nzeta_.shape)
-        print(f"ORBGEN: nzeta for {folder} inferred is {nzeta_}", flush=True)
         nzeta.append(nzeta_)
 
     nzeta = np.array([nz.reshape(max_shape).tolist() for nz in nzeta])
     return np.max(nzeta, axis=0).tolist() if statistics == 'max' \
         else np.mean(nzeta, axis=0).tolist()
 
-def _nzeta_infer(folder, nband, pop = 'svd-aniso-svd', svd_thr = 1.0):
+def _nzeta_infer(folder, nband, pop = 'svd-fold', filter = 1.0):
     """infer nzeta based on one structure whose calculation result is stored
     in the folder
     
@@ -686,18 +606,19 @@ def _nzeta_infer(folder, nband, pop = 'svd-aniso-svd', svd_thr = 1.0):
         if specified as list or range, it is the list of band indexes to be
         considered
     pop: str, optional
-        the population analysis method used to infer nzeta, can be 'svd' or 'wll',
-        default is 'svd'
+        the population analysis method used to infer nzeta, can be 'svd-fold'
+        or 'svd-max'. The default is 'svd-fold'.
+    filter: float|list[float]|list[list[int]]|None
+        can be either float or list of floats, which means the threshold for 
+        the significance for each atomtype. 
+        If it is a list[list[int]], it should be the nzeta for each atomtype, 
+        then the loss will be evaluated based on it. If it is None, will be 
+        overwritten to the list[float] case in which all elements are 1.0
 
     Returns
     -------
     np.ndarray: the inferred nzeta for the folder, like list[int]
     """
-    import os
-    import numpy as np
-    from SIAB.spillage.datparse import read_wfc_lcao_txt, read_triu, \
-        read_running_scf_log, read_input_script, read_istate_info
-    from SIAB.spillage.lcao_wfc_analysis import api as wfc_analysis_api
 
     # read INPUT and running_*.log
     params = read_input_script(os.path.join(folder, "INPUT"))
@@ -714,6 +635,7 @@ def _nzeta_infer(folder, nband, pop = 'svd-aniso-svd', svd_thr = 1.0):
     # if nspin == 2, the "spin-up" kpoints will be listed first, then "spin-down"
     wk = running["wk"]
 
+    print(f'\nPerform nzeta_infer/evaluation task for {folder}', flush=True)
     nzeta = np.array([0])
     for isk in range(nspin*len(wk)): # loop over (ispin, ik)
         ik, is_ = isk % len(wk), isk % nspin
@@ -731,15 +653,28 @@ def _nzeta_infer(folder, nband, pop = 'svd-aniso-svd', svd_thr = 1.0):
         # the complete return list is (wfc.T, e, occ, k)
         ovlp = read_triu(os.path.join(outdir, f"data-{isk}-S"))
         # the number of non-zeros of each l is the maximal number of zeta functions
-        nz = [len(np.where(np.abs(sigma_l) > svd_thr)[0])
-                for sigma_l in wfc_analysis_api(wfc, 
-                                                ovlp,
-                                                running['natom'], 
-                                                running['nzeta'], 
-                                                pop, 
-                                                nband=nband, loss_thr=svd_thr)[0]]
-        nz = np.array(nz)
-        print(f"ORBGEN: nzeta (decimal) inferred for {folder} is shown above", flush=True)
+        sigma, nz, loss = wfc_analysis_api(wfc, 
+                                           ovlp,
+                                           running['natom'], 
+                                           running['nzeta'], 
+                                           pop, 
+                                           nband=nband, 
+                                           filter=filter)
+        # print out the result
+        print(f'k = {ik}, ispin = {is_}', flush=True)
+        for it, (st_, nzt_) in enumerate(zip(sigma, nz)):
+            print(f'For type {it}, the complete list of sigma values shown as:', flush=True)
+            for l, s in enumerate(st_):
+                print(f'l = {l}:', flush=True)
+                for i, s_ in enumerate(s):
+                    print(f'{s_:>8.4f}', end = ' ', flush=True)
+                    if i % 5 == 4:
+                        print('', flush=True)
+                print('', flush=True)
+            print(f'Number of zeta functions for type {it} is {nzt_}', flush=True)
+        print(f'jy space truncation (subspace) loss: {loss:8.4e}\n', flush=True)
+
+        nz = np.array(nz[0])
         nzeta = np.resize(nzeta, np.maximum(nzeta.shape, nz.shape)) + nz * w / nspin
 
     # count the number of atoms
@@ -827,7 +762,7 @@ def _nzeta_analysis(folder, count_thr = 1e-1, itype = 0):
 
 class TestAPI(unittest.TestCase):
 
-    @unittest.skip('Skip for developement')
+    # @unittest.skip('Skip for developement')
     def test_coef_gen(self):
 
         rcut = 3.0
@@ -842,18 +777,7 @@ class TestAPI(unittest.TestCase):
             self.assertEqual(dim1, dim2)
             self.assertEqual(coefs[0][l], np.eye(dim1).tolist())
     
-    @unittest.skip('Skip for developement')
-    def test_band_indexing(self):
-                    # pert1     pert2
-        folders = [["folder1", "folder2"], # geom1
-                   ["folder3", "folder4"]] # geom2
-        # test single folder
-        self.assertEqual(_band_indexing(10, [0], folders), 10)
-        # test multiple folders
-        self.assertEqual(_band_indexing([10, 12], [0, 1], folders), 
-                         [range(10), range(10), range(12), range(12)])
-
-    @unittest.skip('Skip for developement')
+    # @unittest.skip('Skip for developement')
     def test_plan_guess(self):
 
         nzeta = [[3, 3, 2], [2, 2, 1], [1, 1]]
@@ -869,7 +793,7 @@ class TestAPI(unittest.TestCase):
         self.assertEqual(guess["diagnosis"], True)
         self.assertEqual(guess["orb_mat"], "initdir")
 
-    @unittest.skip('Skip for developement')
+    # @unittest.skip('Skip for developement')
     def test_orb_matrices(self):
 
         test_folder = "test_orb_matrices"
@@ -948,7 +872,7 @@ class TestAPI(unittest.TestCase):
         # remove the folder
         os.rmdir(test_folder)
 
-    @unittest.skip('Skip for developement')
+    # @unittest.skip('Skip for developement')
     def test_nzeta_to_initgen(self):
 
         nz1 = np.random.randint(0, 5, 2).tolist()
@@ -962,7 +886,7 @@ class TestAPI(unittest.TestCase):
             self.assertEqual(total_init[iz], max([
                 nz[iz] if iz < len(nz) else -1 for nz in [nz1, nz2, nz3, nz4]]))
 
-    @unittest.skip('Skip for developement')
+    # @unittest.skip('Skip for developement')
     def test_coefs_subset(self):
 
         nz3 = [3, 3, 2]
@@ -1051,26 +975,16 @@ class TestAPI(unittest.TestCase):
     def test_nzeta_infer(self):
 
         here = os.path.dirname(__file__)
-
         # gamma case is easy, multi-k case is more difficult
         fpath = os.path.join(here, "testfiles/Si/jy-7au/monomer-gamma/")
-        nzeta = _nzeta_infer(fpath, 4, 'wll')
-        ref = [1, 1, 0]
-        self.assertTrue(all([abs(nz - ref[i]) < 1e-8 for i, nz in enumerate(nzeta)]))
-        nzeta = _nzeta_infer(fpath, 5, 'wll')
-        ref = [2, 1, 0]
-        self.assertTrue(all([abs(nz - ref[i]) < 1e-8 for i, nz in enumerate(nzeta)]))
-        nzeta = _nzeta_infer(fpath, 10, 'wll')
-        ref = [2, 1, 1]
-        self.assertTrue(all([abs(nz - ref[i]) < 1e-8 for i, nz in enumerate(nzeta)]))
 
-        nzeta = _nzeta_infer(fpath, 4, 'svd')
+        nzeta = _nzeta_infer(fpath, 4, 'svd-max')
         ref = [1, 1, 0]
         self.assertTrue(all([abs(nz - ref[i]) < 1e-8 for i, nz in enumerate(nzeta)]))
-        nzeta = _nzeta_infer(fpath, 5, 'svd')
+        nzeta = _nzeta_infer(fpath, 5, 'svd-max')
         ref = [2, 1, 0]
         self.assertTrue(all([abs(nz - ref[i]) < 1e-8 for i, nz in enumerate(nzeta)]))
-        nzeta = _nzeta_infer(fpath, 10, 'svd')
+        nzeta = _nzeta_infer(fpath, 10, 'svd-max')
         ref = [2, 1, 1]
         self.assertTrue(all([abs(nz - ref[i]) < 1e-8 for i, nz in enumerate(nzeta)]))
 
@@ -1123,29 +1037,15 @@ class TestAPI(unittest.TestCase):
         wk = [0.0370, 0.2222, 0.4444, 0.2963]
         degen = np.array([2*i + 1 for i in range(3)], dtype=float)
 
-        nbnd = 4
-        nzeta = _nzeta_infer(fpath, nbnd, 'wll')
-        ref = np.sum(np.array([np.sum(refdata[i, :nbnd, :], 0) / degen * wk[i] for i in range(4)]), 0)
-        self.assertTrue(all([abs(nz - ref[i]) < 1e-3 for i, nz in enumerate(nzeta)]))
-        # because we use the data only has ndigits=3, so we can only compare to 1e-3
-
-        nbnd = 5
-        nzeta = _nzeta_infer(fpath, nbnd, 'wll')
-        ref = np.sum(np.array([np.sum(refdata[i, :nbnd, :], 0) / degen * wk[i] for i in range(4)]), 0)
-        self.assertTrue(all([abs(nz - ref[i]) < 1e-3 for i, nz in enumerate(nzeta)]))
-
-        nbnd = 10
-        nzeta = _nzeta_infer(fpath, nbnd, 'wll')
-        ref = np.sum(np.array([np.sum(refdata[i, :nbnd, :], 0) / degen * wk[i] for i in range(4)]), 0)
-        self.assertTrue(all([abs(nz - ref[i]) < 1e-3 for i, nz in enumerate(nzeta)]))
-
-    @unittest.skip('still under development')
+    #@unittest.skip('still under development')
     def test_nzeta_infer_occ(self):
         here = os.path.dirname(__file__)
 
         # gamma case is easy, multi-k case is more difficult
         fpath = os.path.join(here, "testfiles/Si/jy-7au/monomer-gamma/")
-        nzeta = _nzeta_infer(fpath, 'occ', 'wll')
+        with self.assertRaises(ValueError):
+            nzeta = _nzeta_infer(fpath, 4, 'wll')
+        nzeta = _nzeta_infer(fpath, 4)
         print(nzeta)
 
     @unittest.skip('still under development')
@@ -1240,7 +1140,7 @@ class TestAPI(unittest.TestCase):
         # + [1/1, 3/3, 0]*0.4444 
         # + [1/1, 3/3, 0]*0.2963
         # = [1, 1, 0]
-        nzeta = _nzeta_mean_conf(4, folders, 'mean', 'svd')
+        nzeta = _nzeta_mean_conf(4, folders, 'mean', 'svd-max')
         nzeta = [int(np.round(nz)) for nz in nzeta] # filter to integer
         self.assertEqual(nzeta, [1, 1, 0])
         # nbands = 5, should yield
@@ -1305,7 +1205,7 @@ class TestAPI(unittest.TestCase):
                          [(a+b)/2 for a, b in\
                           zip(nzeta_dimer_nbnd10, nzeta_mono_nbnd10)])
     
-    @unittest.skip('skip for development')
+    # @unittest.skip('skip for development')
     def test_nzeta_analysis(self):
 
         here = os.path.dirname(__file__)
@@ -1317,10 +1217,10 @@ class TestAPI(unittest.TestCase):
                            [1, 2, 3, 10, 11, 12, 19, 20, 21], 
                            [5, 6, 7, 8, 9, 13, 14, 15, 16, 17, 22, 23, 24]]])
 
-    # @unittest.skip('This is not a unittest. Instead, this\
-    #  is a minimal example to investigate the synergetic\
-    #  effect of the two parameters, nzeta and nband on the\
-    #  orbital generation task.')
+    @unittest.skip('This is not a unittest. Instead, this\
+     is a minimal example to investigate the synergetic\
+     effect of the two parameters, nzeta and nband on the\
+     orbital generation task.')
     def test_sigma_nzeta_nbands(self):
         '''for doing numerical experiments, according to sigma value,
         determine the nzeta that can produce the best orbital genreation
@@ -1335,8 +1235,7 @@ class TestAPI(unittest.TestCase):
         The initial guess also matters but it is clear.
         '''
         from SIAB.spillage.datparse import read_istate_info
-        from SIAB.spillage.lcao_wfc_analysis import _svd_aniso_max,\
-        _svd_aniso_svd, _svd_iso, _svd_atomic
+        from SIAB.spillage.lcao_wfc_analysis import _svdfold
 
         rcut = 6
         nzeta = [2, 2, 0]
@@ -1386,7 +1285,7 @@ class TestAPI(unittest.TestCase):
             wfc = read_wfc_lcao_txt(os.path.join(d, "WFC_NAO_GAMMA1.txt"))[0]
             ovlp = read_triu(os.path.join(d, "data-0-S"))
             running = read_running_scf_log(os.path.join(d, "running_scf.log"))
-            sigma = _svd_aniso_svd(wfc, ovlp, nbnd, running["natom"],
+            sigma = _svdfold(wfc, ovlp, nbnd, running["natom"],
                                 running["nzeta"], 1.0)
             print(f'For {f}, nbnd = {nbnd}, sigma:')
             for l, s in enumerate(sigma[0]):

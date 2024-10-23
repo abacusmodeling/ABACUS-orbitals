@@ -1,4 +1,5 @@
-'''this is the proving ground for the spillage module'''
+'''all functions in this module are not compatible with abacus pw 
+calculation. abacus pw is deprecated in abacus-orbgen v3.0'''
 from SIAB.spillage.datparse import read_wfc_lcao_txt, read_triu, \
     read_running_scf_log, read_input_script, read_orb_mat
 from SIAB.spillage.lcao_wfc_analysis import _wll
@@ -77,8 +78,15 @@ def _grpbnd_lnm(folder, count_thr = 1e-1, itype = 0):
                for l in range(lmaxmax + 1) ] for i in range(nspin)]
 
 def _ibands(ibnd_max, igeom, npert, ibnd_min = None):
-    '''calculate the ibands needed in Spillage_*.opt function. This can be run
-    at earlier stage when optimizer = bfgs. It is a helper function.
+    '''geom (geometry) combining with pert (perturbation) yield one
+    conf (configuration). This function generates the `ibands` list 
+    for each conf that is needed by Spillage_*.opt function, 
+    which is, the range of bands referred.
+
+    Notes
+    -----
+    Currently only supports the case that all pert share the same
+    number of bands.
     
     Parameters
     ----------
@@ -88,9 +96,12 @@ def _ibands(ibnd_max, igeom, npert, ibnd_min = None):
     igeom: int|list[int]
         the index of geometry to be calculated
     npert: list[int]
-        the number of perturbation for each geometry
+        the number of perturbation on each geometry
     ibnd_min: int|list[int]|None
-        the minimum band index to be calculated
+        the minimum band index to be calculated. If none, will be set
+        to all zeros by default, then `ibnd_max` will behave as "the 
+        number of bands"
+    
     Returns
     -------
     list[range]: the band index(es) needed
@@ -109,7 +120,7 @@ def _ibands(ibnd_max, igeom, npert, ibnd_min = None):
 
 def _coef_init(outdir, nzeta, izmin = None, diagnosis = False):
     '''from outdir get the initial guess of all coefficients in number of
-    nzeta.
+    nzeta, optionally starts from izmin.
     
     Parameters
     ----------
@@ -120,7 +131,8 @@ def _coef_init(outdir, nzeta, izmin = None, diagnosis = False):
         the number of zeta orbitals for each angular momentum
     izmin: list[int]|None
         from which index of zeta for each l to start genearte nzeta[l] number of
-        groups of coefficients
+        groups of coefficients. During a hierarchical orbital optimization task,
+        it can be assigned as the nzeta of the previous shell.
     diagnosis: bool
         whether the diagnosis information (eigval of <jy|ref><ref|jy>) is printed
     
@@ -138,8 +150,8 @@ def _coef_init(outdir, nzeta, izmin = None, diagnosis = False):
     coef = [[] for _ in nzeta]
     for l, nz in enumerate(nzeta):
         iz0 = izmin[l]
-        for iz in range(nz):
-            ib = ibnd_lnm[0][l][iz0 + iz] # how to deal with the spin?...
+        for iz in range(iz0, nz):
+            ib = ibnd_lnm[0][l][iz] # how to deal with the spin?...
             nz_ = np.zeros_like(np.array(nzeta))
             nz_[l] = 1
             c = initgen_jy(outdir, nz_, ib, diagnosis=diagnosis)

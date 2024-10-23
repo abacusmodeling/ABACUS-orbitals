@@ -25,26 +25,23 @@ def api(C, S, natom, nzeta, method, **kwargs):
             angular momentum l of type i. len(nzeta) must equal len(natom).
         method : str
             Method used to perform the analysis. The available methods are:
-            'svd-aniso-max', 'svd-aniso-svd', 'svd-atomic', 'svd-iso', 'wll'.
+            'svd-fold' or 'svd-max'
         **kwargs : optional
             Additional parameters for the analysis. The available parameters are:
             'nband': int|str, number of bands selected for the analysis, 'all' for all bands.
-            'loss_thr': float, threshold for the significance of zeta functions.
+            'filter': float, threshold for the significance of zeta functions.
     
     Returns
     -------
         out : list of list of list of float
             Singular values for each atomtype and each l, each zeta function.
     '''
-    assert method in ['svd-aniso-max', 'svd-aniso-svd', 'svd-atomic',
-        'svd-iso', 'wll'], 'method not recognized'
-    if method == 'wll':
-        raise ValueError('method wll is deprecated due to its unstable behavior')
+    if method not in ['svd-fold', 'svd-max']:
+        raise ValueError('method not recognized')
     nband = kwargs.get('nband', 'all')
-    loss_thr = kwargs.get('loss_thr', 0.9)
-    svd = {'svd-aniso-max': _svd_aniso_max, 'svd-aniso-svd': _svd_aniso_svd,
-           'svd-atomic': _svd_atomic, 'svd-iso': _svd_iso}
-    return svd[method](C, S, nband, natom, nzeta, loss_thr)
+    filter = kwargs.get('filter', None)
+    svd = {'svd-fold': _svdfold,'svd-max': _svdmax}
+    return svd[method](C, S, nband, natom, nzeta, filter)
 
 def _wll(C, S, natom, nzeta):
     '''
@@ -90,13 +87,16 @@ def _wll(C, S, natom, nzeta):
 
     return wll
 
-def _svd_aniso_max(C, S, nband, natom, nzeta, loss_thr = 0.9):
-    '''perform svd-based analysis on wfc for each (nz, nband*nat) block,
-    then take the maximum singular value of each m for each l, returning
-    the maximal singluar value for each zeta function of each l for each
-    atomtype. If there are equivalent atoms, then the ideally largest
-    singluar value will be sqrt(Nat), where Nat is the number of equivalent
-    atoms.
+def _svdmax(C, 
+            S, 
+            nband, 
+            natom, 
+            nzeta, 
+            filter = None):
+    '''perform svd analysis on submatrix with size (nz, nbnd) extracted from
+    the whole wavefunction. The submatrix is certainly indexed by [it][l][iat][m]
+    , then taking maximum over both [iat] and [m] dimensions, yielding
+    the maximal singular value of each zeta function of each l for each atomtype.
     
     Parameters
     ----------
@@ -107,210 +107,32 @@ def _svd_aniso_max(C, S, nband, natom, nzeta, loss_thr = 0.9):
             Overlap matrix.
         nband : int|str
             Number of bands selected for the analysis, 'all' for all bands.
-        natom : list of int
+        natom : list[int]
             Number of atoms for each type.
-        nzeta : list of list of int
+        nzeta : list[list[int]]
             nzeta[i][l] specifies the number of zeta orbitals of the
             angular momentum l of type i. len(nzeta) must equal len(natom).
-        loss_thr : float
-            Threshold for the significance of zeta functions. If the singular
-            value of a zeta function is smaller than thr, it is considered
-            insignificant. The loss will be evaluated by Frobenius norm.
+        filter : float|list[float]|list[list[int]]|None
+            if specified as list[float], will be the threshold for filtering 
+            singular values for each atom type. All values larger than it 
+            will be treated as significant, omit otherwise.
+            if specified as float, will be the threshold for all atom types.
+            if specified as list[list[int]], will be the number of singular 
+            values for each l to be kept.
+            if specified as None (default, thus not specified), will not do any
+            filtering.
+            **For this method, the maximal value of sigma will be 1.**
     
     Returns
     -------
-        sigma_tlm : list of list of list of float
-            Singular values for each atomtype and each l, each zeta function.
-    '''
-
-    nao, nbands_max = C.shape
-    nbands = nbands_max if nband == 'all' else nband
-    assert nbands <= nbands_max, 'nbands selected is larger than the total nbands'
-
-    C = la.sqrtm(S) @ C
-
-    lmax = [len(nz) - 1 for nz in nzeta]
-    ntyp = len(natom)
-
-    lin2comp = _lin2comp(natom, nzeta)
-    comp2lin = sorted([((it, l, m, iz, ia), i)
-                        for i, (it, ia, l, iz, m) in enumerate(lin2comp)])
-    mu = 0
-    Ct = [[[] for _ in nzeta[it]] for it in range(ntyp)]
-    while mu < nao:
-        it, l, _, _, _ = comp2lin[mu][0]
-        stride = natom[it] * nzeta[it][l]
-        idx = [comp2lin[mu+i][1] for i in range(stride)]
-        Ct[it][l].append(C[idx, :nbands].reshape(nzeta[it][l], -1))
-        mu += stride
-    
-    sigma_tlm = [[[] for _ in range(len(nzeta[it]))] for it in range(ntyp)]
-    for it in range(ntyp):
-        for l in range(lmax[it]+1):
-            for m in range(2*l+1): # record each m, then take max
-                sigma_tlm[it][l].append(la.svd(Ct[it][l][m], compute_uv=False))
-
-    out = [[np.linalg.norm(sigma_tlm[it][l], axis=0, ord=np.inf)
-            for l in range(len(nzeta[it]))] for it in range(ntyp)]
-    
-    ##############################################
-    # SVD-based space truncation loss estimation #
-    ##############################################
-    loss = 0
-    for it in range(ntyp):
-        for l in range(lmax[it]+1):
-            smax = [s if s/np.sqrt(natom[it]) >= loss_thr else 0 for s in out[it][l]]
-            for m in range(2*l+1):
-                ut, _, vt = la.svd(Ct[it][l][m], full_matrices=False)
-                loss += la.norm(Ct[it][l][m] - ut @ np.diag(smax) @ vt, 'fro')**2
-    print(f'SVD: with threshold {loss_thr}, the Frobenius norm loss is estimated to {loss:.8e}')
-    return out
-
-def _svd_aniso_svd(C, S, nband, natom, nzeta, loss_thr = 0.9):
-    '''perform svd-based analysis on wfc for each block with size (nz, nband*nat*m)
-    for each l. The ideal singluar values are sqrt(2l+1)*sqrt(Nat) at most for each
-    zeta function, in which the l is the angular momentum, Nat is the number of atoms
-    in the identical chemical environment. This value means there are 2l+1 magnetic
-    channels of l are equally significant, and Nat atoms of the type it are equally
-    significant.
-    
-    Parameters
-    ----------
-        C : 2D array of shape (nao, nbands)
-            Wave function coefficients in LCAO basis. The datatype is
-            complex for multi-k calculations and float for gamma-only.
-        S : 2D array of shape (nao, nao)
-            Overlap matrix.
-        nband : int|str
-            Number of bands selected for the analysis, 'all' for all bands.
-        natom : list of int
-            Number of atoms for each type.
-        nzeta : list of list of int
-            nzeta[i][l] specifies the number of zeta orbitals of the
-            angular momentum l of type i. len(nzeta) must equal len(natom).
-        loss_thr : float
-            Threshold for the significance of zeta functions. If the singular
-            value of a zeta function is smaller than thr, it is considered
-            insignificant.
-    
-    Returns
-    -------
-        sigma_tlm : list of list of list of float
-            Singular values for each atomtype and each l, each zeta function.
-    '''
-
-    nao, nbands_max = C.shape
-    nbands = nbands_max if nband == 'all' else nband
-    assert nbands <= nbands_max, 'nbands selected is larger than the total nbands'
-
-    C = la.sqrtm(S) @ C
-
-    lmax = [len(nz) - 1 for nz in nzeta]
-    ntyp = len(natom)
-
-    lin2comp = _lin2comp(natom, nzeta)
-    comp2lin = sorted([((it, l, iz, m, ia), i)
-                        for i, (it, ia, l, iz, m) in enumerate(lin2comp)])
-    mu = 0
-    Ct = [[[] for _ in nzeta[it]] for it in range(ntyp)]
-    while mu < nao:
-        it, l, _, _, _ = comp2lin[mu][0]
-        stride = natom[it] * nzeta[it][l] * (2*l+1) # consider all m of present l
-        idx = [comp2lin[mu+i][1] for i in range(stride)]
-        Ct[it][l] = C[idx, :nbands].reshape(nzeta[it][l], -1) # (nz, nat*nbnd*2l+1)
-        mu += stride
-    
-    ##############################################
-    # SVD-based space truncation loss estimation #
-    ##############################################
-    loss = 0
-    sigma_tlm = [[[] for _ in range(len(nzeta[it]))] for it in range(ntyp)]
-    for it in range(ntyp):
-        for l in range(lmax[it]+1):
-            u, sigma, vh = la.svd(Ct[it][l], full_matrices=False)
-            sigma_tlm[it][l] = sigma
-            # sigma = np.array([s if s/np.sqrt(2*l+1)/np.sqrt(natom[it]) >= loss_thr 
-            #          else 0 for s in sigma])
-            sigma = np.array([s if s/np.sqrt(natom[it]) >= loss_thr else 0 for s in sigma])
-            loss += la.norm(Ct[it][l] - u @ np.diag(sigma) @ vh, 'fro') ** 2
-    print(f'SVD: with threshold {loss_thr}, the Frobenius norm loss is estimated to {loss:.8e}')
-    return sigma_tlm
-
-def _svd_iso(C, S, nband, natom, nzeta, loss_thr = 0.9):
-    '''perform svd-based analysis on wfc with isotropicity of m for each l,
-    based on averaging over all m for each l, returning the nzeta for each
-    type for each l. This is a deprecated method.'''
-
-    nao, nbands_max = C.shape
-    nbands = nbands_max if nband == 'all' else nband
-    assert nbands <= nbands_max, 'nbands selected is larger than the total nbands'
-
-    C = la.sqrtm(S) @ C
-
-    lmax = [len(nz) - 1 for nz in nzeta]
-    ntyp = len(natom)
-
-    lin2comp = _lin2comp(natom, nzeta)
-    comp2lin = sorted([((it, l, m, iz, ia), i)
-                        for i, (it, ia, l, iz, m) in enumerate(lin2comp)])
-    mu = 0
-    Ct = [[[] for _ in nzeta[it]] for it in range(ntyp)]
-    while mu < nao:
-        it, l, _, _, _ = comp2lin[mu][0]
-        stride = natom[it] * nzeta[it][l]
-        idx = [comp2lin[mu+i][1] for i in range(stride)]
-        Ct[it][l].append(C[idx, :nbands].reshape(nzeta[it][l], -1))
-        mu += stride
-    
-    sigma_tlm = [[[] for _ in range(len(nzeta[it]))] for it in range(ntyp)]
-    for it in range(ntyp):
-        for l in range(lmax[it]+1):
-            for m in range(2*l+1):
-                sigma_tlm[it][l].append(la.svd(Ct[it][l][m], compute_uv=False) / np.sqrt(2*l+1))
-
-    out = [[np.linalg.norm(sigma_tlm[it][l], axis=0, ord=2)
-            for l in range(len(nzeta[it]))] for it in range(ntyp)]
-    
-    ##############################################
-    # SVD-based space truncation loss estimation #
-    ##############################################
-    loss = 0
-    for it in range(ntyp):
-        for l in range(lmax[it]+1):
-            smax = [s if s/np.sqrt(natom[it]) >= loss_thr else 0 for s in out[it][l]]
-            for m in range(2*l+1):
-                ut, _, vt = la.svd(Ct[it][l][m], full_matrices=False)
-                loss += la.norm(Ct[it][l][m] - ut @ np.diag(smax) @ vt, 'fro')**2
-    print(f'SVD: with threshold {loss_thr}, the Frobenius norm loss is estimated to {loss:.8e}')
-    return out
-
-def _svd_atomic(C, S, nband, natom, nzeta, loss_thr = 0.9):
-    '''perform svd-based analysis to get the significance of each zeta func
-    for each atom (each type, l, also m-distinct).
-    
-    Parameters
-    ----------
-        C : 2D array of shape (nao, nbands)
-            Wave function coefficients in LCAO basis. The datatype is
-            complex for multi-k calculations and float for gamma-only.
-        S : 2D array of shape (nao, nao)
-            Overlap matrix.
-        nband : int|str
-            Number of bands selected for the analysis, 'all' for all bands.
-        natom : list of int
-            Number of atoms for each type.
-        nzeta : list of list of int
-            nzeta[i][l] specifies the number of zeta orbitals of the
-            angular momentum l of type i. len(nzeta) must equal len(natom).
-        loss_thr : float
-            Threshold for the significance of zeta functions. If the singular
-            value of a zeta function is smaller than thr, it is considered
-            insignificant.
-    
-    Returns
-    -------
-        out : list of list of list of float
-            Singular values for each atomtype and each l, each zeta function.
+    sigma: list[list[list[float]]]
+        all the singluar values before filtering, can be indexed by [it][l][iz]
+    nzeta_sub: list[list[int]]|None
+        the number of zeta functions after filtering, can be indexed by [it][l].
+        if filter is not specified, will be None.
+    loss: list[float]|None
+        loss of space truncation, can be indexed by [it]. If filter is not
+        specified, will be None.
     '''
 
     nao, nbands_max = C.shape
@@ -334,27 +156,137 @@ def _svd_atomic(C, S, nband, natom, nzeta, loss_thr = 0.9):
         Ct[it][l] = C[idx, :nbands].reshape(natom[it], 2*l+1, nzeta[it][l], -1)
         mu += stride
 
-    out = [[] for it in range(ntyp)]
+    out = [[] for _ in range(ntyp)]
     for it in range(ntyp): # this is, unavoidable because wfc itself has all type info
         for l in range(lmax[it]+1):
-            s_tl = [la.svd(Ct[it][l][ia, m], compute_uv=False) for ia in range(natom[it]) for m in range(2*l+1)]
+            sigma = [la.svd(Ct[it][l][ia, m], compute_uv=False)\
+                     for ia in range(natom[it]) for m in range(2*l+1)]
             # take max over ia and m
-            s_tl = np.linalg.norm(s_tl, axis=0, ord=np.inf)
-            out[it].append(s_tl)
+            sigma_max = np.linalg.norm(sigma, axis=0, ord=np.inf)
+            out[it].append(sigma_max)
 
+    if filter is None:
+        return out, None, None
+    
     ##############################################
     # SVD-based space truncation loss estimation #
     ##############################################
+    filter = [filter] * ntyp if isinstance(filter, float) else filter
+    jobtype = 'cal_nz' if isinstance(filter, list) and len(filter) == ntyp\
+        and all(isinstance(f, float) for f in filter) else 'cal_loss'
+
+    nz = [[len(np.where(np.array(sigma) >= filter[it])[0]) 
+           for sigma in out[it]] for it in range(ntyp)] if jobtype == 'cal_nz'\
+           else filter
+    
     loss = 0
     for it in range(ntyp):
         for l in range(lmax[it]+1):
-            smax = out[it][l] # for all atom within the type and all m
             for ia in range(natom[it]):
                 for m in range(2*l+1):
                     u, _, vh = la.svd(Ct[it][l][ia, m], full_matrices=False)
-                    loss += la.norm(Ct[it][l][ia, m] - u @ np.diag(smax) @ vh, 'fro')**2
-    print(f'SVD: with threshold {loss_thr}, the Frobenius norm loss is estimated to {loss:.8e}')
-    return out
+                    # tf_ += la.norm(Ct[it][l][ia, m] - u @ np.diag(out[it][l]) @ vh, 'fro')**2
+                    loss += la.norm(u[:, nz[it][l]:] @ np.diag(out[it][l][nz[it][l]:]) @ vh[nz[it][l]:, :], 'fro')**2
+    return out, nz, loss
+
+def _svdfold(C, 
+             S, 
+             nband, 
+             natom, 
+             nzeta, 
+             filter = None):
+    '''perform svd-based analysis on wfc for each block with size (nz, nband*nat*m)
+    for each l. The ideal singluar values are sqrt(2l+1)*sqrt(nat) at most for each
+    zeta function, in which the l is the angular momentum, nat is the number of atoms
+    in the identical chemical environment. This value means there are 2l+1 magnetic
+    channels of l are equally significant, and nat atoms of the type it are equally
+    significant.
+    
+    Parameters
+    ----------
+        C : 2D array of shape (nao, nbands)
+            Wave function coefficients in LCAO basis. The datatype is
+            complex for multi-k calculations and float for gamma-only.
+        S : 2D array of shape (nao, nao)
+            Overlap matrix.
+        nband : int|str
+            Number of bands selected for the analysis, 'all' for all bands.
+        natom : list[int]
+            Number of atoms for each type.
+        nzeta : list[list[int]]
+            nzeta[i][l] specifies the number of zeta orbitals of the
+            angular momentum l of type i. len(nzeta) must equal len(natom).
+        filter : float|list[float]|list[list[int]]|None
+            if specified as list[float], will be the threshold for filtering 
+            singular values for each atom type. All values larger than it 
+            will be treated as significant, omit otherwise.
+            if specified as float, will be the threshold for all atom types.
+            if specified as list[list[int]], will be the number of singular 
+            values for each l to be kept.
+            if specified as None (default, thus not specified), will not do any
+            filtering.
+            **For this method, the maximal value of sigma will be sqrt(nat)\*
+            sqrt(2l+1).**
+    
+    Returns
+    -------
+    sigma: list[list[list[float]]]
+        all the singluar values before filtering, can be indexed by [it][l][iz]
+    nzeta_sub: list[list[int]]|None
+        the number of zeta functions after filtering, can be indexed by [it][l].
+        if filter is not specified, will be None.
+    loss: list[float]|None
+        loss of space truncation, can be indexed by [it]. If filter is not
+        specified, will be None.
+    '''
+
+    nao, nbands_max = C.shape
+    nbands = nbands_max if nband == 'all' else nband
+    assert nbands <= nbands_max, 'nbands selected is larger than the total nbands'
+
+    C = la.sqrtm(S) @ C
+
+    lmax = [len(nz) - 1 for nz in nzeta]
+    ntyp = len(natom)
+
+    lin2comp = _lin2comp(natom, nzeta)
+    comp2lin = sorted([((it, l, iz, m, ia), i)
+                        for i, (it, ia, l, iz, m) in enumerate(lin2comp)])
+    mu = 0
+    Ct = [[[] for _ in nzeta[it]] for it in range(ntyp)]
+    while mu < nao:
+        it, l, _, _, _ = comp2lin[mu][0]
+        stride = natom[it] * nzeta[it][l] * (2*l+1) # consider all m of present l
+        idx = [comp2lin[mu+i][1] for i in range(stride)]
+        Ct[it][l] = C[idx, :nbands].reshape(nzeta[it][l], -1) # (nz, nat*nbnd*2l+1)
+        mu += stride
+    
+    sigma = [[[] for _ in range(len(nzeta[it]))] for it in range(ntyp)]
+    for it in range(ntyp):
+        for l in range(lmax[it]+1):
+            s = la.svd(Ct[it][l], compute_uv=False)
+            sigma[it][l] = s
+
+    if filter is None:
+        return sigma, None, None
+    
+    ##############################################
+    # SVD-based space truncation loss estimation #
+    ##############################################
+    filter = [filter] * ntyp if isinstance(filter, float) else filter
+    jobtype = 'cal_nz' if isinstance(filter, list) and len(filter) == ntyp\
+        and all(isinstance(f, float) for f in filter) else 'cal_loss'
+    
+    nz = [[len(np.where(np.array(sigma_l) >= filter[it])[0])
+           for sigma_l in sigma[it]] for it in range(ntyp)]\
+           if jobtype == 'cal_nz' else filter
+    
+    loss = 0
+    for it in range(ntyp):
+        for l in range(lmax[it]+1):
+            u, s, vh = la.svd(Ct[it][l], full_matrices=False)
+            loss += la.norm(u[:, nz[it][l]:] @ np.diag(s[nz[it][l]:]) @ vh[nz[it][l]:, :], 'fro')**2
+    return sigma, nz, loss
 
 ############################################################
 #                           Test
@@ -422,8 +354,7 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
     def test_nzeta_nband_plt(self):
         
         outdir = '/root/documents/simulation/orbgen/Test1Aluminum-20241011/Al-dimer-2.00-10au/OUT.Al-dimer-2.00-10au/'
-        method = {'aniso-max': _svd_aniso_max, 'aniso-svd': _svd_aniso_svd, 
-                  'atomic': _svd_atomic}
+        method = {'svd-fold': _svdfold, 'svd-max': _svdmax}
         wfc = read_wfc_lcao_txt(outdir + 'WFC_NAO_GAMMA1.txt')[0]
         S = read_triu(outdir + 'data-0-S')
         dat = read_running_scf_log(outdir + 'running_scf.log')
@@ -434,7 +365,7 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
         sigmas = []
         fig, ax = plt.subplots(1, 3, figsize=(18, 6))
         for nbnd in range(4, nbands, 5):
-            sigma = method(wfc, S, nbnd, dat['natom'], dat['nzeta'])
+            sigma, _, _ = method(wfc, S, nbnd, dat['natom'], dat['nzeta'])
             for i, (_, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
                 for l in range(len(nz)):
                     #print(f"atom type {i+1}, l={l}, nbnd={nbnd}")
@@ -454,26 +385,8 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
         plt.show()
         #plt.savefig('test_single_case.png')
         #plt.close()
-
-    def test_svd_iso(self):
-        here = os.path.dirname(os.path.abspath(__file__))
-        outdir = os.path.join(here, 'testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/')
-
-        wfc = read_wfc_lcao_txt(outdir + 'WFC_NAO_GAMMA1.txt')[0]
-        S = read_triu(outdir + 'data-0-S')
-        dat = read_running_scf_log(outdir + 'running_scf.log')
-
-        sigma = _svd_iso(wfc, S, 'all', dat['natom'], dat['nzeta'])
-        self.assertEqual(len(sigma), len(dat['natom']))
-
-        print(f'Method: svd-iso')
-        for i, (_, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
-            print(f'atom type {i+1}')
-            for l in range(len(nz)):
-                print(f'l = {l}')
-                print(np.array(sigma[i][l]) ** 2)
-        
-    def test_svd_atomic(self):
+    
+    def test_svdmax(self):
         here = os.path.dirname(os.path.abspath(__file__))
         outdir = os.path.join(here, 'testfiles/Si/jy-7au/monomer-k/OUT.ABACUS/')
 
@@ -481,19 +394,19 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
         S = read_triu(outdir + 'data-1-S')
         dat = read_running_scf_log(outdir + 'running_scf.log')
 
-        sigma = _svd_atomic(wfc, S, 'all', dat['natom'], dat['nzeta'])
+        sigma, nz, loss = _svdmax(wfc, S, 'all', dat['natom'], dat['nzeta'])
+        print(f'Method: svd-max, loss = {loss}')
         self.assertEqual(len(sigma), len(dat['natom'])) # number of atom types
         for i, (_, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
             self.assertEqual(len(sigma[i]), len(nz)) # number of l orbitals
 
-        print(f'Method: svd-atomic')
         for i, (_, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
             print(f'atom type {i+1}')
             for l in range(len(nz)):
                 print(f'l = {l}')
                 print(np.array(sigma[i][l]) ** 2)
 
-    def test_svd_aniso_max(self):
+    def test_svdfold(self):
         here = os.path.dirname(os.path.abspath(__file__))
         outdir = os.path.join(here, 'testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/')
 
@@ -501,33 +414,13 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
         S = read_triu(outdir + 'data-0-S')
         dat = read_running_scf_log(outdir + 'running_scf.log')
 
-        sigma = _svd_aniso_max(wfc, S, 'all', dat['natom'], dat['nzeta'])
-        self.assertEqual(len(sigma), len(dat['natom']))
-        for i, (_, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
-            self.assertEqual(len(sigma[i]), len(nz))
-
-        print(f'Method: svd-aniso-max')
-        for i, (_, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
-            print(f'atom type {i+1}')
-            for l in range(len(nz)):
-                print(f'l = {l}')
-                print(np.array(sigma[i][l]) ** 2)
-
-    def test_svd_aniso_svd(self):
-        here = os.path.dirname(os.path.abspath(__file__))
-        outdir = os.path.join(here, 'testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS/')
-
-        wfc = read_wfc_lcao_txt(outdir + 'WFC_NAO_GAMMA1.txt')[0]
-        S = read_triu(outdir + 'data-0-S')
-        dat = read_running_scf_log(outdir + 'running_scf.log')
-
-        sigma = _svd_aniso_svd(wfc, S, 'all', dat['natom'], dat['nzeta'])
+        sigma, nz, loss = _svdfold(wfc, S, 'all', dat['natom'], dat['nzeta'])
+        print(f'Method: svd-fold, loss = {loss}')
 
         self.assertEqual(len(sigma), len(dat['natom']))
         for i, (_, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
             self.assertEqual(len(sigma[i]), len(nz))
         
-        print(f'Method: svd-aniso-svd')
         for i, (_, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
             print(f'atom type {i+1}')
             for l in range(len(nz)):
