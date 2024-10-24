@@ -94,28 +94,21 @@ def _coef_opt_jy(rcut, orbparams, folders, options, nthreads, spill_coefs = None
     if spill_coefs:
         print("ORBGEN: For jy, spill_coefs is deprecated.", flush = True)
 
-    configs = [folders[indf] for orb in orbparams for indf in orb['folder']]
-    configs = list(set([folder for f in configs for folder in f]))
-
-    iconfs = [[] for _ in range(len(orbparams))]
-    for iorb, orb in enumerate(orbparams):
-        iconfs[iorb] = [configs.index(folder) for f in orb['folder'] for folder in folders[f]]
+    # make unique folders and index them for each orbital
+    uniqfds = list(set([f for orb in orbparams\
+        for igeom in orb['folder'] for f in folders[igeom]]))
+    for uniqfd in uniqfds:
+        suffix = os.path.basename(uniqfd) # this is set in interface/abacus.py
+        minimizer.config_add(os.path.join(uniqfd, f"OUT.{suffix}"))
+    ifuniq = [[uniqfds.index(f) for igeom in orb['folder']
+        for f in folders[igeom]] for orb in orbparams]
     
-    for folder in configs:
-        minimizer.config_add(os.path.join(folder, f"OUT.{os.path.basename(folder)}"))
-    
-    nbands_ref = [[orb['nbands_ref']] if not isinstance(orb['nbands_ref'], list) else orb['nbands_ref']\
-                   for orb in orbparams]
-    nbands_ref = [[nbands_ref[iorb]*len(folders[i]) for i in orb['folder']]
-                    for iorb, orb in enumerate(orbparams)]
-    
-    # nzeta infer...
-    nzeta = [_nzeta_mean_conf(flatten(nbands_ref[iorb]), 
-                              flatten([folders[i] for i in orb['folder']]),
-                              'max',
-                              'svd-fold',
-                              [orb['nzeta']]) # currently only one atomtype
-             for iorb, orb in enumerate(orbparams)]
+    # infer nzeta for each orbital, nbands_ref is indexed by [igeom][ipert]
+    ibnds = [[range(ib) for geom in orb['nbands_ref'] for ib in geom] for orb in orbparams]
+    nzeta = [_nzeta_mean_conf([ib.stop for ib in ibnds[i]], 
+                              [uniqfds[j] for j in ifuniq[i]],
+                              'max', 'svd-fold', [orb['nzeta']]) 
+            for i, orb in enumerate(orbparams)]
     # use int(ceil()) to filter nzeta values
     nzeta = [[int(np.ceil(nz)) for nz in nzeta_orb] for nzeta_orb in nzeta]
 
@@ -124,19 +117,16 @@ def _coef_opt_jy(rcut, orbparams, folders, options, nthreads, spill_coefs = None
     initdir = "-".join([elem, "monomer", f"{rcut}au"])
     initdir = os.path.join(initdir, f"OUT.{os.path.basename(initdir)}")
     guess = _plan_guess(nzeta, initdir, True, True)
+    ifrozen = [orb['nzeta_from'] for orb in orbparams]
 
-    ibands = [_ibands(orb['nbands_ref'], orb['folder'], [len(f) for f in folders if f]) 
-              for orb in orbparams]
-    deps = [orb['nzeta_from'] for orb in orbparams]
-    
-    return _do_onion_opt(minimizer, 
-                         nzeta, 
-                         iconfs, 
-                         ibands, 
-                         deps, 
-                         nthreads, 
-                         options, 
-                         guess)
+    return _do_onion_opt(minimizer,  # the minimizer. The following are for each orb (FEO).
+                         nzeta,      # the number of zeta functions for each l FEO
+                         ifuniq,     # the indexes of configurations FEO
+                         ibnds,      # the range of band indexes to ref FEO
+                         ifrozen,    # the frozen inner orbital indexes FEO
+                         nthreads,   # the number of threads used in optimization
+                         options,    # the options for optimization
+                         guess)      # the initial guess configuration
 
 def _coef_opt_pw(rcut, orbparams, folders, options, nthreads, spill_coefs = None):
     """for fit_basis pw case, optimize Spillage function to get contraction coefficients of pw for one single rcut value
@@ -274,29 +264,24 @@ def _do_onion_opt(minimizer,
     coefs = [None for _ in range(norb)]
 
     # optimize the orbital layer-by-layer, from inner to outer
-    for iorb, index_, nzeta_, iconfs_, ibands_ in zip(range(norb), deps, nzeta, iconfs, ibands):
-        nzeta_inner = None if index_ is None else nzeta[index_]
-        print(f"""ORBGEN: optimization on level {iorb + 1} (with # of zeta functions for each l: {nzeta_}), 
-        based on orbital ({nzeta_inner})""", flush = True)
+    for iorb, ifroz, nz, ic, ib in zip(range(norb), deps, nzeta, iconfs, ibands):
+        nz_froz = None if ifroz is None else nzeta[ifroz]
+        print(f"""ORBGEN: optimization on level {iorb + 1} (with # of zeta functions for each l: {nz}), 
+        based on orbital ({nz_froz})""", flush = True)
         
         # initial guess of coefficients of present layer
-        coef_init = _coef_subset(nzeta, nzeta_inner, initgen_pw(**guess)) if 'orb_mat' in guess \
-            else [_coef_init_jy(guess['outdir'], nzeta_, nzeta_inner, True)]
+        coef_init = _coef_subset(nzeta, nz_froz, initgen_pw(**guess)) if 'orb_mat' in guess \
+            else [_coef_init_jy(guess['outdir'], nz, nz_froz, True)]
         
         # and select what coefficients to be frozen during opt
-        coef_inner = coefs[deps[iorb]] if deps[iorb] is not None else None
+        coef_frozen = coefs[ifroz] if ifroz is not None else None
         
         # opt
-        coefs_shell = minimizer.opt(coef_init, 
-                                    coef_inner, 
-                                    iconfs_, 
-                                    ibands_, 
-                                    options, 
-                                    nthreads)
-        
+        coefs_shell = minimizer.opt(coef_init, coef_frozen, ic, ib, options, nthreads)
+
         # merge the coefficients of present layer with the previous layer
-        coefs[iorb] = merge(coef_inner, coefs_shell, 2) if coef_inner is not None \
-            else coefs_shell
+        coefs[iorb] = merge(coef_frozen, coefs_shell, 2) if coef_frozen else coefs_shell
+        
         print(f"ORBGEN: End optimization on level {iorb + 1} orbital, merge with previous orbital shell(s).", flush = True)
     return coefs
 
@@ -327,7 +312,7 @@ def _coef_opt(rcut, orbparams, folders, maxiter, nthreads, jy, spill_coefs = Non
     call = _coef_opt_jy if jy else _coef_opt_pw
     option = {"maxiter": maxiter,
               "disp": False, "ftol": 0, "gtol": 1e-6, 'maxcor': 20}
-        
+
     return call(rcut, 
                 orbparams, 
                 folders, 

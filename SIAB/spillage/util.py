@@ -56,9 +56,26 @@ def neo_spilopt_params_from_dft(calculation_settings, siab_settings, folders):
     run_map = {"none": "none", "restart": "restart", "bfgs": "opt"}
     run_type = run_map.get(siab_settings.get("optimizer", "none"), "none")
 
-    # refresh the nbands_ref to int if it is specified as str HERE
+    # FIXME: it is also possible to let the orb['nbands_ref'] to be dependent on the
+    # rcut, but not for now...
+    orbparams = siab_settings["orbitals"]
+    for orb in orbparams:
+        nbnd = orb.get("nbands_ref", 0)
+        indf = orb.get("folder", 0)
+        if not isinstance(indf, list):
+            indf = [indf]
+        if not isinstance(nbnd, list):
+            nbnd = [nbnd] * len(indf)
+        
+        # write-back
+        orb["folder"] = indf # only one-layer of indexes, means select all perts of one geom
+        orb["nbands_ref"] = [[_spil_bnd_autoset(nb, f) for f in folders[i]
+                             if f'{rcuts[0]}au' in f] # HERE can introduce the dependence on rcut
+                             for nb, i in zip(nbnd, indf)]
+        # now the folder is list of indexes igeom
+        # now the nbands_ref is indexed by [igeom][ipert]
 
-    shared_option = {'orbparams': siab_settings['orbitals'], 
+    shared_option = {'orbparams': orbparams, 
                      'maxiter': siab_settings.get("max_steps", 2000),
                      'nthreads': siab_settings.get("nthreads", 4),
                      'jy': calculation_settings[0].get('basis_type', 'pw') != 'pw',
@@ -124,7 +141,7 @@ def _spil_bnd_autoset(pattern: int|str,
             raise ValueError(f"nbands_ref {pattern} is out of range (0, {nall})")
         return pattern
     # else, pattern is
-    return eval(pattern.replace('occ', str(nocc)).replace('all', str(nall)))
+    return int(eval(pattern.replace('occ', str(nocc)).replace('all', str(nall))))
 
 class TestSpillageUtilities(unittest.TestCase):
     def test_spil_bnd_autoset(self):
