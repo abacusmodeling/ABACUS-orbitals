@@ -45,7 +45,7 @@ def initialize(version: str = "0.1.0",
     ##################################################
     # disable the use of pw basis for optimizer bfgs
     if user_settings.get("optimizer", "none") == "bfgs" and\
-       user_settings.get('basis_type', 'pw') == 'pw':
+       user_settings.get('fit_basis', 'jy') == 'pw':
         raise ValueError("Generating orbitals from PW calculation for bfgs has been deprecated")
 
     from SIAB.spillage.api import _coef_gen, _save_orb
