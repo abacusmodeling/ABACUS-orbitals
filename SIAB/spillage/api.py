@@ -2,7 +2,6 @@
 with the driver of SIAB"""
 import os
 import re
-from copy import deepcopy
 import numpy as np
 import matplotlib.pyplot as plt
 from SIAB.spillage.orbio import read_param, write_nao, write_param
@@ -20,6 +19,7 @@ from SIAB.spillage.lcao_wfc_analysis import api as wfc_analysis_api
 import unittest
 from SIAB.spillage.jy_expmt import _coef_init as _coef_init_jy
 from SIAB.spillage.jy_expmt import _ibands
+from SIAB.spillage.util import neo_spilopt_params_from_dft
 
 def _coef_gen(rcut: float, ecut: float, lmax: int, value: str = "eye"):
     """Directly generate the coefficients of the orbitals instead of performing optimization
@@ -105,7 +105,7 @@ def _coef_opt_jy(rcut, orbparams, folders, options, nthreads, spill_coefs = None
         minimizer.config_add(os.path.join(folder, f"OUT.{os.path.basename(folder)}"))
     
     nbands_ref = [[orb['nbands_ref']] if not isinstance(orb['nbands_ref'], list) else orb['nbands_ref']\
-                    for orb in orbparams]
+                   for orb in orbparams]
     nbands_ref = [[nbands_ref[iorb]*len(folders[i]) for i in orb['folder']]
                     for iorb, orb in enumerate(orbparams)]
     
@@ -113,7 +113,7 @@ def _coef_opt_jy(rcut, orbparams, folders, options, nthreads, spill_coefs = None
     nzeta = [_nzeta_mean_conf(flatten(nbands_ref[iorb]), 
                               flatten([folders[i] for i in orb['folder']]),
                               'max',
-                              'svd-max',
+                              'svd-fold',
                               [orb['nzeta']]) # currently only one atomtype
              for iorb, orb in enumerate(orbparams)]
     # use int(ceil()) to filter nzeta values
@@ -231,7 +231,14 @@ def _plan_guess(nzeta, folder, jy = True, diagnosis = True):
     keys += ["outdir"] if jy else ["orb_mat"]
     return dict(zip(keys, [nzeta_max, diagnosis, folder]))
 
-def _do_onion_opt(minimizer, nzeta, iconfs, ibands, deps, nthreads, options, guess):
+def _do_onion_opt(minimizer,
+                  nzeta, 
+                  iconfs, 
+                  ibands, 
+                  deps, 
+                  nthreads, 
+                  options, 
+                  guess):
     """Onion! optimize the contraction coefficients of jy from inner to outer step by step.
     Based on the contraction coefficients of jy finding problem to the Spillage function
     minimization problem, the optimization is performed in a hierarchical way: from
@@ -265,14 +272,21 @@ def _do_onion_opt(minimizer, nzeta, iconfs, ibands, deps, nthreads, options, gue
     
     norb = len(nzeta)
     coefs = [None for _ in range(norb)]
+
+    # optimize the orbital layer-by-layer, from inner to outer
     for iorb, index_, nzeta_, iconfs_, ibands_ in zip(range(norb), deps, nzeta, iconfs, ibands):
         nzeta_inner = None if index_ is None else nzeta[index_]
         print(f"""ORBGEN: optimization on level {iorb + 1} (with # of zeta functions for each l: {nzeta_}), 
         based on orbital ({nzeta_inner})""", flush = True)
+        
+        # initial guess of coefficients of present layer
         coef_init = _coef_subset(nzeta, nzeta_inner, initgen_pw(**guess)) if 'orb_mat' in guess \
             else [_coef_init_jy(guess['outdir'], nzeta_, nzeta_inner, True)]
-
+        
+        # and select what coefficients to be frozen during opt
         coef_inner = coefs[deps[iorb]] if deps[iorb] is not None else None
+        
+        # opt
         coefs_shell = minimizer.opt(coef_init, 
                                     coef_inner, 
                                     iconfs_, 
@@ -280,6 +294,7 @@ def _do_onion_opt(minimizer, nzeta, iconfs, ibands, deps, nthreads, options, gue
                                     options, 
                                     nthreads)
         
+        # merge the coefficients of present layer with the previous layer
         coefs[iorb] = merge(coef_inner, coefs_shell, 2) if coef_inner is not None \
             else coefs_shell
         print(f"ORBGEN: End optimization on level {iorb + 1} orbital, merge with previous orbital shell(s).", flush = True)
@@ -496,36 +511,21 @@ def run(siab_settings: dict, calculation_settings: list, folders: list):
         etc, and `deform` is index of deformation of the geometry, such as stretching,
         etc.
     """
-    rcuts = calculation_settings[0]["bessel_nao_rcut"]
-    rcuts = [rcuts] if not isinstance(rcuts, list) else rcuts
-    ecut = calculation_settings[0]["ecutwfc"]
-    elem = [f for f in folders if len(f) > 0][0][0].split("-")[0]
-    # because element does not really matter when optimizing orbitals, the only thing
-    # has element information is the name of folder. So we extract the element from the
-    # first folder name. Not elegant, we know.
-    jY_type = siab_settings.get("jY_type", "reduced")
-
-    run_map = {"none": "none", "restart": "restart", "bfgs": "opt"}
-    run_type = run_map.get(siab_settings.get("optimizer", "none"), "none")
+    rcuts, ecut, elem, jy_type, run_type, spil_option = \
+        neo_spilopt_params_from_dft(calculation_settings, siab_settings, folders)
     for rcut in rcuts: # can be parallelized here
-
         ##############
         # Generation #
         ##############
-        # for jy basis calculation, only matched rcut folders are needed
+        # for jy basis calculation, only matched rcut folders are needed, so there is
+        # a filter needed.
         if run_type == "opt":
             # REFACTOR: SIAB-v3.0, get folders with matched rcut
-            f_ = [[f for f in fgrp if len(f.split("-")) == 3 or \
-                   float(f.split("-")[-1].replace("au", "")) == rcut] # jy case 
-                  for fgrp in folders]
-            jy = [f for f in folders if len(f) > 0][0][0][-2:] == "au"
-            coefs_tot = _coef_opt(rcut, 
-                                  siab_settings['orbitals'],
-                                  f_, 
-                                  siab_settings.get("max_steps", 2000),
-                                  siab_settings.get("nthreads", 4),
-                                  jy,
-                                  siab_settings.get("spill_coefs", None))
+            confs = [[f for f in fgrp \
+                      if len(f.split("-")) == 3\
+                      or float(f.split("-")[-1].replace("au", "")) == rcut] # jy case 
+                      for fgrp in folders]
+            coefs_tot = _coef_opt(**spil_option, rcut = rcut, folders=confs)
         elif run_type == "restart":
             raise NotImplementedError("restart is not implemented yet")
         else: # run_type == "none", used to generate jY basis
@@ -537,7 +537,7 @@ def run(siab_settings: dict, calculation_settings: list, folders: list):
         for ilev, coefs in enumerate(coefs_tot): # loop over different levels...
             folder = "_".join([elem, f"{rcut}au", f"{ecut}Ry"]) # because the concept of "level" is not clear
             for coefs_it in coefs: # loop over different atom types
-                _ = _save_orb(coefs_it, elem, ecut, rcut, folder, jY_type)
+                _ = _save_orb(coefs_it, elem, ecut, rcut, folder, jy_type)
     return
 
 def _nzeta_mean_conf(nbands, 

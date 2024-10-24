@@ -1,4 +1,9 @@
-def initialize(calculation_settings, siab_settings, folders):
+from SIAB.spillage.datparse import read_istate_info, read_input_script, read_kpoints
+import os
+import numpy as np
+import unittest
+
+def ptg_spilopt_params_from_dft(calculation_settings, siab_settings, folders):
     """prepare the input for orbital optimization task.
     Because the folder name might not be determined at the beginning of task if perform
     `auto` on bond_length, the exact folder name will be given uniformly after performing
@@ -29,3 +34,125 @@ def initialize(calculation_settings, siab_settings, folders):
             orbital["folder"].extend(folders[i])
 
     return siab_settings
+
+def neo_spilopt_params_from_dft(calculation_settings, siab_settings, folders):
+    '''this function for new method (bfgs) is just a way to make the interface
+    unified with the old version of SIAB.
+    But there are indeed some tedious work to do:
+    
+    1. get all the orbital identifier rcut(s), ecut and the element symbol
+    2. extract the orbital optimization options (important: refresh the nbands_ref
+    if it is specified as str involving `occ` and `all`)
+    '''
+    rcuts = calculation_settings[0]["bessel_nao_rcut"]
+    rcuts = [rcuts] if not isinstance(rcuts, list) else rcuts
+    ecut = calculation_settings[0]["ecutwfc"]
+    elem = [f for f in folders if len(f) > 0][0][0].split("-")[0]
+    # because element does not really matter when optimizing orbitals, the only thing
+    # has element information is the name of folder. So we extract the element from the
+    # first folder name. Not elegant, we know.
+    jy_type = siab_settings.get("jY_type", "reduced")
+
+    run_map = {"none": "none", "restart": "restart", "bfgs": "opt"}
+    run_type = run_map.get(siab_settings.get("optimizer", "none"), "none")
+
+    # refresh the nbands_ref to int if it is specified as str HERE
+
+    shared_option = {'orbparams': siab_settings['orbitals'], 
+                     'maxiter': siab_settings.get("max_steps", 2000),
+                     'nthreads': siab_settings.get("nthreads", 4),
+                     'jy': calculation_settings[0].get('basis_type', 'pw') != 'pw',
+                     'spill_coefs': siab_settings.get("spill_coefs", None)}
+
+    return rcuts, ecut, elem, jy_type, run_type, shared_option
+
+def _spil_bnd_autoset(pattern: int|str, 
+                      folder: str,
+                      occ_thr = 5e-1,
+                      merge_sk = 'max'):
+    '''set the range of bands to optimize the Spillage
+    
+    Parameters
+    ----------
+    pattern : str
+        the value of nbands_ref set by user, might be `occ` or `all` or
+        simple algebratic expression. Or a simple integer.
+    folder: str
+        for `occ`, `all` and related expressions, the istate.info file
+        is needed to determine the number of bands to optimize.
+    occ_thr: float
+        the threshold to determine the occupied bands, default is 5e-1
+    merge_sk: str
+        decide how to merge_sk the bands of different spins and kpoints,
+        , can be `max`, `min` or `mean`, default is `max`
+    Returns
+    -------
+    int
+        the number of bands to optimize
+    '''
+
+    parent = os.path.dirname(folder)
+    base = os.path.basename(folder)
+    if 'OUT.' not in base:
+        param = read_input_script(os.path.join(folder, 'INPUT'))
+        folder = 'OUT.' + param.get('suffix', 'ABACUS')
+        folder = os.path.join(parent, base, folder)
+
+    # occ indexed by [ispin][ik][ibnd]
+    kpts, _, occ = read_istate_info(os.path.join(folder, 'istate.info'))
+    kpts_, wk = read_kpoints(os.path.join(folder, 'kpoints'))
+    assert np.allclose(kpts, kpts_), f'Inconsistent kpoints in {folder}/ istate.info and kpoints'
+
+    nbnd = [[(len(occ_sk), len(np.where(np.array(occ_sk) >= occ_thr*w)[0])) 
+             for occ_sk, w in zip(occ_sp, wk)] for occ_sp in occ]
+    nbnd = np.array(nbnd).reshape(-1, 2)
+    assert nbnd.shape == (len(kpts)*len(occ), 2), f'Inconsistent shape of nbnd {nbnd.shape}'
+    
+    # take min, max or mean of the bands over all (ispin, ik) on (nbands, occ_bands)
+    if merge_sk == 'max':
+        nbnd = nbnd.max(axis=0)
+    elif merge_sk == 'min':
+        nbnd = nbnd.min(axis=0)
+    elif merge_sk == 'mean':
+        nbnd = nbnd.mean(axis=0)
+    else:
+        raise ValueError(f"merge_sk method {merge_sk} is not supported")
+    
+    nall, nocc = nbnd
+    if isinstance(pattern, int):
+        if pattern < 0 or pattern > nall:
+            raise ValueError(f"nbands_ref {pattern} is out of range (0, {nall})")
+        return pattern
+    # else, pattern is
+    return eval(pattern.replace('occ', str(nocc)).replace('all', str(nall)))
+
+class TestSpillageUtilities(unittest.TestCase):
+    def test_spil_bnd_autoset(self):
+        here = os.path.dirname(__file__)
+        outdir = os.path.join(here, 'testfiles', 'Si', 'jy-7au', 'monomer-k')
+        
+        # test for simple integer
+        out = _spil_bnd_autoset(10, outdir)
+        self.assertEqual(out, 10)
+
+        # out of band range
+        with self.assertRaises(ValueError):
+            _spil_bnd_autoset(10000, outdir)
+        
+        # occ
+        out = _spil_bnd_autoset('occ', outdir)
+        self.assertEqual(out, 4)
+
+        # all
+        out = _spil_bnd_autoset('all', outdir)
+        self.assertEqual(out, 25)
+
+        # simple expression
+        out = _spil_bnd_autoset('occ+2', outdir)
+        self.assertEqual(out, 6)
+
+        out = _spil_bnd_autoset('all-2', outdir)
+        self.assertEqual(out, 23)
+
+if __name__ == "__main__":
+    unittest.main()

@@ -574,45 +574,6 @@ def skip_ppread(user_settings: dict):
         # in a list in input, therefore the index is known).
     return skip
 
-def _validate_param(user_settings: dict):
-    """validate the input parameters
-    
-    Parameters
-    ----------
-    user_settings: dict
-        the user settings
-    
-    Returns
-    -------
-    None
-    """
-    # check if the shape assigned to orbitals is valid
-    shape2index = {rs["shape"]: i for i, rs in enumerate(user_settings["reference_systems"])}
-    for orb in user_settings["orbitals"]:
-        shape = orb["shape"]
-        shape = [shape] if not isinstance(shape, list) else shape
-        for s in shape:
-            assert isinstance(s, (str, int)), f"shape {s} is not a valid shape"
-            if isinstance(s, str):
-                assert s in shape2index, f"shape {s} is not found in reference systems"
-
-    # check if the nbands set for reference system is smaller than
-    # bands needed for fitting orbitals
-    shape2index = {rs["shape"]: i for i, rs in enumerate(user_settings["reference_systems"])}
-    for iorb, orb in enumerate(user_settings["orbitals"]):
-        shape = orb["shape"]
-        shape = [shape] if not isinstance(shape, list) else shape
-        for s in shape:
-            if isinstance(s, str):
-                assert orb["nbands_ref"] <= user_settings["reference_systems"][shape2index[s]]["nbands"], \
-                    f"ERROR: `nbands_ref` for orbital {iorb} is larger than the number of bands set for\
- reference system `{s}`"
-            elif isinstance(s, int):
-                assert orb["nbands_ref"] <= user_settings["reference_systems"][s]["nbands"], \
-                    f"ERROR: `nbands_ref` for orbital {iorb} is larger than the number of bands set for\
- reference system `{s}`"
-
-
 def parse(user_settings: dict):
     """unpack the SIAB input to structure (shape as key and bond lengths are list as value),
     input setting of abacus, orbital generation settings, environmental settings and general description
@@ -647,8 +608,6 @@ def parse(user_settings: dict):
     siab = siab_settings(user_settings, minimal_basis, z_val)
     env = environment_settings(user_settings)
     general = description(symbol, user_settings)
-
-    _validate_param(user_settings)
     
     return structures, abacus, siab, env, general
 
