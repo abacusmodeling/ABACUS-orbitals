@@ -1,0 +1,8 @@
+label-alias:
+  BUG: 'kind/bug'
+  Feature_request: 'enhancement/feature'
+  Question: 'question'
+  BFGS: 'bfgs'
+  pytorch.SWAT: 'pytorch'
+  Build: 'install/build'
+  Refactor: 'refactor'
