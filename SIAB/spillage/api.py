@@ -156,16 +156,16 @@ def _coef_opt_pw(rcut, orbparams, folders, options, nthreads, spill_coefs = None
 
     spill_coefs = [0.0, 1.0] if spill_coefs is None else spill_coefs
 
-    configs = [folders[indf] for orb in orbparams for indf in orb['folder']]
-    configs = list(set([folder for f in configs for folder in f]))
+    uniqfds = [folders[indf] for orb in orbparams for indf in orb['folder']]
+    uniqfds = list(set([folder for f in uniqfds for folder in f]))
 
     iconfs = [[] for _ in range(len(orbparams))]
     for iorb, orb in enumerate(orbparams):
-        iconfs[iorb] = [configs.index(folder) for f in orb['folder'] for folder in folders[f]]
+        iconfs[iorb] = [uniqfds.index(folder) for f in orb['folder'] for folder in folders[f]]
     
     fov = None
-    for folder in configs:
-        for fov_, fop_ in _orb_matrices(folder):
+    for uniqfd in uniqfds:
+        for fov_, fop_ in _orb_matrices(uniqfd):
             ov, op = map(read_orb_mat, [fov_, fop_])
             assert ov['rcut'] == op['rcut'], "Data violation: rcut of ov and op matrices are different"
             if np.abs(ov['rcut'] - rcut) < 1e-10:
@@ -177,17 +177,18 @@ def _coef_opt_pw(rcut, orbparams, folders, options, nthreads, spill_coefs = None
 
     # prepare opt params
     elem = flatten(folders)[0].split("-")[0]
-    initdir = "-".join([elem, "monomer"])
-    initdir = os.path.join(initdir, os.path.basename(fov))
-    guess = _plan_guess(nzeta, initdir, False, True)
+    guess = _plan_guess(nzeta, 
+                        os.path.join("-".join([elem, "monomer"]), os.path.basename(fov)), 
+                        jy=False, 
+                        diagnosis=True)
     ibands = [_ibands(orb['nbands_ref'], orb['folder'], [len(f) for f in folders if f]) for orb in orbparams]
-    ideps = [orb['nzeta_from'] for orb in orbparams]
+    ifrozen = [orb['nzeta_from'] for orb in orbparams]
 
     return _do_onion_opt(minimizer,
                          nzeta,
                          iconfs,
                          ibands,
-                         ideps,
+                         ifrozen,
                          nthreads,
                          options,
                          guess)
@@ -378,13 +379,13 @@ def _orb_matrices(folder: str):
     wavefunctions, presently ranges from 6 to 10 and 0 to 1, respectively.
     """
 
-    old = r'orb_matrix.([01]).dat'
-    new = r'orb_matrix_rcut(\d+)deriv([01]).dat'
+    OLD_MATRIX_PATTERN  = r'orb_matrix.([01]).dat'
+    NEW_MATRIX_PATTERN  = r'orb_matrix_rcut(\d+)deriv([01]).dat'
 
     files = [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
     # convert to absolute path
-    old_files = [os.path.join(folder, f) for f in files if re.match(old, f)]
-    new_files = [os.path.join(folder, f) for f in files if re.match(new, f)]
+    old_files = [os.path.join(folder, f) for f in files if re.match(OLD_MATRIX_PATTERN , f)]
+    new_files = [os.path.join(folder, f) for f in files if re.match(NEW_MATRIX_PATTERN, f)]
     # not allowed to have both old and new files
     assert not (old_files and new_files)
     assert len(old_files) == 2 or not old_files
@@ -529,7 +530,7 @@ def _nzeta_mean_conf(nbands,
                      folders, 
                      statistics = 'max',
                      pop = 'svd-fold',
-                     filter = 1.0):
+                     nz_filter = 1.0):
     """infer the nzeta from given folders with some strategy. If there are
     multiple kpoints calculated, for each folder the result will be firstly
     averaged and used to represent the `nzeta` inferred from the whole folder
@@ -548,7 +549,7 @@ def _nzeta_mean_conf(nbands,
     pop: str
         the population analysis method used to infer nzeta, can be 'svd-fold'
         or 'svd-max'
-    filter: float|list[float]|list[list[int]]|None
+    nz_filter: float|list[float]|list[list[int]]|None
         can be either float or list of floats, which means the threshold for 
         the significance for each atomtype. 
         If it is a list[list[int]], it should be the nzeta for each atomtype, 
@@ -570,7 +571,7 @@ def _nzeta_mean_conf(nbands,
 
     max_shape = (0,) # 1D array
     for folder, nband in zip(folders, nbands):
-        nzeta_ = np.array(_nzeta_infer(folder, nband, pop, filter=filter))
+        nzeta_ = np.array(_nzeta_infer(folder, nband, pop, nz_filter=nz_filter))
         max_shape = np.maximum(max_shape, nzeta_.shape)
         nzeta.append(nzeta_)
 
@@ -578,7 +579,7 @@ def _nzeta_mean_conf(nbands,
     return np.max(nzeta, axis=0).tolist() if statistics == 'max' \
         else np.mean(nzeta, axis=0).tolist()
 
-def _nzeta_infer(folder, nband, pop = 'svd-fold', filter = 1.0):
+def _nzeta_infer(folder, nband, pop = 'svd-fold', nz_filter = 1.0):
     """infer nzeta based on one structure whose calculation result is stored
     in the folder
     
@@ -593,7 +594,7 @@ def _nzeta_infer(folder, nband, pop = 'svd-fold', filter = 1.0):
     pop: str, optional
         the population analysis method used to infer nzeta, can be 'svd-fold'
         or 'svd-max'. The default is 'svd-fold'.
-    filter: float|list[float]|list[list[int]]|None
+    nz_filter: float|list[float]|list[list[int]]|None
         can be either float or list of floats, which means the threshold for 
         the significance for each atomtype. 
         If it is a list[list[int]], it should be the nzeta for each atomtype, 
@@ -644,7 +645,7 @@ def _nzeta_infer(folder, nband, pop = 'svd-fold', filter = 1.0):
                                            running['nzeta'], 
                                            pop, 
                                            nband=nband, 
-                                           filter=filter)
+                                           nz_filter=nz_filter)
         # print out the result
         print(f'k = {ik}, ispin = {is_}', flush=True)
         for it, (st_, nzt_) in enumerate(zip(sigma, nz)):

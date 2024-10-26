@@ -2,6 +2,7 @@ from SIAB.spillage.datparse import read_istate_info, read_input_script, read_kpo
 import os
 import numpy as np
 import unittest
+import ast # for literal_eval
 
 def ptg_spilopt_params_from_dft(calculation_settings, siab_settings, folders):
     """prepare the input for orbital optimization task.
@@ -140,8 +141,12 @@ def _spil_bnd_autoset(pattern: int|str,
         if pattern < 0 or pattern > nall:
             raise ValueError(f"nbands_ref {pattern} is out of range (0, {nall})")
         return pattern
-    # else, pattern is
-    return int(eval(pattern.replace('occ', str(nocc)).replace('all', str(nall))))
+    else:
+        assert isinstance(pattern, str), f"nbands_ref {pattern} is not a string."
+    try:
+        return int(ast.literal_eval(pattern.replace('occ', str(nocc)).replace('all', str(nall))))
+    except (ValueError, SyntaxError):
+        raise ValueError(f"nbands_ref {pattern} is not a valid expression.")
 
 class TestSpillageUtilities(unittest.TestCase):
     def test_spil_bnd_autoset(self):

@@ -1,7 +1,7 @@
 '''all functions in this module are not compatible with abacus pw 
 calculation. abacus pw is deprecated in abacus-orbgen v3.0'''
 from SIAB.spillage.datparse import read_wfc_lcao_txt, read_triu, \
-    read_running_scf_log, read_input_script, read_orb_mat
+    read_running_scf_log, read_input_script
 from SIAB.spillage.lcao_wfc_analysis import _wll
 from SIAB.spillage.spillage import flatten, initgen_jy
 import unittest
@@ -9,7 +9,10 @@ import numpy as np
 import os
 
 def _grpbnd_lnm(folder, count_thr = 1e-1, itype = 0):
-    '''group the band indexes into spin, l, n and m.
+    '''scan all bands of the calculation in one folder, for one specific atomtype,
+    get all bands in which this atomtype's orbitals have significant contribution (
+    weight larger than count_thr). Then group those band indexes into spin, l, n 
+    and m, where n is the index of zeta functions.
     
     Parameters
     ----------
@@ -23,8 +26,14 @@ def _grpbnd_lnm(folder, count_thr = 1e-1, itype = 0):
     
     Returns
     -------
-    list of list of list of list of int: [ispin][l][n][m] storing the band index(es)
+    list[list[list[list[int]]]]: [ispin][l][n][m] storing the band index(es)
+
+    Notes
+    -----
+    Currently only supports the case that all atomtypes are the same (itype = 0)
     '''
+    if itype != 0:
+        raise NotImplementedError("Currently the wll method only support itype = 0")
     params = read_input_script(os.path.join(folder, "INPUT"))
     fwfc = "WFC_NAO_GAMMA" if params.get("gamma_only", False) else "WFC_NAO_K"
     frunning = f"running_{params.get('calculation', 'scf')}.log"
@@ -38,9 +47,9 @@ def _grpbnd_lnm(folder, count_thr = 1e-1, itype = 0):
     assert nspin == running["nspin"], \
         f"nspin in INPUT and running_scf.log are different: {nspin} and {running['nspin']}"
     
-    lmaxmax = len(running["nzeta"][itype]) - 1
-    assert lmaxmax >= 0, f"lmaxmax should be at least 0: {lmaxmax}"
-    flat_ = [[[] for _ in range(lmaxmax + 1)] for _ in range(nspin)]
+    lmax_it = len(running["nzeta"][itype]) - 1
+    assert lmax_it >= 0, f"lmax for one atomtype should be at least 0: {lmax_it}"
+    flat_ = [[[] for _ in range(lmax_it + 1)] for _ in range(nspin)]
 
     # if nspin == 2, the "spin-up" kpoints will be listed first, then "spin-down"
     wk = running["wk"]
@@ -53,7 +62,7 @@ def _grpbnd_lnm(folder, count_thr = 1e-1, itype = 0):
         # the complete return list is (wfc.T, e, occ, k)
         ovlp = read_triu(os.path.join(outdir, f"data-{isk}-S"))
 
-        # for monomer, it is okay to use wll method to decompose its components
+        # FIXME: support multiple atomtypes
         wll = _wll(wfc, ovlp, running["natom"], running["nzeta"])
 
         for ib, wb in enumerate(wll): # loop over bands
@@ -66,16 +75,16 @@ def _grpbnd_lnm(folder, count_thr = 1e-1, itype = 0):
     # by 2l+1
     pad_ = flat_.copy()
     for i in range(nspin):
-        for l in range(lmaxmax + 1):
+        for l in range(lmax_it + 1):
             f = flat_[i][l]
             len_ = int(np.ceil(len(f) / (2*l + 1)) * (2*l + 1))
             pad_[i][l] = f + [-1] * (len_ - len(f)) if len(f) > 0 else f
     # reshape the pad_
     reshape_ = [[np.array(pad_[i][l]).reshape(-1, 2*l+1).tolist() 
-                 for l in range(lmaxmax + 1) ] for i in range(nspin)]
+                 for l in range(lmax_it + 1) ] for i in range(nspin)]
     # remove all -1
     return [[[[j for j in r if j != -1] for r in reshape_[i][l]]
-               for l in range(lmaxmax + 1) ] for i in range(nspin)]
+               for l in range(lmax_it + 1) ] for i in range(nspin)]
 
 def _ibands(ibnd_max, igeom, npert, ibnd_min = None):
     '''geom (geometry) combining with pert (perturbation) yield one

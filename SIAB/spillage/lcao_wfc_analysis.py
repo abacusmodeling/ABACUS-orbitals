@@ -29,7 +29,7 @@ def api(C, S, natom, nzeta, method, **kwargs):
         **kwargs : optional
             Additional parameters for the analysis. The available parameters are:
             'nband': int|str, number of bands selected for the analysis, 'all' for all bands.
-            'filter': float, threshold for the significance of zeta functions.
+            'nz_filter': float, threshold for the significance of zeta functions.
     
     Returns
     -------
@@ -39,9 +39,9 @@ def api(C, S, natom, nzeta, method, **kwargs):
     if method not in ['svd-fold', 'svd-max']:
         raise ValueError('method not recognized')
     nband = kwargs.get('nband', 'all')
-    filter = kwargs.get('filter', None)
+    nz_filter = kwargs.get('nz_filter', None)
     svd = {'svd-fold': _svdfold,'svd-max': _svdmax}
-    return svd[method](C, S, nband, natom, nzeta, filter)
+    return svd[method](C, S, nband, natom, nzeta, nz_filter)
 
 def _wll(C, S, natom, nzeta):
     '''
@@ -92,7 +92,7 @@ def _svdmax(C,
             nband, 
             natom, 
             nzeta, 
-            filter = None):
+            nz_filter = None):
     '''perform svd analysis on submatrix with size (nz, nbnd) extracted from
     the whole wavefunction. The submatrix is certainly indexed by [it][l][iat][m]
     , then taking maximum over both [iat] and [m] dimensions, yielding
@@ -112,7 +112,7 @@ def _svdmax(C,
         nzeta : list[list[int]]
             nzeta[i][l] specifies the number of zeta orbitals of the
             angular momentum l of type i. len(nzeta) must equal len(natom).
-        filter : float|list[float]|list[list[int]]|None
+        nz_filter : float|list[float]|list[list[int]]|None
             if specified as list[float], will be the threshold for filtering 
             singular values for each atom type. All values larger than it 
             will be treated as significant, omit otherwise.
@@ -129,9 +129,9 @@ def _svdmax(C,
         all the singluar values before filtering, can be indexed by [it][l][iz]
     nzeta_sub: list[list[int]]|None
         the number of zeta functions after filtering, can be indexed by [it][l].
-        if filter is not specified, will be None.
+        if nz_filter is not specified, will be None.
     loss: list[float]|None
-        loss of space truncation, can be indexed by [it]. If filter is not
+        loss of space truncation, can be indexed by [it]. If nz_filter is not
         specified, will be None.
     '''
 
@@ -165,19 +165,19 @@ def _svdmax(C,
             sigma_max = np.linalg.norm(sigma, axis=0, ord=np.inf)
             out[it].append(sigma_max)
 
-    if filter is None:
+    if nz_filter is None:
         return out, None, None
     
     ##############################################
     # SVD-based space truncation loss estimation #
     ##############################################
-    filter = [filter] * ntyp if isinstance(filter, float) else filter
-    jobtype = 'cal_nz' if isinstance(filter, list) and len(filter) == ntyp\
-        and all(isinstance(f, float) for f in filter) else 'cal_loss'
+    nz_filter = [nz_filter] * ntyp if isinstance(nz_filter, float) else nz_filter
+    jobtype = 'cal_nz' if isinstance(nz_filter, list) and len(nz_filter) == ntyp\
+        and all(isinstance(f, float) for f in nz_filter) else 'cal_loss'
 
-    nz = [[len(np.where(np.array(sigma) >= filter[it])[0]) 
+    nz = [[len(np.where(np.array(sigma) >= nz_filter[it])[0]) 
            for sigma in out[it]] for it in range(ntyp)] if jobtype == 'cal_nz'\
-           else filter
+           else nz_filter
     
     loss = 0
     for it in range(ntyp):
@@ -194,7 +194,7 @@ def _svdfold(C,
              nband, 
              natom, 
              nzeta, 
-             filter = None):
+             nz_filter = None):
     '''perform svd-based analysis on wfc for each block with size (nz, nband*nat*m)
     for each l. The ideal singluar values are sqrt(2l+1)*sqrt(nat) at most for each
     zeta function, in which the l is the angular momentum, nat is the number of atoms
@@ -216,7 +216,7 @@ def _svdfold(C,
         nzeta : list[list[int]]
             nzeta[i][l] specifies the number of zeta orbitals of the
             angular momentum l of type i. len(nzeta) must equal len(natom).
-        filter : float|list[float]|list[list[int]]|None
+        nz_filter : float|list[float]|list[list[int]]|None
             if specified as list[float], will be the threshold for filtering 
             singular values for each atom type. All values larger than it 
             will be treated as significant, omit otherwise.
@@ -234,9 +234,9 @@ def _svdfold(C,
         all the singluar values before filtering, can be indexed by [it][l][iz]
     nzeta_sub: list[list[int]]|None
         the number of zeta functions after filtering, can be indexed by [it][l].
-        if filter is not specified, will be None.
+        if nz_filter is not specified, will be None.
     loss: list[float]|None
-        loss of space truncation, can be indexed by [it]. If filter is not
+        loss of space truncation, can be indexed by [it]. If nz_filter is not
         specified, will be None.
     '''
 
@@ -267,19 +267,19 @@ def _svdfold(C,
             s = la.svd(Ct[it][l], compute_uv=False)
             sigma[it][l] = s
 
-    if filter is None:
+    if nz_filter is None:
         return sigma, None, None
     
     ##############################################
     # SVD-based space truncation loss estimation #
     ##############################################
-    filter = [filter] * ntyp if isinstance(filter, float) else filter
-    jobtype = 'cal_nz' if isinstance(filter, list) and len(filter) == ntyp\
-        and all(isinstance(f, float) for f in filter) else 'cal_loss'
+    nz_filter = [nz_filter] * ntyp if isinstance(nz_filter, float) else nz_filter
+    jobtype = 'cal_nz' if isinstance(nz_filter, list) and len(nz_filter) == ntyp\
+        and all(isinstance(f, float) for f in nz_filter) else 'cal_loss'
     
-    nz = [[len(np.where(np.array(sigma_l) >= filter[it])[0])
+    nz = [[len(np.where(np.array(sigma_l) >= nz_filter[it])[0])
            for sigma_l in sigma[it]] for it in range(ntyp)]\
-           if jobtype == 'cal_nz' else filter
+           if jobtype == 'cal_nz' else nz_filter
     
     loss = 0
     for it in range(ntyp):
@@ -354,7 +354,8 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
     def test_nzeta_nband_plt(self):
         
         outdir = '/root/documents/simulation/orbgen/Test1Aluminum-20241011/Al-dimer-2.00-10au/OUT.Al-dimer-2.00-10au/'
-        method = {'svd-fold': _svdfold, 'svd-max': _svdmax}
+        analyzer = _svdfold
+        # analyzer = _svdmax
         wfc = read_wfc_lcao_txt(outdir + 'WFC_NAO_GAMMA1.txt')[0]
         S = read_triu(outdir + 'data-0-S')
         dat = read_running_scf_log(outdir + 'running_scf.log')
@@ -365,7 +366,7 @@ class TestLCAOWfcAnalysis(unittest.TestCase):
         sigmas = []
         fig, ax = plt.subplots(1, 3, figsize=(18, 6))
         for nbnd in range(4, nbands, 5):
-            sigma, _, _ = method(wfc, S, nbnd, dat['natom'], dat['nzeta'])
+            sigma, _, _ = analyzer(wfc, S, nbnd, dat['natom'], dat['nzeta'])
             for i, (_, nz) in enumerate(zip(dat['natom'], dat['nzeta'])):
                 for l in range(len(nz)):
                     #print(f"atom type {i+1}, l={l}, nbnd={nbnd}")
