@@ -61,7 +61,7 @@ import sys
 def run(siab_settings, calculation_settings, folders):
     """iterate on siab_settings, can support parallelization according to user settings"""
     import SIAB.spillage.util as ssu
-    siab_settings = ssu.initialize(calculation_settings, siab_settings, folders)
+    siab_settings = ssu.ptg_spilopt_params_from_dft(calculation_settings, siab_settings, folders)
     """after initialization, siab_settings will have the following structure:
     ```python
     {

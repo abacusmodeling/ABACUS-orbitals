@@ -43,13 +43,21 @@ def initialize(version: str = "0.1.0",
     ##################################################
     # NEW FEATURE in SIAB-v3.0: support for jy basis #
     ##################################################
+    # disable the use of pw basis for optimizer bfgs
+    if user_settings.get("optimizer", "none") == "bfgs" and\
+       user_settings.get('fit_basis', 'jy') == 'pw':
+        raise ValueError("Generating orbitals from PW calculation for bfgs has been deprecated")
+
     from SIAB.spillage.api import _coef_gen, _save_orb
+        
     # in case some user will type jY, jy, JY, Jy, etc.
     use_jy = user_settings.get("fit_basis", "jy").lower() == "jy" \
-        and user_settings.get("optimizer", "pytorch.SWAT") != "none" 
+        and user_settings.get("optimizer", "pytorch.SWAT") != "none"
+    
     # if user only want jy, will generate elsewhere
     ecut = user_settings.get("ecutwfc", 100)
     rcuts = user_settings.get("bessel_nao_rcut", [6.0])
+    
     if use_jy: # only if use_jy, will generate jy basis
         lmaxmax = max([dftparam.get("lmaxmax", 1) for dftparam in abacus])
         fjy = [_save_orb(

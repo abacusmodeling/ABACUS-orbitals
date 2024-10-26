@@ -742,7 +742,7 @@ def normal(general: dict,
     folders = []
     for bond_length in bond_lengths:
         stru_setting = {"element": general["element"], "shape": reference_shape, "bond_length": bond_length,
-            "fpseudo": general["pseudo_name"], "lattice_constant": 20.0, "nspin": calculation_setting["nspin"],
+            "fpseudo": general["pseudo_name"], "lattice_constant": 30.0, "nspin": calculation_setting["nspin"],
             "mass": 1.0}
         # SIAB-v3.0 refactor here, change the configure() to generator
         for folder in configure(input_setting=calculation_setting,
