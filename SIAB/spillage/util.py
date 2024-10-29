@@ -52,7 +52,7 @@ def neo_spilopt_params_from_dft(calculation_settings, siab_settings, folders):
     # because element does not really matter when optimizing orbitals, the only thing
     # has element information is the name of folder. So we extract the element from the
     # first folder name. Not elegant, we know.
-    jy_type = siab_settings.get("jY_type", "reduced")
+    primitive_type = siab_settings.get("primitive_type", "reduced")
 
     run_map = {"none": "none", "restart": "restart", "bfgs": "opt"}
     run_type = run_map.get(siab_settings.get("optimizer", "none"), "none")
@@ -61,10 +61,15 @@ def neo_spilopt_params_from_dft(calculation_settings, siab_settings, folders):
     # rcut, but not for now...
     orbparams = siab_settings["orbitals"]
     for orb in orbparams:
-        nbnd = orb.get("nbands_ref", 0)
+
+        # indexes of folders, it is from the geometries to refer, make it a list
         indf = orb.get("folder", 0)
         if not isinstance(indf, list):
             indf = [indf]
+            
+        # nbands to ref, make it a list. This means all perts in one geom share
+        # the same nbands_ref
+        nbnd = orb.get("nbands_ref", 0)
         if not isinstance(nbnd, list):
             nbnd = [nbnd] * len(indf)
         
@@ -82,7 +87,7 @@ def neo_spilopt_params_from_dft(calculation_settings, siab_settings, folders):
                      'jy': calculation_settings[0].get('basis_type', 'pw') != 'pw',
                      'spill_coefs': siab_settings.get("spill_coefs", None)}
 
-    return rcuts, ecut, elem, jy_type, run_type, shared_option
+    return rcuts, ecut, elem, primitive_type, run_type, shared_option
 
 def _spil_bnd_autoset(pattern: int|str, 
                       folder: str,

@@ -15,3 +15,8 @@ python3 ./SIAB/spillage/struio.py -v
 python3 ./SIAB/spillage/lcao_wfc_analysis.py -v
 
 python3 ./SIAB/spillage/api.py -v
+
+python3 ./SIAB/orb/orb.py -v
+python3 ./SIAB/orb/orb_jy.py -v
+python3 ./SIAB/orb/orb_pw.py -v
+python3 ./SIAB/orb/jy_expmt.py -v

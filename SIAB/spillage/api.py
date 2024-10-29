@@ -1,5 +1,29 @@
-"""this file defines interface between newly implemented spillage optimization algorithm
-with the driver of SIAB"""
+'''
+this file contains interfaces and tool functions for calling functions to optimize
+the Spillage function. The interface in principle needs the following information:
+- elem: the element symbol
+- rcut(s): the cutoff radius for the orbitals, outside of which the orbitals are tru-
+    ncated
+- ecut: the kinetic energy cutoff for spherical wave functions
+- fit_basis: jy or pw
+- optimizer: none, restart or bfgs
+- maxiter: the maximum number of iterations
+- nthreads: the number of threads used in optimization
+- folders of ABACUS runs
+- orbgen parameters, for each orb, there are: 
+    - nzeta: number of zeta functions for each angular momentum l
+    - frozen: for hierarchical optimization strategy, a reference to previously
+        optimized orbitals. If valid, will only optimize its own layer of zeta
+        functions
+    - spillage reference: defines how practically the spillage function of this
+        orbital is calculated. For each folder, what stores in it should be the
+        calculation on one specific geometry (geom) under one specific 
+        deformation/perturbation (pert). For each calculation, it is possible
+        to select the band range to ref. Thus most primitively, what should be
+        provided is a list of tuple (str, range), in which the str is the folder
+        name and the range is the band range to ref. If the range is not provided,
+        the whole band range will be used.
+'''
 import os
 import re
 import numpy as np
@@ -17,11 +41,17 @@ from SIAB.spillage.datparse import read_wfc_lcao_txt, read_triu, \
 from SIAB.spillage.lcao_wfc_analysis import _wll
 from SIAB.spillage.lcao_wfc_analysis import api as wfc_analysis_api
 import unittest
-from SIAB.spillage.jy_expmt import _coef_init as _coef_init_jy
-from SIAB.spillage.jy_expmt import _ibands
+from SIAB.orb.jy_expmt import _coef_init as _coef_init_jy
+from SIAB.orb.jy_expmt import _ibands
 from SIAB.spillage.util import neo_spilopt_params_from_dft
+from SIAB.io.convention import orb as name_orb
+from SIAB.io.convention import orb_folder as name_orb_folder
 
-def _coef_gen(rcut: float, ecut: float, lmax: int, value: str = "eye"):
+def _coef_gen(rcut: float, 
+              ecut: float, 
+              lmax: int, 
+              primitive_type: str = 'reduced', 
+              value: str = "eye"):
     """Directly generate the coefficients of the orbitals instead of performing optimization
     
     Parameters
@@ -32,6 +62,8 @@ def _coef_gen(rcut: float, ecut: float, lmax: int, value: str = "eye"):
         the energy cutoff
     lmax: int
         the maximum angular momentum
+    primitive_type: str
+        the type of jY basis, can be "reduced" or "normalized"
     value: str
         the value to be returned, can be "eye"
     
@@ -44,10 +76,13 @@ def _coef_gen(rcut: float, ecut: float, lmax: int, value: str = "eye"):
         raise ValueError("Expected ecut to be an integer or float")
     if not isinstance(lmax, int):
         raise ValueError("Expected lmax to be an integer")
+    if primitive_type not in ['reduced', 'normalized']:
+        raise ValueError("Expected primitive_type to be 'reduced' or 'normalized'")
     if not isinstance(value, str):
         raise ValueError("Expected value to be a string")
     
-    nbes_rcut = [_nbes(l, rcut, ecut) for l in range(lmax + 1)]
+    less_dof = 0 if primitive_type == 'normalized' else 1
+    nbes_rcut = [_nbes(l, rcut, ecut) - less_dof for l in range(lmax + 1)]
     if value == "eye":
         return [[np.eye(nbes_rcut[l]).tolist() for l in range(lmax + 1)]]
     else:
@@ -404,7 +439,7 @@ def _orb_matrices(folder: str):
     for f in files:
         yield f
 
-def _save_orb(coefs, elem, ecut, rcut, folder, jY_type: str = "reduced"):
+def _save_orb(coefs, elem, ecut, rcut, folder, primitive_type: str = "reduced"):
     """
     Plot the orbital and save .orb file
     Parameter
@@ -419,7 +454,7 @@ def _save_orb(coefs, elem, ecut, rcut, folder, jY_type: str = "reduced"):
         the cutoff radius
     folder: str
         the folder to save the orbitals
-    jY_type: str
+    primitive_type: str
         the type of jY basis, can be "reduced", "nullspace", "svd" or "raw"
     
     Return
@@ -436,26 +471,26 @@ def _save_orb(coefs, elem, ecut, rcut, folder, jY_type: str = "reduced"):
     folder = os.path.abspath(folder)
     os.makedirs(folder, exist_ok=True)
 
-    chi = _coef_griddata([coefs], rcut, 0.01, jY_type)
+    chi = _coef_griddata([coefs], rcut, 0.01, primitive_type)
     # however, we should not bundle orbitals of different atomtypes together
 
-    suffix = "".join([f"{len(coef)}{sym}" for coef, sym in zip(coefs, syms)])
+    nzeta = [len(coef) for coef in coefs]
+    forb = name_orb(elem, rcut, ecut, nzeta)
+    write_nao(forb, elem, ecut, rcut, len(r), dr, chi)
 
-    fpng = os.path.join(folder, f"{elem}_gga_{rcut}au_{ecut}Ry_{suffix}.png")
+    fpng = forb[:-4] + ".png"
+    fpng = os.path.join(folder, fpng)
     plot_chi(chi, r, save=fpng)
     plt.close()
 
-    forb = fpng[:-4] + ".orb"
-    write_nao(forb, elem, ecut, rcut, len(r), dr, chi)
-
     # fparam = os.path.join(folder, "ORBITAL_RESULTS.txt")
     fparam = forb[:-4] + ".param"
-    write_param(fparam, coeff_converter_map[jY_type](coefs, rcut), rcut, 0.0, elem)
+    write_param(fparam, coeff_converter_map[primitive_type](coefs, rcut), rcut, 0.0, elem)
     print(f"orbital saved as {forb}")
 
     return forb
 
-def _coef_griddata(coefs, rcut, dr: float = 0.01, jY_type: str = "reduced"):
+def _coef_griddata(coefs, rcut, dr: float = 0.01, primitive_type: str = "reduced"):
     """build real space grid orbital based on the coefficients of the orbitals,
     rcut and grid spacing dr. The coefficients should be in the form of
     [it][l][zeta][q].
@@ -467,7 +502,7 @@ def _coef_griddata(coefs, rcut, dr: float = 0.01, jY_type: str = "reduced"):
         the cutoff radius
     dr: float
         the grid spacing
-    jY_type: str
+    primitive_type: str
         the type of jY basis, can be "reduced", "nullspace", "svd" or "raw"
 
     Returns:
@@ -475,7 +510,7 @@ def _coef_griddata(coefs, rcut, dr: float = 0.01, jY_type: str = "reduced"):
     """
 
     r = np.linspace(0, rcut, int(rcut/dr)+1) # hard code dr to be 0.01? no...
-    if jY_type in ["reduced", "nullspace", "svd"]:
+    if primitive_type in ["reduced", "nullspace", "svd"]:
         chi = build_reduced(coefs[0], rcut, r, True)
     else:
         coefs = coeff_normalized2raw(coefs, rcut)
@@ -497,7 +532,7 @@ def run(siab_settings: dict, calculation_settings: list, folders: list):
         etc, and `deform` is index of deformation of the geometry, such as stretching,
         etc.
     """
-    rcuts, ecut, elem, jy_type, run_type, spil_option = \
+    rcuts, ecut, elem, primitive_type, run_type, spil_option = \
         neo_spilopt_params_from_dft(calculation_settings, siab_settings, folders)
     for rcut in rcuts: # can be parallelized here
         ##############
@@ -520,10 +555,10 @@ def run(siab_settings: dict, calculation_settings: list, folders: list):
         #################
         # save orbitals #
         #################
-        for ilev, coefs in enumerate(coefs_tot): # loop over different levels...
-            folder = "_".join([elem, f"{rcut}au", f"{ecut}Ry"]) # because the concept of "level" is not clear
+        for _, coefs in enumerate(coefs_tot): # loop over different levels...
             for coefs_it in coefs: # loop over different atom types
-                _ = _save_orb(coefs_it, elem, ecut, rcut, folder, jy_type)
+                folder = name_orb_folder(elem, [len(coef) for coef in coefs_it])
+                _ = _save_orb(coefs_it, elem, ecut, rcut, folder, primitive_type)
     return
 
 def _nzeta_mean_conf(nbands, 
@@ -754,7 +789,7 @@ class TestAPI(unittest.TestCase):
         rcut = 3.0
         ecut = 10.0
         lmax = 3
-        coefs = _coef_gen(rcut, ecut, lmax)
+        coefs = _coef_gen(rcut, ecut, lmax, 'normalized')
         self.assertEqual(len(coefs), 1) # always only one atomtype
         self.assertEqual(len(coefs[0]), lmax + 1) # lmax + 1 orbitals
         for l in range(lmax + 1):

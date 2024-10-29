@@ -1,4 +1,4 @@
-import SIAB.interface.old_version as siov
+import SIAB.supercomputing.ptgfront as siov
 import SIAB.spillage.pytorch_swat.main as sspsm
 import SIAB.spillage.orbscreen as sso
 import multiprocessing
@@ -56,7 +56,7 @@ def opt(params: dict = None, cache_dir: str = "./", ilevel: int = 0, nlevel: int
 
     return forb, screen_vals
 
-import SIAB.interface.old_version as siov
+import SIAB.supercomputing.ptgfront as siov
 import sys
 def run(siab_settings, calculation_settings, folders):
     """iterate on siab_settings, can support parallelization according to user settings"""
@@ -195,7 +195,7 @@ def is_duplicate(folder: str):
                         return True, f"{folder}/{f}"
     return False, None
 
-import SIAB.interface.env as sienv
+import SIAB.supercomputing.op as sienv
 #import SIAB.data.interface as sdi
 def checkpoint(src: str,
                dst: str,

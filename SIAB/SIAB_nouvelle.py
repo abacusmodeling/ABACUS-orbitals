@@ -78,7 +78,7 @@ See reference for more information.
 
     return placeholder_1, placeholder_2, placeholder_3
 
-import SIAB.driver.front as sdf
+import SIAB.driver.main as sdf
 def run(fname: str, 
         siab_version: str = "0.1.0", 
         test: bool = True):

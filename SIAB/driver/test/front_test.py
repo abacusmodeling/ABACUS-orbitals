@@ -1,10 +1,10 @@
 import unittest
-import SIAB.driver.front as front
+import SIAB.driver.main as main
 
 class TestFront(unittest.TestCase):
 
     def test_initialzie(self):
-        result = front.initialize(version="0.1.0",
+        result = main.initialize(version="0.1.0",
                                   fname="./SIAB/driver/test/support/SIAB_INPUT",
                                   pseudopotential_check=False)
         self.assertEqual(len(result), 6)
