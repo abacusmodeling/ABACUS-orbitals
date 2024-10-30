@@ -13,7 +13,7 @@ import os
 import unittest
 import uuid
 
-def build_case(proto, 
+def _build_case(proto, 
                pertkind, 
                pertmag, 
                atomspecies,
@@ -41,7 +41,7 @@ def build_case(proto,
     '''
     elem = list(atomspecies.keys())
     if len(elem) != 1:
-        raise NotImplementedError('only one element is supported')
+        raise NotImplementedError(f'only one element is supported: {elem}')
     if pertkind != 'stretch':
         raise NotImplementedError('only stretch structral perturbation is supported')
     
@@ -70,23 +70,23 @@ def build_case(proto,
                         orb)
     
     folder = dft_folder(elem, proto, pertmag, rcut)
-    os.makedirs(folder, exist_ok = True)
     if is_duplicate(folder, dftparam):
         return None
     
+    os.makedirs(folder, exist_ok = True)
     with open(os.path.join(folder, 'INPUT'), 'w') as f:
         f.write(param_)
     with open(os.path.join(folder, 'STRU'), 'w') as f:
         f.write(pertgeom_)
     return folder
 
-def build_atomspecies(elem,
-                      pp,
-                      ecut = None,
-                      rcut = None,
-                      lmaxmax = None,
-                      primitive_type = 'reduced',
-                      orbital_dir = 'primitive_jy'):
+def _build_atomspecies(elem,
+                       pp,
+                       ecut = None,
+                       rcut = None,
+                       lmaxmax = None,
+                       primitive_type = 'reduced',
+                       orbital_dir = 'primitive_jy'):
     '''build the atomspecies dictionary. Once ecut, rcut and lmaxmax
     all are provided, will generate the orbital file path
     
@@ -119,12 +119,13 @@ def build_atomspecies(elem,
         forb = os.path.join(orbital_dir, orb(elem, rcut, ecut, nzeta))
         out['orb'] = forb
         if os.path.exists(forb):
-            return out
+            return {elem: out}
         coefs = _coef_gen(rcut, ecut, lmaxmax, primitive_type)[0]
         _ = _save_orb(coefs, elem, ecut, rcut, orbital_dir, primitive_type)
-    return out
+    return {elem: out}
 
-def build_abacus_jobs(globalparams,
+def build_abacus_jobs(elem,
+                      rcuts,
                       dftparams,
                       geoms,
                       spill_guess: str = 'atomic'):
@@ -147,30 +148,28 @@ def build_abacus_jobs(globalparams,
         dftspecific = {k: v for k, v in geom.items() if k not in abacus_params()}
         for pertmag in geom['pertmags']:
             if dftparams.get('basis_type', 'lcao') == 'pw':
-                dftparams.update({'bessel_nao_rcut': globalparams.get('bessel_nao_rcut')})
-                as_ = build_atomspecies(globalparams['elem'], dftparams['pseudo_dir'])
-                folder = build_case(geom['proto'], 
-                                    geom['pertkind'], 
-                                    pertmag, 
-                                    as_,
-                                    dftparams,
-                                    dftspecific)
+                as_ = _build_atomspecies(elem, dftparams['pseudo_dir'])
+                folder = _build_case(geom['proto'], 
+                                     geom['pertkind'], 
+                                     pertmag, 
+                                     as_,
+                                     dftparams|{'bessel_nao_rcut': rcuts},
+                                     dftspecific)
                 if folder is not None:
                     jobs.append(folder)
             else:
-                for rcut in globalparams.get('bessel_nao_rcut', [6]):
-                    dftparams.update({'bessel_nao_rcut': rcut})
-                    as_ = build_atomspecies(globalparams['elem'],
-                                            dftparams['pseudo_dir'],
-                                            dftparams['ecutwfc'],
-                                            rcut,
-                                            geom.get('lmaxmax', 1))
-                    folder = build_case(geom['proto'],
-                                        geom['pertkind'],
-                                        pertmag,
-                                        as_,
-                                        dftparams,
-                                        dftspecific)
+                for rcut in rcuts:
+                    as_ = _build_atomspecies(elem,
+                                             dftparams['pseudo_dir'],
+                                             dftparams['ecutwfc'],
+                                             rcut,
+                                             geom.get('lmaxmax', 1))
+                    folder = _build_case(geom['proto'],
+                                         geom['pertkind'],
+                                         pertmag,
+                                         as_,
+                                         dftparams|{'bessel_nao_rcut': rcut},
+                                         dftspecific)
                     if folder is not None:
                         jobs.append(folder)
     # then the initial guess
@@ -178,61 +177,134 @@ def build_abacus_jobs(globalparams,
         nbndmax = int(max([
             geom['nbands']/natom_from_shape(geom['proto']) for geom in geoms]))
         if dftparams.get('basis_type', 'lcao') == 'pw':
-            as_ = build_atomspecies(globalparams['elem'], dftparams['pseudo_dir'])
-            folder = build_case('monomer', 
-                                'stretch', 
-                                0,
-                                as_,
-                                dftparams,
-                                {'nbands': nbndmax + 20})
+            as_ = _build_atomspecies(elem, dftparams['pseudo_dir'])
+            folder = _build_case('monomer', 
+                                 'stretch', 
+                                 0,
+                                 as_,
+                                 dftparams|{'bessel_nao_rcut': rcuts},
+                                 {'nbands': nbndmax + 20})
             jobs.append(folder)
         else:
             lmaxmax = int(max([geom.get('lmaxmax', 1) for geom in geoms]))
-            for rcut in globalparams.get('bessel_nao_rcut', [6]):
-                dftparams.update({'bessel_nao_rcut': rcut})
-                as_ = build_atomspecies(globalparams['elem'],
-                                        dftparams['pseudo_dir'],
-                                        dftparams['ecutwfc'],
-                                        rcut,
-                                        lmaxmax)
-                folder = build_case('monomer',
-                                    'stretch',
-                                    0,
-                                    as_,
-                                    dftparams,
-                                    {'nbands': nbndmax + 20})
+            for rcut in rcuts:
+                as_ = _build_atomspecies(elem,
+                                         dftparams['pseudo_dir'],
+                                         dftparams['ecutwfc'],
+                                         rcut,
+                                         lmaxmax)
+                folder = _build_case('monomer',
+                                     'stretch',
+                                     0,
+                                     as_,
+                                     dftparams|{'bessel_nao_rcut': rcut},
+                                     {'nbands': nbndmax + 20})
                 jobs.append(folder)
     return [job for job in jobs if job is not None]
 
 class TestAbacusApi(unittest.TestCase):
     def test_build_atomspecies(self):
-        '''test build_atomspecies
+        '''test _build_atomspecies
         '''
         orbital_dir = str(uuid.uuid4())
-        atomspecies = build_atomspecies('H', 'H.pp')
-        self.assertEqual(atomspecies, {'pp': 'H.pp'})
+        atomspecies = _build_atomspecies('H', 'H.pp')
+        self.assertEqual(atomspecies, {'H': {'pp': 'H.pp'}})
 
-        atomspecies = build_atomspecies('H', 'H.upf', 100, 7, 1, 'reduced', orbital_dir)
-        self.assertTrue('orb' in atomspecies)
-        self.assertTrue(os.path.exists(atomspecies['orb']))
-        os.remove(atomspecies['orb'])
+        atomspecies = _build_atomspecies('H', 'H.upf', 100, 7, 1, 'reduced', orbital_dir)
+        self.assertTrue('orb' in atomspecies['H'])
+        self.assertTrue(os.path.exists(atomspecies['H']['orb']))
+        os.remove(atomspecies['H']['orb'])
         os.system('rm -rf ' + orbital_dir)
 
     def test_build_case(self):
-        '''test build_case
+        '''test _build_case
         '''
         dftparam = {}
         atomspecies = {'H': {'pp': 'pseudo/H.pp'}}
-        folder = build_case('monomer', 'stretch', 0, atomspecies, dftparam, {})
+        folder = _build_case('monomer', 'stretch', 0, atomspecies, dftparam, {})
         self.assertTrue(os.path.exists(folder))
+        self.assertEqual(os.path.basename(folder), 'H-monomer')
+        self.assertTrue(os.path.exists(os.path.join(folder, 'INPUT')))
+        self.assertTrue(os.path.exists(os.path.join(folder, 'STRU')))
         os.system('rm -rf ' + folder)
 
-        dftparam = {'basis_type': 'lcao'}
-        atomspecies = {'H': {'pp': 'pseudo/H.pp', 'orb': 'orb/H.orb'}}
-        folder = build_case('dimer', 'stretch', 1.1, atomspecies, dftparam, {'lmaxmax': 2})
+        dftparam = {'basis_type': 'lcao', 'bessel_nao_rcut': 6}
+        atomspecies = {'H': {'pp': 'pseudo/H.pp'}}
+        folder = _build_case('monomer', 'stretch', 0, atomspecies, dftparam, {})
         self.assertTrue(os.path.exists(folder))
+        self.assertTrue(os.path.exists(os.path.join(folder, 'INPUT')))
+        self.assertTrue(os.path.exists(os.path.join(folder, 'STRU')))
+        self.assertEqual(os.path.basename(folder), 'H-monomer-6au')
+        os.system('rm -rf ' + folder)
+
+        dftparam = {'basis_type': 'pw', 'bessel_nao_rcut': 6}
+        atomspecies = {'H': {'pp': 'pseudo/H.pp', 'orb': 'orb/H.orb'}}
+        folder = _build_case('dimer', 'stretch', 1.1, atomspecies, dftparam, {'lmaxmax': 2})
+        self.assertTrue(os.path.exists(folder))
+        self.assertTrue(os.path.exists(os.path.join(folder, 'INPUT')))
+        self.assertTrue(os.path.exists(os.path.join(folder, 'STRU')))
         self.assertEqual(os.path.basename(folder), 'H-dimer-1.10')
         os.system('rm -rf ' + folder)
+
+        dftparam = {'basis_type': 'pw', 'bessel_nao_rcut': [6, 7]}
+        atomspecies = {'H': {'pp': 'pseudo/H.pp', 'orb': 'orb/H.orb'}}
+        folder = _build_case('dimer', 'stretch', 1.1, atomspecies, dftparam, {'lmaxmax': 2})
+        self.assertTrue(os.path.exists(folder))
+        self.assertTrue(os.path.exists(os.path.join(folder, 'INPUT')))
+        self.assertTrue(os.path.exists(os.path.join(folder, 'STRU')))
+        self.assertEqual(os.path.basename(folder), 'H-dimer-1.10')
+        os.system('rm -rf ' + folder)
+
+        dftparam = {'basis_type': 'lcao', 'bessel_nao_rcut': 6}
+        atomspecies = {'H': {'pp': 'pseudo/H.pp', 'orb': 'orb/H.orb'}}
+        folder = _build_case('dimer', 'stretch', 1.1, atomspecies, dftparam, {'lmaxmax': 2})
+        self.assertTrue(os.path.exists(folder))
+        self.assertTrue(os.path.exists(os.path.join(folder, 'INPUT')))
+        self.assertTrue(os.path.exists(os.path.join(folder, 'STRU')))
+        self.assertEqual(os.path.basename(folder), 'H-dimer-1.10-6au')
+        os.system('rm -rf ' + folder)
+
+    def test_build_abacus_jobs(self):
+        '''test build_abacus_jobs
+        '''
+        dftparams = {'basis_type': 'pw', 'pseudo_dir': 'pseudo', 'ecutwfc': 100}
+        geoms = [{'proto': 'dimer', 'pertkind': 'stretch', 'pertmags': [0.25], 'nbands': 10},
+                 {'proto': 'trimer', 'pertkind': 'stretch', 'pertmags': [0.5, 1.0], 'nbands': 20}]
+        jobs = build_abacus_jobs('He', [6, 7], dftparams, geoms)
+        self.assertEqual(len(jobs), 4) # including the initial guess
+        for job in jobs:
+            self.assertTrue(os.path.exists(job))
+            os.system('rm -rf ' + job)
+        self.assertSetEqual(set(jobs), {'He-dimer-0.25', 'He-trimer-0.50', 'He-trimer-1.00', 'He-monomer'})
+        
+        # test without the initial guess
+        jobs = build_abacus_jobs('He', [6, 7], dftparams, geoms, 'random')
+        self.assertEqual(len(jobs), 3)
+        for job in jobs:
+            self.assertTrue(os.path.exists(job))
+            os.system('rm -rf ' + job)
+        self.assertSetEqual(set(jobs), {'He-dimer-0.25', 'He-trimer-0.50', 'He-trimer-1.00'})
+
+        dftparams = {'basis_type': 'lcao', 'pseudo_dir': 'pseudo', 'ecutwfc': 100, 'bessel_nao_rcut': 8}
+        jobs = build_abacus_jobs('He', [6, 7], dftparams, geoms)
+        self.assertEqual(len(jobs), 8)
+        for job in jobs:
+            self.assertTrue(os.path.exists(job))
+            os.system('rm -rf ' + job)
+        self.assertSetEqual(set(jobs), {'He-dimer-0.25-6au', 'He-dimer-0.25-7au', 
+                                        'He-trimer-0.50-6au', 'He-trimer-0.50-7au', 
+                                        'He-trimer-1.00-6au', 'He-trimer-1.00-7au', 
+                                        'He-monomer-6au', 'He-monomer-7au'})
+        # test without the initial guess
+        jobs = build_abacus_jobs('He', [6, 7], dftparams, geoms, 'random')
+        self.assertEqual(len(jobs), 6)
+        for job in jobs:
+            self.assertTrue(os.path.exists(job))
+            os.system('rm -rf ' + job)
+        self.assertSetEqual(set(jobs), {'He-dimer-0.25-6au', 'He-dimer-0.25-7au', 
+                                        'He-trimer-0.50-6au', 'He-trimer-0.50-7au', 
+                                        'He-trimer-1.00-6au', 'He-trimer-1.00-7au'})
+
 
 if __name__ == '__main__':
     unittest.main()

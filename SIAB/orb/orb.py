@@ -348,16 +348,16 @@ def build_orbgraph(elem,
     # be the case that one orbital refers to another that is not optimized
     # yet.
     if scheme.get('spill_guess') == 'atomic':
-        _r = rcut if mode == 'jy' else None
+        _r = None if mode == 'pw' else rcut
         out['initializer'] = dft_folder(elem, 'monomer', None, _r)
     for orb in scheme['orbs']: # for each orbital...
-        orb_ref = orb.get('orb_ref')
+        orb_ref = orb.get('checkpoint')
         orb_ref = orb_ref if orb_ref != 'none' or orb_ref is not None else None
         out['orbs'].append({
-            'nzeta': orb['zeta_notation'],
-            'nbnds': orb['nbands_ref'],
+            'nzeta': orb['nzeta'],
+            'nbnds': orb['nbands'],
             'iorb_frozen': orb_ref,
-            'folders': [folders[i] for i in orb['folders']]
+            'folders': [folders[i] for i in orb['geoms']]
         })
     return out
 

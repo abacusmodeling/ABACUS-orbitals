@@ -3,17 +3,17 @@ this module controls the naming convention of files and folders
 of ABACUS-ORBGEN. There is also another use of this module, that
 is, the mapping from parameters to specific folders.
 '''
-def dft_folder(elem, geom, pert, rcut = None):
+def dft_folder(elem, proto, pert, rcut = None):
     '''return the folder name for a dft calculation
     
     Parameters
     ----------
     elem: str
         element symbol
-    geom: str
-        geometry of the structure
+    proto: str
+        geometrical prototype of the structure
     pert: str
-        perturbation of the structure
+        perturbation of the structure. Conceptually pert + proto = geom
     rcut: float
         cutoff radius
 
@@ -22,8 +22,9 @@ def dft_folder(elem, geom, pert, rcut = None):
     str
         the folder name
     '''
-    rcut = str(rcut) if rcut is not None else None
-    words = [elem, geom, f'{pert:.2f}', rcut]
+    pert = None if proto == 'monomer' else f'{pert:.2f}'
+    rcut = str(rcut) + 'au' if rcut is not None else None
+    words = [elem, proto, pert, rcut]
     words = [str(w) for w in words if w is not None]
     return '-'.join(words)
 
