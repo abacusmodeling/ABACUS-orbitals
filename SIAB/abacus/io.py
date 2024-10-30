@@ -635,3 +635,4 @@ qo_switch                      0 #0: no QO analysis; 1: QO analysis
 qo_basis                       szv #type of QO basis function: hydrogen: hydrogen-like basis, pswfc: read basis from pseudopotential
 qo_thr                         1e-06 #accuracy for evaluating cutoff radius of QO basis function
 """
+

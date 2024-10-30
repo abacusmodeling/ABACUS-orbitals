@@ -476,7 +476,7 @@ def _save_orb(coefs, elem, ecut, rcut, folder, primitive_type: str = "reduced"):
 
     nzeta = [len(coef) for coef in coefs]
     forb = name_orb(elem, rcut, ecut, nzeta)
-    write_nao(forb, elem, ecut, rcut, len(r), dr, chi)
+    write_nao(os.path.join(folder, forb), elem, ecut, rcut, len(r), dr, chi)
 
     fpng = forb[:-4] + ".png"
     fpng = os.path.join(folder, fpng)
@@ -485,7 +485,8 @@ def _save_orb(coefs, elem, ecut, rcut, folder, primitive_type: str = "reduced"):
 
     # fparam = os.path.join(folder, "ORBITAL_RESULTS.txt")
     fparam = forb[:-4] + ".param"
-    write_param(fparam, coeff_converter_map[primitive_type](coefs, rcut), rcut, 0.0, elem)
+    write_param(os.path.join(folder, fparam), 
+                coeff_converter_map[primitive_type](coefs, rcut), rcut, 0.0, elem)
     print(f"orbital saved as {forb}")
 
     return forb

@@ -40,20 +40,20 @@
     "orbitals": [
         {
             "nzeta": "auto",
-            "spill_geoms": [0],
-            "spill_nbnds": [4],
+            "geoms": [0],
+            "nbands": [4],
             "checkpoint": null
         },
         {
             "nzeta": "auto",
-            "spill_geoms": [0],
-            "spill_nbnds": [20],
+            "geoms": [0],
+            "nbands": [20],
             "checkpoint": 0
         },
         {
             "nzeta": "auto",
-            "spill_geoms": [1],
-            "spill_nbnds": [40],
+            "geoms": [1],
+            "nbands": [40],
             "checkpoint": 1
         }
     ]

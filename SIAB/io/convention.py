@@ -22,9 +22,9 @@ def dft_folder(elem, geom, pert, rcut = None):
     str
         the folder name
     '''
-    rcut = str(rcut) + 'au' if rcut is not None else None
-    words = [elem, geom, pert, rcut]
-    words = [w for w in words if w is not None]
+    rcut = str(rcut) if rcut is not None else None
+    words = [elem, geom, f'{pert:.2f}', rcut]
+    words = [str(w) for w in words if w is not None]
     return '-'.join(words)
 
 def orb_folder(elem, nzeta):
@@ -47,7 +47,7 @@ def orb_folder(elem, nzeta):
     for nz, sym in zip(nzeta, SPECTRUM):
         if nz > 0:
             conf += sym + str(nz)
-    return elem + '_' + conf
+    return '_'.join([str(w) for w in [elem, conf]])
 
 def orb(elem, rcut, ecut, nzeta, xc = 'gga'):
     '''return the orbital file name

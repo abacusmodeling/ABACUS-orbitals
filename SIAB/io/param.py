@@ -5,7 +5,7 @@ from SIAB.abacus.io import abacus_params
 import logging
 import unittest
 
-def drycheck(params):
+def dryrun(params):
     '''check the correctness of the input parameters
     
     Parameters
@@ -49,14 +49,17 @@ def drycheck(params):
         raise TypeError('orbitals should be a list of dict')
     logging.info('orbitals type check passed')
 
-    # check if each orbital has keys: 'nzeta', 'spill_geoms', 'spill_nbnds' and 'checkpoint'
+    # check if each orbital has keys: 'nzeta', 'geoms', 'nbands' and 'checkpoint'
     for i, orb in enumerate(params['orbitals']):
-        if not all(key in orb for key in ['nzeta', 'spill_geoms', 'spill_nbnds', 'checkpoint']):
+        if not all(key in orb for key in ['nzeta', 'geoms', 'nbands', 'checkpoint']):
             raise ValueError(f'orbital {i} does not have all the compulsory keys')
         orbval_chk(orb)
     logging.info('orbital key&val check passed')
 
-    logging.info('drycheck passed')
+    cmprhsive_chk(params)
+    logging.info('comprehensive check passed')
+
+    logging.info('dryrun passed')
 
 def orbval_chk(orb):
     '''check the integrity of the orbital parameters
@@ -72,16 +75,16 @@ def orbval_chk(orb):
             raise TypeError('nzeta should be a list of int')
         if not all(isinstance(i, int) for i in orb['nzeta']):
             raise TypeError('nzeta should be a list of int')
-    # check if spill_geoms is a list of int (index of geoms defined in geoms section)
-    if not isinstance(orb['spill_geoms'], list):
-        raise TypeError('spill_geoms should be a list of int')
-    if not all(isinstance(i, int) for i in orb['spill_geoms']):
-        raise TypeError('spill_geoms should be a list of int')
-    # check if spill_nbnds is a list of int or str
-    if not isinstance(orb['spill_nbnds'], list):
-        raise TypeError('spill_nbnds should be a list of int or str')
-    if not all(isinstance(i, (int, str)) for i in orb['spill_nbnds']):
-        raise TypeError('spill_nbnds should be a list of int or str')
+    # check if geoms is a list of int (index of geoms defined in geoms section)
+    if not isinstance(orb['geoms'], list):
+        raise TypeError('geoms should be a list of int')
+    if not all(isinstance(i, int) for i in orb['geoms']):
+        raise TypeError('geoms should be a list of int')
+    # check if nbands is a list of int or str
+    if not isinstance(orb['nbands'], list):
+        raise TypeError('nbands should be a list of int or str')
+    if not all(isinstance(i, (int, str)) for i in orb['nbands']):
+        raise TypeError('nbands should be a list of int or str')
     # check if checkpoint is a int or None
     if not isinstance(orb['checkpoint'], (int, type(None))):
         raise TypeError('checkpoint should be a int or None')
@@ -105,7 +108,57 @@ def geomval_chk(geom):
     if geom['lmaxmax'] < 0:
         raise ValueError('lmaxmax should be non-negative')
 
-def read_3p0(fn):
+def cmprhsive_chk(params):
+    '''check the correctness of the input parameters across sections
+    
+    Parameters
+    ----------
+    params : dict
+        the input parameters
+    '''
+    # check if more bands are required in orbital section than in geom section
+    for orb in params['orbitals']:
+        for i in orb['geoms']:
+            if i >= len(params['geoms']):
+                raise ValueError(f'orbital {orb} requires geom {i} which is not defined')
+            spill_nbnds = orb['nbands'][i]
+            if isinstance(spill_nbnds, str):
+                continue
+            geom_nbnds = params['geoms'][i].get('nbands')
+            if geom_nbnds is None:
+                continue
+            if spill_nbnds > geom_nbnds:
+                raise ValueError(f'orbital {orb} requires more bands than geom {i} can provide')
+
+def group(params):
+    '''parameters defined in input script are for different fields,
+    this function is to group them into different sets.
+    
+    Parameters
+    ----------
+    params : dict
+        the input parameters
+
+    Returns
+    -------
+    dict, dict, dict, dict
+        the global parameters, the DFT parameters, the spillage parameters, 
+        the compute parameters
+    '''
+    GLOBAL = ['element', 'bessel_nao_rcut']
+    DFT = [k for k in abacus_params() if k != 'bessel_nao_rcut']
+    COMPUTE = ['environment', 'mpi_command', 'abacus_command']
+    SPILLAGE = ['ecutwfc', 'fit_basis', 'primitive_type', 'optimizer', 
+                'max_steps', 'spill_guess', 'nthreads_rcut', 'geoms', 'orbitals']
+    
+    dftparams = {key: params[key] for key in DFT}
+    spillparams = {key: params[key] for key in SPILLAGE}
+    globalparams = {key: params[key] for key in GLOBAL}
+    compute = {key: params[key] for key in COMPUTE}
+
+    return globalparams, dftparams, spillparams, compute
+
+def read(fn):
     '''read the input of ABACUS ORBGEN-v3.0 input script
     
     Parameters
@@ -115,31 +168,32 @@ def read_3p0(fn):
     
     Returns
     -------
-    dict
-        the input parameters
+    dict, dict, dict, dict
+        the global parameters, the DFT parameters, the spillage parameters,
+        the compute parameters. For detailed explanation, see group function
     '''
     
     with open(fn) as f:
         params = json.load(f)
     
     try:
-        drycheck(params)
+        dryrun(params)
     except Exception as e:
         logging.error(f'error in checking the input: {e}')
         raise e
     
-    return params
+    return group(params)
 
 class TestReadv3p0(unittest.TestCase):
 
     def test_orbval_chk(self):
-        orb = {'nzeta': 'auto', 'spill_geoms': [0, 1], 'spill_nbnds': [1, 2], 'checkpoint': 1}
+        orb = {'nzeta': 'auto', 'geoms': [0, 1], 'nbands': [1, 2], 'checkpoint': 1}
         orbval_chk(orb)
-        orb = {'nzeta': [1, 2], 'spill_geoms': [0, 1], 'spill_nbnds': [1, 2], 'checkpoint': 1}
+        orb = {'nzeta': [1, 2], 'geoms': [0, 1], 'nbands': [1, 2], 'checkpoint': 1}
         orbval_chk(orb)
-        orb = {'nzeta': [1, 2], 'spill_geoms': [0, 1], 'spill_nbnds': [1, 2], 'checkpoint': None}
+        orb = {'nzeta': [1, 2], 'geoms': [0, 1], 'nbands': [1, 2], 'checkpoint': None}
         orbval_chk(orb)
-        orb = {'nzeta': 'auto', 'spill_geoms': [0, 1], 'spill_nbnds': [1, 2], 'checkpoint': '1'}
+        orb = {'nzeta': 'auto', 'geoms': [0, 1], 'nbands': [1, 2], 'checkpoint': '1'}
         with self.assertRaises(TypeError):
             orbval_chk(orb)
     
@@ -155,7 +209,7 @@ class TestReadv3p0(unittest.TestCase):
         with self.assertRaises(ValueError):
             geomval_chk(geom)
     
-    def test_drycheck(self):
+    def test_dryrun(self):
         here = os.path.dirname(__file__)
         parent = os.path.dirname(here)
         grandparent = os.path.dirname(parent)
@@ -164,33 +218,32 @@ class TestReadv3p0(unittest.TestCase):
 
         params = {'abacus_command': 'test', 'pseudo_dir': fpseudo, 'element': 'test', 'bessel_nao_rcut': [1, 2],
                   'geoms': [{'proto': 'test', 'pertkind': 'test', 'pertmags': [1, 2], 'lmaxmax': 1}],
-                  'orbitals': [{'nzeta': 'auto', 'spill_geoms': [0, 1], 'spill_nbnds': [1, 2], 'checkpoint': 1}]}
-        drycheck(params)
+                  'orbitals': [{'nzeta': 'auto', 'geoms': [0, 1], 'nbands': [1, 2], 'checkpoint': 1}]}
+        dryrun(params)
         params = {'abacus_command': 'test', 'pseudo_dir': 'test', 'element': 'test', 'bessel_nao_rcut': [1, 2],
                   'geoms': [{'proto': 'test', 'pertkind': 'test', 'pertmags': [1, 2], 'lmaxmax': 1}],
-                  'orbitals': [{'nzeta': 'auto', 'spill_geoms': [0, 1], 'spill_nbnds': [1, 2], 'checkpoint': 1}]}
+                  'orbitals': [{'nzeta': 'auto', 'geoms': [0, 1], 'nbands': [1, 2], 'checkpoint': 1}]}
         with self.assertRaises(FileNotFoundError):
-            drycheck(params)
+            dryrun(params)
         params = {'abacus_command': 'test', 'pseudo_dir': fpseudo, 'element': 'test', 'bessel_nao_rcut': [1, 2],
                   'geoms': [{'proto': 'test', 'pertkind': 'test', 'pertmags': [1, 2], 'lmaxmax': 1}],
-                  'orbitals': [{'nzeta': 'auto', 'spill_geoms': [0, 1], 'spill_nbnds': [1, 2], 'checkpoint': 1.0}]}
+                  'orbitals': [{'nzeta': 'auto', 'geoms': [0, 1], 'nbands': [1, 2], 'checkpoint': 1.0}]}
         with self.assertRaises(TypeError):
-            drycheck(params)
+            dryrun(params)
         params = {'abacus_command': 'test', 'pseudo_dir': fpseudo, 'element': 'test', 'bessel_nao_rcut': [1, 2],
                   'geoms': [{'proto': 'test', 'pertkind': 'test', 'pertmags': [1, 2], 'lmaxmax': 1}],
-                  'orbitals': [{'nzeta': 'auto', 'spill_geoms': [0, 1], 'spill_nbnds': [1, 2], 'checkpoint': '1'}]}
+                  'orbitals': [{'nzeta': 'auto', 'geoms': [0, 1], 'nbands': [1, 2], 'checkpoint': '1'}]}
         with self.assertRaises(TypeError):
-            drycheck(params)
+            dryrun(params)
         params = {'abacus_command': 'test', 'pseudo_dir': fpseudo, 'element': 'test', 'bessel_nao_rcut': [1, 2],
                   'geoms': [{'proto': 'test', 'pertkind': 'test', 'pertmags': [1, 2], 'lmaxmax': 1}],
-                  'orbitals': [{'nzeta': 'auto', 'spill_geoms': [0, 1], 'spill_nbnds': [1, 2], 'checkpoint': None}]}
-        drycheck(params)
+                  'orbitals': [{'nzeta': 'auto', 'geoms': [0, 1], 'nbands': [1, 2], 'checkpoint': None}]}
+        dryrun(params)
         params = {'abacus_command': 'test', 'pseudo_dir': fpseudo, 'element': 'test', 'bessel_nao_rcut': [1, 2],
                   'geoms': [{'proto': 'test', 'pertkind': 'test', 'pertmags': [1, 2], 'lmaxmax': 1}],
-                  'orbitals': [{'nzeta': 'auto', 'spill_geoms': [0, 1], 'spill_nbnds': [1, 2], 'checkpoint': '1'}]}
+                  'orbitals': [{'nzeta': 'auto', 'geoms': [0, 1], 'nbands': [1, 2], 'checkpoint': '1'}]}
         with self.assertRaises(TypeError):
-            drycheck(params)
-        
+            dryrun(params)
 
 if __name__ == '__main__':
     unittest.main()
