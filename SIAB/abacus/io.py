@@ -71,6 +71,9 @@ def INPUT(calculation_setting: dict,
         "gamma_only": "1", # force gamma point only calculation
         "printe": "1" # print energy
     }
+    if calculation_setting.get('basis_type', 'lcao') != 'pw':
+        inbuilt_template.update({'ks_solver': 'genelpa'})
+
     if "nspin" in calculation_setting.keys():
         if calculation_setting["nspin"] == 2:
             inbuilt_template["nspin"] = 2
@@ -79,11 +82,12 @@ def INPUT(calculation_setting: dict,
             
     all_params = abacus_params()
     result = "INPUT_PARAMETERS"
-    for key in calculation_setting.keys():
+    for key, val in calculation_setting.items():
+        if val is None:
+            continue
         if key in all_params:
-            value = calculation_setting[key]
-            value = " ".join([str(v) for v in value]) if isinstance(value, list) else value
-            inbuilt_template[key] = value
+            val = " ".join([str(v) for v in val]) if isinstance(val, list) else val
+            inbuilt_template[key] = val
         else:
             print("WARNING: keyword %s might be unknown."%key, flush=True)
 

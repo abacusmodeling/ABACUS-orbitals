@@ -22,6 +22,7 @@ def dft_folder(elem, proto, pert, rcut = None):
     str
         the folder name
     '''
+    # no perturbation is effective for one atom
     pert = None if proto == 'monomer' else f'{pert:.2f}'
     rcut = str(rcut) + 'au' if rcut is not None else None
     words = [elem, proto, pert, rcut]

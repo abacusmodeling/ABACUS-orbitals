@@ -21,7 +21,7 @@ of orbital.
 '''
 from SIAB.spillage.util import _spil_bnd_autoset
 from SIAB.spillage.spillage import Spillage_pw, Spillage_jy
-from SIAB.spillage.listmanip import merge
+from SIAB.spillage.listmanip import merge, nestpat
 from SIAB.spillage.api import _save_orb, _coef_subset
 from SIAB.spillage.datparse import read_input_script
 from SIAB.spillage.radial import _nbes
@@ -208,8 +208,8 @@ class OrbgenCascade:
             self.minimizer_ = Spillage_jy()
             for f in uniqfds:
                 suffix = read_input_script(os.path.join(f, 'INPUT')).get('suffix', 'ABACUS')
-                print(f'OrbgenCascade: adding new term into Generalized Spillage: {suffix}')
                 self.minimizer_.config_add(os.path.join(f, f'OUT.{suffix}'))
+                print(f'OrbgenCascade: a new term added: {f} -> Generalized Spillage S = sum <ref|(1-P)|ref>')
         else:
             self.minimizer_ = Spillage_pw()
             OLD_MATRIX_PW = {'orb_matrix_0': 'orb_matrix.0.dat',
@@ -226,6 +226,7 @@ class OrbgenCascade:
                 fmat = OLD_MATRIX_PW if use_old else NEW_MATRIX_PW
                 fmat = {k: os.path.join(f, v) for k, v in fmat.items()}
                 self.minimizer_.config_add(**fmat)
+                print(f'OrbgenCascade: a new term added: {f} -> Generalized Spillage S = sum <ref|(1-P)|ref>')
                 
     def opt(self,
             immediplot = None, 
@@ -258,6 +259,7 @@ class OrbgenCascade:
         nzmax = [np.pad(nz, (0, lmaxmax - len(nz)), 'constant') for nz in nzmax]
         nzmax = np.max(nzmax, axis = 0).tolist()
 
+        print(f'OrbgenCascade: start optimizing orbitals in cascade')
         for orb, ifroz, iconfs in zip(self.orbitals_, self.ifrozen_, self.iuniqfds_):
             orb_frozen = self.orbitals_[ifroz] if ifroz is not None else None
             coefs_frozen = [orb_frozen.coef_] if orb_frozen else None
@@ -267,13 +269,14 @@ class OrbgenCascade:
             orb.init(self.initializer_, nzshift, diagnosis) if isinstance(self.minimizer_, Spillage_jy)\
                 else orb.init(self.initializer_, nzmax, nzshift, diagnosis)
             # then optimize
-            coefs_shell = self.minimizer_.opt([orb.coef_], 
-                                              coefs_frozen, 
-                                              iconfs, 
-                                              orb.nbnds_, 
-                                              options, 
-                                              nthreads)
-            orb.coef_ = merge(coefs_frozen, coefs_shell, 2) if coefs_frozen else coefs_shell
+            coefs_shell, spillage = self.minimizer_.opt([orb.coef_], 
+                                                         coefs_frozen, 
+                                                         iconfs, 
+                                                         orb.nbnds_, 
+                                                         options, 
+                                                         nthreads)
+            print(f'OrbgenCascade: orbital optimization ends with spillage = {spillage}', flush=True)
+            orb.coef_ = merge(coefs_frozen, coefs_shell, 2)[0] if coefs_frozen else coefs_shell[0]
             if immediplot:
                 f = _save_orb(orb.coef_, orb.elem_, orb.ecut_, orb.rcut_, immediplot)
                 out.append(f)
@@ -360,76 +363,6 @@ def build_orbgraph(elem,
             'folders': [folders[i] for i in orb['geoms']]
         })
     return out
-
-def cascade_gen(elem,
-                rcut, 
-                ecut, 
-                primitive_type,
-                initializer, 
-                orbs,
-                mode):
-    '''build an OrbgenCascade based on one orbgen graph/scheme
-    
-    Parameters
-    ----------
-    elem : str
-        the element of this cascade of orbitals
-    rcut : float
-        the cutoff radius of the orbitals
-    ecut : float
-        the kinetic energy cutoff of the underlying jy
-    primitive_type : str
-        the type of jy, can be `reduced` or `normalized`
-    orbgraph : list[dict]
-        the graph of the orbitals, each element is a dict containing
-        the information of the orbital, including nzeta, folders, nbnds
-        and iorb_frozen, are number of zeta functions for each angular
-        momentum, the folders where the orbital optimization will extract
-        information, the number of bands to be included in the optimization
-        and the index of its inner shell orbital to be frozen.
-    mode : str
-        the mode of the optimization, can be `jy` or `pw`
-    '''
-    if orbs is None:
-        raise ValueError('orbgraph should not be None')
-    nzeta = [orb.get('nzeta') for orb in orbs]
-    folders = [orb.get('folders') for orb in orbs]
-    nbnds = [orb.get('nbnds') for orb in orbs]
-    iorb_frozen = [orb.get('iorb_frozen') for orb in orbs]
-    
-    if not isinstance(elem, str):
-        raise TypeError('elem should be a str')
-    if not isinstance(rcut, (int, float)):
-        raise TypeError('rcut should be a float or int')
-    if not isinstance(ecut, (int, float)):
-        raise TypeError('ecut should be a float or int')
-    if not (isinstance(nzeta, list) and\
-            all([isinstance(nz_it, list) for nz_it in nzeta]) and\
-            all([isinstance(nz, int) for nz_it in nzeta for nz in nz_it])):
-        raise TypeError('nzeta should be a list of list of int')
-    if not isinstance(primitive_type, str):
-        raise TypeError('primitive_type should be a str')
-    if primitive_type not in ['reduced', 'normalized']:
-        raise ValueError('primitive_type should be either reduced or normalized')
-    if not (isinstance(folders, list) and\
-            all([isinstance(fd_it, list) for fd_it in folders]) and\
-            all([isinstance(fd, str) for fd_it in folders for fd in fd_it])):
-        raise TypeError('folders should be a list of list of str')
-    if not all([os.path.exists(fd) for fd_it in folders for fd in fd_it]):
-        raise FileNotFoundError('some folders do not exist')
-    if not (isinstance(nbnds, list) and\
-            all([isinstance(nbnd_it, list) for nbnd_it in nbnds]) and\
-            all([isinstance(nbnd, (range, str, int)) for nbnd_it in nbnds for nbnd in nbnd_it])):
-        raise TypeError('nbnds should be a list of list of int, range or str')
-    if not (isinstance(iorb_frozen, list) and\
-            all([isinstance(orb_i, int) or orb_i is None for orb_i in iorb_frozen])):
-        raise TypeError('iorb_frozen should be a list of int or None')
-    if not isinstance(mode, str):
-        raise TypeError('mode should be a str')
-    if mode not in ['jy', 'pw']:
-        raise ValueError('mode should be either jy or pw')
-    orbs = [Orbital(rcut, ecut, elem, nz, primitive_type, fd, nbnd) for nz, fd, nbnd in zip(nzeta, folders, nbnds)]
-    return OrbgenCascade(initializer, orbs, iorb_frozen, mode)
     
 class TestOrbital(unittest.TestCase):
     def test_instantiate(self):
@@ -449,71 +382,6 @@ class TestOrbital(unittest.TestCase):
         self.assertEqual(orb.rcut_, 7)
         self.assertEqual(orb.ecut_, 100)
         self.assertEqual(orb.elem_, 'Si')
-
-class TestOrbgenCascade(unittest.TestCase):
-    def test_instantiate_jy(self):
-        here = os.path.dirname(__file__)
-        # testfiles in another folder
-        parent = os.path.dirname(here)
-        outdir = os.path.join(parent, 'spillage/testfiles/Si/jy-7au/monomer-gamma/')
-        orb = Orbital(7, 
-                      100, 
-                      'Si', 
-                      [1, 1, 0], 
-                      'reduced', 
-                      [outdir], 
-                      [4])
-        cascade = OrbgenCascade(None, [orb], [None], 'jy')
-        self.assertEqual(cascade.ifrozen_, [None])
-        self.assertEqual(cascade.orbitals_, [orb])
-        self.assertEqual(isinstance(cascade.minimizer_, Spillage_jy), True)
-        self.assertEqual(cascade.iuniqfds_, [[0]])
-
-    def test_instantiate_pw(self):
-        here = os.path.dirname(__file__)
-        # testfiles in another folder
-        parent = os.path.dirname(here)
-        outdir = os.path.join(parent, 'spillage/testfiles/Si/pw/monomer-gamma/')
-        orb = Orbital(7, 
-                      100, 
-                      'Si', 
-                      [1, 1, 0], 
-                      'reduced', 
-                      [outdir], 
-                      [4])
-        cascade = OrbgenCascade(None, [orb], [None], 'pw')
-        self.assertEqual(cascade.ifrozen_, [None])
-        self.assertEqual(cascade.orbitals_, [orb])
-        self.assertEqual(isinstance(cascade.minimizer_, Spillage_pw), True)
-        self.assertEqual(cascade.iuniqfds_, [[0]])
-
-    # @unittest.skip('not implemented')
-    def test_cascade_gen(self):
-        here = os.path.dirname(__file__)
-        # testfiles in another folder
-        parent = os.path.dirname(here)
-        outdir = os.path.join(parent, 'spillage/testfiles/Si/jy-7au/monomer-gamma/')
-        orbgraph = {
-            'elem': 'Si',
-            'ecut': 100,
-            'rcut': 7,
-            'primitive_type': 'reduced',
-            'initializer': outdir,
-            'mode': 'jy',
-            'orbs': [
-                {
-                    'nzeta': [1, 1, 0],
-                    'folders': [outdir],
-                    'nbnds': [4],
-                    'iorb_frozen': None
-                }
-            ]
-        } # iorb_frozen defines the link between orbitals
-        cascade = cascade_gen(**orbgraph)
-        self.assertEqual(cascade.ifrozen_, [None])
-        self.assertEqual(cascade.orbitals_[0].nzeta_, [1, 1, 0])
-        self.assertEqual(isinstance(cascade.minimizer_, Spillage_jy), True)
-        self.assertEqual(cascade.iuniqfds_, [[0]])
 
 if __name__ == "__main__":
     unittest.main()

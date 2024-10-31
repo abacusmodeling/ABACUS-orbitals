@@ -151,12 +151,12 @@ def group(params):
     SPILLAGE = ['ecutwfc', 'fit_basis', 'primitive_type', 'optimizer', 
                 'max_steps', 'spill_guess', 'nthreads_rcut', 'geoms', 'orbitals']
     
-    dftparams = {key: params[key] for key in DFT}
-    spillparams = {key: params[key] for key in SPILLAGE}
-    globalparams = {key: params[key] for key in GLOBAL}
-    compute = {key: params[key] for key in COMPUTE}
+    dftparams = {key: params.get(key) for key in DFT}
+    spillparams = {key: params.get(key) for key in SPILLAGE}
+    glbparams = {key: params.get(key) for key in GLOBAL}
+    compute = {key: params.get(key) for key in COMPUTE}
 
-    return globalparams, dftparams, spillparams, compute
+    return glbparams, dftparams, spillparams, compute
 
 def read(fn):
     '''read the input of ABACUS ORBGEN-v3.0 input script
@@ -183,6 +183,24 @@ def read(fn):
         raise e
     
     return group(params)
+
+def orb_link_geom(indexes, geoms):
+    '''link the indexes of geoms to proper geom parameters
+    
+    Parameters
+    ----------
+    indexes : list of int
+        the indexes of geoms
+    geoms : list of dict
+        the geom parameters
+    
+    Returns
+    -------
+    list of dict
+        the geom parameters
+    '''
+    return [{k: v for k, v in geoms[i].items() if k in ['proto', 'pertkind', 'pertmags']} 
+            for i in indexes]
 
 class TestReadv3p0(unittest.TestCase):
 

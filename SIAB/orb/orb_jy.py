@@ -31,11 +31,12 @@ class OrbitalJY(Orbital):
             inferring the nzeta from the nbnds
         '''
         super().__init__(rcut, ecut, elem, nzeta, primitive_type, folders, nbnds)
+        self.nzeta_ = [self.nzeta_] if isinstance(self.nzeta_, list) else 1.0
         self.nzeta_ = _nzeta_mean_conf([nbnd.stop for nbnd in self.nbnds_], 
                                        self.folders_, 
                                        'max',
                                        'svd-fold', 
-                                       [self.nzeta_])
+                                       self.nzeta_)
         self.nzeta_ = [int(np.ceil(nz)) for nz in self.nzeta_] # make sure it is integer
 
     def init(self, srcdir, nzshift, diagnosis = True):
@@ -43,6 +44,11 @@ class OrbitalJY(Orbital):
         if coefs_default is not None:
             self.coef_ = coefs_default
         else:
+            base = os.path.basename(srcdir)
+            if 'OUT.' not in base:
+                dftparam = read_input_script(os.path.join(srcdir, 'INPUT'))
+                suffix = dftparam.get('suffix', 'ABACUS')
+                srcdir = os.path.join(srcdir, f'OUT.{suffix}')
             self.coef_ = _coef_init(srcdir, self.nzeta_, nzshift, diagnosis = diagnosis)
 
 class TestOrbitalJY(unittest.TestCase):

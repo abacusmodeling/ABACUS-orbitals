@@ -313,7 +313,7 @@ def _do_onion_opt(minimizer,
         coef_frozen = coefs[ifroz] if ifroz is not None else None
         
         # opt
-        coefs_shell = minimizer.opt(coef_init, coef_frozen, ic, ib, options, nthreads)
+        coefs_shell = minimizer.opt(coef_init, coef_frozen, ic, ib, options, nthreads)[0]
 
         # merge the coefficients of present layer with the previous layer
         coefs[iorb] = merge(coef_frozen, coefs_shell, 2) if coef_frozen else coefs_shell
@@ -600,7 +600,7 @@ def _nzeta_mean_conf(nbands,
     assert statistics in ['max', 'mean']
     assert isinstance(folders, list), f"folders should be a list: {folders}"
     assert all([isinstance(f, str) for f in folders]), f"folders should be a list of strings: {folders}"
-
+    print(nbands, folders, statistics, pop, nz_filter)
     # nzeta = np.array([0])
     nzeta = []
     nbands = [nbands] * len(folders) if not isinstance(nbands, list) else nbands
@@ -1341,7 +1341,7 @@ class TestAPI(unittest.TestCase):
         
         # suppress the plotting of initial guess
         # _save_orb(coef_init, 'Al(init)', 100, rcut, os.getcwd())
-        coefs = minimizer.opt([coef_init], None, 'all', ibands, option, nthreads)
+        coefs = minimizer.opt([coef_init], None, 'all', ibands, option, nthreads)[0]
 
         _save_orb(coefs[0], 'Al', 100, rcut, os.getcwd())
 

@@ -10,7 +10,7 @@
 
     "bessel_nao_rcut": [6, 7],
 
-    "fit_basis": "jy",
+    "fit_basis": "pw",
     "primitive_type": "reduced",
     "optimizer": "bfgs",
     "max_steps": 3000,
@@ -31,7 +31,7 @@
 
     "orbitals": [
         {
-            "nzeta": "auto",
+            "nzeta": [1, 1, 0],
             "geoms": [0],
             "nbands": ["occ", "occ", "occ", "occ", "occ"],
             "checkpoint": null

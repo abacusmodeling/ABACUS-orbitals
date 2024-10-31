@@ -8,17 +8,18 @@ from SIAB.abacus.io import INPUT, STRU, abacus_params
 from SIAB.abacus.utils import is_duplicate
 from SIAB.spillage.api import _coef_gen, _save_orb
 from SIAB.spillage.radial import _nbes
+from SIAB.spillage.datparse import read_input_script
 from SIAB.io.read_input import natom_from_shape
 import os
 import unittest
 import uuid
 
 def _build_case(proto, 
-               pertkind, 
-               pertmag, 
-               atomspecies,
-               dftshared, 
-               dftspecific):
+                pertkind, 
+                pertmag, 
+                atomspecies,
+                dftshared, 
+                dftspecific):
     '''build the single dft calculation case
 
     Parameters
@@ -78,6 +79,9 @@ def _build_case(proto,
         f.write(param_)
     with open(os.path.join(folder, 'STRU'), 'w') as f:
         f.write(pertgeom_)
+    if dftparam.get('basis_type', 'jy') == 'pw':
+        with open(os.path.join(folder, 'INPUTw'), 'w') as f:
+            f.write('WANNIER_PARAMETERS\nout_spillage 2\n')
     return folder
 
 def _build_atomspecies(elem,
@@ -145,7 +149,7 @@ def build_abacus_jobs(elem,
     '''
     jobs = []
     for geom in geoms:
-        dftspecific = {k: v for k, v in geom.items() if k not in abacus_params()}
+        dftspecific = {k: v for k, v in geom.items() if k in abacus_params()}
         for pertmag in geom['pertmags']:
             if dftparams.get('basis_type', 'lcao') == 'pw':
                 as_ = _build_atomspecies(elem, dftparams['pseudo_dir'])
@@ -201,6 +205,32 @@ def build_abacus_jobs(elem,
                                      {'nbands': nbndmax + 20})
                 jobs.append(folder)
     return [job for job in jobs if job is not None]
+
+def job_done(folder):
+    '''check if the abacus calculation is completed
+    
+    Parameters
+    ----------
+    folder : str
+        the folder of the abacus calculation
+    
+    Returns
+    -------
+    bool
+        True if the calculation is completed
+    '''
+    dftparam = read_input_script(os.path.join(folder, 'INPUT'))
+    suffix = dftparam.get('suffix', 'ABACUS')
+    runtype = dftparam.get('calculation', 'scf')
+    outdir = os.path.join(folder, f'OUT.{suffix}')
+    runninglog = os.path.join(outdir, f'running_{runtype}.log')
+    if os.path.exists(runninglog):
+        with open(runninglog, 'r') as f:
+            lines = f.readlines()
+        for i in range(len(lines) - 1, -1, -1):
+            if 'Finish Time' in lines[i]:
+                return True
+    return False
 
 class TestAbacusApi(unittest.TestCase):
     def test_build_atomspecies(self):
@@ -304,7 +334,6 @@ class TestAbacusApi(unittest.TestCase):
         self.assertSetEqual(set(jobs), {'He-dimer-0.25-6au', 'He-dimer-0.25-7au', 
                                         'He-trimer-0.50-6au', 'He-trimer-0.50-7au', 
                                         'He-trimer-1.00-6au', 'He-trimer-1.00-7au'})
-
 
 if __name__ == '__main__':
     unittest.main()
