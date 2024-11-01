@@ -8,7 +8,7 @@
 
     "ecutwfc": 60,
 
-    "bessel_nao_rcut": [6, 7],
+    "bessel_nao_rcut": [10],
 
     "fit_basis": "jy",
     "primitive_type": "reduced",
@@ -31,22 +31,16 @@
 
     "orbitals": [
         {
-            "nzeta": "auto",
+            "nzeta": [1, 1, 0],
             "geoms": [0],
-            "nbands": ["occ", "occ", "occ", "occ", "occ"],
+            "nbands": [4, 4, 4, 4, 4],
             "checkpoint": null
         },
         {
-            "nzeta": [2, 1, 0],
+            "nzeta": [1, 1, 1],
             "geoms": [0],
-            "nbands": ["occ", "occ", "occ", "occ", "occ"],
+            "nbands": [4, 4, 4, 4, 4],
             "checkpoint": 0
-        },
-        {
-            "nzeta": [2, 2, 0],
-            "geoms": [0],
-            "nbands": ["occ", "occ", "occ", "occ", "occ"],
-            "checkpoint": 1
         }
     ]
 }

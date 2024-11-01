@@ -19,4 +19,4 @@ def main(fn):
              basis_type=spillparam['fit_basis'])
     
 if __name__ == '__main__':
-    main('examples/pw-v3.0.json')
+    main('examples/jy-v3.0.json')
