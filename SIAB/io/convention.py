@@ -71,5 +71,5 @@ def orb(elem, rcut, ecut, nzeta, xc = 'gga'):
     conf = ''
     for nz, sym in zip(nzeta, SPECTRUM):
         if nz > 0:
-            conf += sym + str(nz)
+            conf += str(nz) + sym
     return '_'.join([elem, xc, str(rcut)+'au', str(ecut)+'Ry', conf]) + '.orb'

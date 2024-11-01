@@ -47,7 +47,7 @@ if __name__ == '__main__':
     #plot_orbfile('/home/zuxin/abacus-community/abacus_orbital_generation/SIAB/spillage/jy_normalized_10au_10Ry_10s9p9d.orb')
     #plot_orbfile('/home/zuxin/abacus-community/abacus_orbital_generation/Si/Si_2s2p1d/7au_40Ry/Si_gga_40Ry_7au_2s2p1d.orb')
     #plot_orbfile('/home/zuxin/abacus-community/abacus_orbital_generation/Si/Si_3s3p2d/7au_40Ry/Si_gga_40Ry_7au_3s3p2d.orb')
-    plot_orbfile('/root/abacus-develop/numerical_orbitals/SG15-Version1p0__AllOrbitals-Version2p0/13_Al_DZP/Al_gga_6au_100Ry_4s4p1d.orb')
+    plot_orbfile('/root/documents/simulation/orbgen/v3p0-test/Si_gga_10au_60Ry_2s2p1d.orb')
     plt.show()
 
     pass

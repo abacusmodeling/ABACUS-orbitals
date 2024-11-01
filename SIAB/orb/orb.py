@@ -275,7 +275,7 @@ class OrbgenCascade:
                                                          orb.nbnds_, 
                                                          options, 
                                                          nthreads)
-            print(f'OrbgenCascade: orbital optimization ends with spillage = {spillage}', flush=True)
+            print(f'OrbgenCascade: orbital optimization ends with spillage = {spillage:.8e}', flush=True)
             orb.coef_ = merge(coefs_frozen, coefs_shell, 2)[0] if coefs_frozen else coefs_shell[0]
             if immediplot:
                 f = _save_orb(orb.coef_, orb.elem_, orb.ecut_, orb.rcut_, immediplot)

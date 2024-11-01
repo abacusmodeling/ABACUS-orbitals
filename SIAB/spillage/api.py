@@ -464,7 +464,7 @@ def _save_orb(coefs, elem, ecut, rcut, folder, primitive_type: str = "reduced"):
 
     coeff_converter_map = {"reduced": coeff_reduced2raw, 
                            "normalized": coeff_normalized2raw}
-    syms = "SPDFGHIKLMNOQRTUVWXYZ".lower()
+
     dr = 0.01
     r = np.linspace(0, rcut, int(rcut/dr)+1)
 

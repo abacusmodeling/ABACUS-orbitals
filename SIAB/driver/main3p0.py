@@ -100,8 +100,8 @@ def spillage(elem,
                                 dft_folder(elem, 'monomer', 0, **initializer),
                                 task,
                                 basis_type)
-          cascade.opt(immediplot='.', 
+          cascade.opt(immediplot=None, 
                       diagnosis=True, 
                       options=options, 
                       nthreads=kwargs.get('nthreads_rcut', 1))
-          # cascade.plot('.')
+          cascade.plot('.')
