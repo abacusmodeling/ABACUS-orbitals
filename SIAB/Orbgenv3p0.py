@@ -17,7 +17,8 @@ def main(fn):
              primitive_type=spillparam['primitive_type'],
              scheme=spillparam['orbitals'],
              basis_type=spillparam['fit_basis'],
-             nthreads_rcut=spillparam.get('nthreads_rcut', 1))
+             nthreads_rcut=spillparam.get('nthreads_rcut', 1),
+             disp=True)
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run the ABACUS-ORBGEN workflow')

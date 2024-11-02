@@ -86,7 +86,7 @@ def spillage(elem,
              scheme, 
              basis_type = 'jy',
              **kwargs):
-     options = {'maxiter': kwargs.get('max_steps', 3000), 
+     options = {'maxiter': kwargs.get('max_steps', 5000), 
                 'disp': kwargs.get('spill_verbo', False),
                 'ftol': kwargs.get('ftol', 0),
                 'gtol': kwargs.get('gtol', 1e-6),

@@ -260,7 +260,8 @@ class OrbgenCascade:
         nzmax = np.max(nzmax, axis = 0).tolist()
 
         print(f'OrbgenCascade: start optimizing orbitals in cascade')
-        for orb, ifroz, iconfs in zip(self.orbitals_, self.ifrozen_, self.iuniqfds_):
+        for i in range(len(self.orbitals_)):
+            orb, ifroz, iconfs = self.orbitals_[i], self.ifrozen_[i], self.iuniqfds_[i]
             orb_frozen = self.orbitals_[ifroz] if ifroz is not None else None
             coefs_frozen = [orb_frozen.coef_] if orb_frozen else None
             
@@ -269,11 +270,9 @@ class OrbgenCascade:
             orb.init(self.initializer_, nzshift, diagnosis) if isinstance(self.minimizer_, Spillage_jy)\
                 else orb.init(self.initializer_, nzmax, nzshift, diagnosis)
             # then optimize
-            coefs_shell, spillage = self.minimizer_.opt([orb.coef_], 
-                                                         coefs_frozen, 
-                                                         iconfs, 
-                                                         orb.nbnds_, 
-                                                         options, 
+            coefs_shell, spillage = self.minimizer_.opt([orb.coef_], coefs_frozen, 
+                                                         iconfs, orb.nbnds_, 
+                                                         options|{'gtol': options.get('gtol', 1e-6) / 10**(2*i)}, 
                                                          nthreads)
             print(f'OrbgenCascade: orbital optimization ends with spillage = {spillage:.8e}', flush=True)
             orb.coef_ = merge(coefs_frozen, coefs_shell, 2)[0] if coefs_frozen else coefs_shell[0]

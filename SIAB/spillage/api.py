@@ -600,7 +600,7 @@ def _nzeta_mean_conf(nbands,
     assert statistics in ['max', 'mean']
     assert isinstance(folders, list), f"folders should be a list: {folders}"
     assert all([isinstance(f, str) for f in folders]), f"folders should be a list of strings: {folders}"
-    print(nbands, folders, statistics, pop, nz_filter)
+
     # nzeta = np.array([0])
     nzeta = []
     nbands = [nbands] * len(folders) if not isinstance(nbands, list) else nbands

@@ -116,12 +116,12 @@ def _build_atomspecies(elem,
     dict
         the atomspecies dictionary
     '''
-    out = {'pp': pp}
+    out = {'pp': os.path.abspath(pp)}
     if all([ecut, rcut, lmaxmax]):
         less_dof = 0 if primitive_type == 'normalized' else 1
         nzeta = [_nbes(l, rcut, ecut) - less_dof for l in range(lmaxmax + 1)]
         forb = os.path.join(orbital_dir, orb(elem, rcut, ecut, nzeta))
-        out['orb'] = forb
+        out['orb'] = os.path.abspath(forb)
         if os.path.exists(forb):
             return {elem: out}
         coefs = _coef_gen(rcut, ecut, lmaxmax, primitive_type)[0]

@@ -2,8 +2,7 @@ from SIAB.spillage.datparse import read_istate_info, read_input_script, read_kpo
 import os
 import numpy as np
 import unittest
-import ast # for literal_eval
-
+import re
 def ptg_spilopt_params_from_dft(calculation_settings, siab_settings, folders):
     """prepare the input for orbital optimization task.
     Because the folder name might not be determined at the beginning of task if perform
@@ -89,6 +88,29 @@ def neo_spilopt_params_from_dft(calculation_settings, siab_settings, folders):
 
     return rcuts, ecut, elem, primitive_type, run_type, shared_option
 
+def literal_eval(expr):
+    '''evaluate the expression, but only allow the basic arithmetic operations'''
+    allowed = set('+-*/()0123456789')
+    if not set(expr) <= allowed:
+        raise ValueError(f"Expression {expr} contains invalid characters")
+    words = re.findall(r'\d+|\+|\-|\*|\/|\(|\)', expr)
+    if not words[0].isdigit():
+        raise ValueError(f'Not supported expression {expr}')
+    out = int(words[0])
+    op_map = {'+': lambda x, y: x + y,
+              '-': lambda x, y: x - y,
+              '*': lambda x, y: x * y,
+              '/': lambda x, y: x / y}
+    op = None
+    for w in words[1:]:
+        if w.isdigit():
+            if op is None:
+                raise ValueError(f'Not supported expression {expr}')
+            out = op_map[op](out, int(w))
+        else:
+            op = w
+    return out
+
 def _spil_bnd_autoset(pattern: int|str, 
                       folder: str,
                       occ_thr = 5e-1,
@@ -149,7 +171,7 @@ def _spil_bnd_autoset(pattern: int|str,
     else:
         assert isinstance(pattern, str), f"nbands_ref {pattern} is not a string."
     try:
-        return int(ast.literal_eval(pattern.replace('occ', str(nocc)).replace('all', str(nall))))
+        return int(literal_eval(pattern.replace('occ', str(nocc)).replace('all', str(nall))))
     except (ValueError, SyntaxError):
         raise ValueError(f"nbands_ref {pattern} is not a valid expression.")
 
