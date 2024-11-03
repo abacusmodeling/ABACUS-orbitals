@@ -1,5 +1,7 @@
-from SIAB.driver.main3p0 import init, rundft, spillage
+from SIAB.driver.main import init, rundft, spillage
 import argparse
+import os
+
 def main(fn):
     '''main function'''
     glbparam, dftparam, spillparam, compparam = init(fn)
@@ -16,7 +18,8 @@ def main(fn):
              rcuts=glbparam['bessel_nao_rcut'],
              primitive_type=spillparam['primitive_type'],
              scheme=spillparam['orbitals'],
-             basis_type=spillparam['fit_basis'],
+             dft_root=os.getcwd(),
+             run_mode=spillparam['fit_basis'],
              nthreads_rcut=spillparam.get('nthreads_rcut', 1),
              disp=True)
     
@@ -26,4 +29,3 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--input', required=True, help='input json file')
     args = parser.parse_args()
     main(args.input)
-    # main('examples/jy-v3.0.json')

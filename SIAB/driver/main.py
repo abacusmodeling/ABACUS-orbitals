@@ -1,180 +1,144 @@
-import os
-from SIAB.io.read_input import read, parse
-from SIAB.abacus.run import run_all
-import SIAB.spillage.pytorch_swat.api as ssps_api  # old version of backend
-import SIAB.spillage.api as ss_api  # new version of backend
+from SIAB.io.param import read, orb_link_geom
+from SIAB.supercomputing.op import submit
+from SIAB.abacus.api import build_abacus_jobs, job_done
+from SIAB.io.convention import dft_folder
+from SIAB.orb.api import orb_cascade
+from SIAB.abacus.blscan import jobfilter
 
-def initialize(version: str = "0.1.0",
-               fname: str = "./SIAB_INPUT"):
-    '''
-    initialization of numerical atomic orbitals generation task, 
-    1. read input file named as fname, will convert to new version inside package
-    2. check the existence of pseudopotential file, if pseudopotential_check is True, go on
-    3. unpack the input file, return set of parameters:
-        - reference_shapes: list of reference shapes, e.g. ["dimer", "trimer"]
-        - bond_lengths: list of bond lengths for each reference shape, e.g. [[1.0, 1.1], [1.0, 1.1, 1.2]]
-        - calculation_settings: list of calculation settings, e.g. 
-          [{"bessel_nao_rcut": 5.0, "bessel_nao_lmax": 5}, {"bessel_nao_rcut": 5.0, "bessel_nao_lmax": 5}]
-          for each reference shape
-        - siab_settings: dict of SIAB settings specially for SIAB optimization tasks.
-        - env_settings: tuple of environment settings, contain environment variables, abacus executable, and mpi executable
-        - general: dict of general settings, contain element symbol, pseudo_dir, pseudo_name
-    
-    Parameters
-    ----------
-    version: str
-        version of SIAB, this is not used anymore
-    fname: str
-        input filename, default is "./SIAB_INPUT"
-    '''
+def init(fn):
+     """
+     initialize the ABACUS-ORBGEN workflow by reading the input file
 
-    fname = fname.strip().replace("\\", "/")
-    user_settings = read(fname=fname, version=version)
-    structures, abacus, siab, env, general = parse(user_settings)
+     Parameters
+     ----------
+     fn: str
+         input filename
+     """
+     glbparams, dftparams, spillparams, compute = read(fn)
+     # if fit_basis is jy, then set basis_type in dftparams to lcao explicitly
+     if spillparams.get('fit_basis', 'jy') == 'jy':
+          dftparams['basis_type'] = 'lcao'
+     else:
+          dftparams['basis_type'] = 'pw'
+     # link the geometries
+     for orb in spillparams['orbitals']:
+          orb['geoms'] = orb_link_geom(orb['geoms'], spillparams['geoms'])
+          
+     return glbparams, dftparams, spillparams, compute
 
-    # FIXME
-    # This following code will be replaced by ABACUS-Pseudopot-Nao-Square CODE
-    # the AtomSpeciesGenerator systematically in the future.
+def rundft(elem,
+           rcuts,
+           dftparam,
+           geoms,
+           spill_guess,
+           compparam):
+     jobs = build_abacus_jobs(elem, rcuts, dftparam, geoms, spill_guess)
+     # there should be a check here, to avoid rerun completed jobs
+     for job in jobs:
+         if job_done(job):
+             print(f'{job} has been done, skip')
+             continue
+         _ = submit(job, 
+                    compparam.get('environment', ''),
+                    compparam.get('mpi_command', ''),
+                    compparam.get('abacus_command', 'abacus'))
+     # to find these folders by name, call function
+     # in SIAB.io.convention the dft_folder
+     # dft_folder(elem, proto, pert, rcut = None)
+     return jobs
 
-    # pseudopotential existence check
-    fpseudo = os.path.join(user_settings["pseudo_dir"], user_settings["pseudo_name"])
-    if not os.path.exists(fpseudo): # check the existence of pseudopotential file
-        raise FileNotFoundError("Pseudopotential file %s not found"%fpseudo)
-    
-    ##################################################
-    # NEW FEATURE in SIAB-v3.0: support for jy basis #
-    ##################################################
-    # disable the use of pw basis for optimizer bfgs
-    if user_settings.get("optimizer", "none") == "bfgs" and\
-       user_settings.get('fit_basis', 'jy') == 'pw':
-        raise ValueError("Generating orbitals from PW calculation for bfgs has been deprecated")
+def _spilltasks(elem, 
+                rcuts, 
+                scheme, 
+                dft_root = '.',
+                run_mode = 'jy'):
+     '''
+     
+     Parameters
+     ----------
+     elem: str
+         element symbol
+     rcuts: list[float]
+         the cutoff radius of orbital to generate
+     scheme: list
+          the scheme of how to generate the orbitals
+     dft_root: str
+          the root folder of the dft calculations
+     run_mode: str
+          the mode to execute spillage optimization, default is jy, also can be pw
+     
+     Generate
+     --------
+     rcut: float
+          the cutoff radius of the orbitals
+     orbitals: list[dict]
+          the orbitals to optimize
+     '''
+     convert_ = {'nzeta': 'nzeta', 'nbands': 'nbnds', 
+                 'checkpoint': 'iorb_frozen', 'geoms': 'folders'}
+     for rcut in rcuts:
+          template = scheme.copy()
+          orbitals = [{convert_[k]: v for k, v in orb.items()} for orb in template]
+          additional = {} if run_mode != 'jy' else {'rcut': rcut}
+          for orb in orbitals:
+               geoms_orb = [{'elem': elem, 'proto': f['proto'], 'pert': pertmag} 
+                            for f in orb['folders'] 
+                            for pertmag in jobfilter(dft_root,
+                                                     elem,
+                                                     f['proto'],
+                                                     'stretch',
+                                                     f['pertmags'],
+                                                     additional.get('rcut'),
+                                                     5, 1.5)]
+               orb['folders'] = [dft_folder(**(geom|additional)) for geom in geoms_orb]
+          yield rcut, orbitals
 
-    from SIAB.spillage.api import _coef_gen, _save_orb
-        
-    # in case some user will type jY, jy, JY, Jy, etc.
-    use_jy = user_settings.get("fit_basis", "jy").lower() == "jy" \
-        and user_settings.get("optimizer", "pytorch.SWAT") != "none"
-    
-    # if user only want jy, will generate elsewhere
-    ecut = user_settings.get("ecutwfc", 100)
-    rcuts = user_settings.get("bessel_nao_rcut", [6.0])
-    
-    if use_jy: # only if use_jy, will generate jy basis
-        lmaxmax = max([dftparam.get("lmaxmax", 1) for dftparam in abacus])
-        primitive_type = user_settings.get("primitive_type", "reduced")
-        fjy = [_save_orb(_coef_gen(rcut, ecut, lmaxmax, primitive_type)[0], 
-                         general["element"], 
-                         ecut, 
-                         rcut, 
-                         "jy", 
-                         primitive_type) for rcut in rcuts]
-        abacus = [dftparam|{"orbital_dir": fjy, 
-                            "basis_type": "lcao",
-                            "ks_solver": "genelpa"} for dftparam in abacus]
-    # the code above will change the abacus setting: INPUT:
-    # basis_type: pw -> lcao
-    # ks_solver: dav -> genelpa
-    # and add a new key: orbital_dir, which is the directory of jy basis
+def spillage(elem, 
+             ecut, 
+             rcuts, 
+             primitive_type,  
+             scheme, 
+             dft_root = '.',
+             run_mode = 'jy',
+             **kwargs):
+     '''
+     Run the spillage optimization
 
-    return structures, abacus, siab, env, general
-
-# interface to abacus
-def abacus(general: dict,
-           structures: list,
-           calculation_settings: list,
-           env_settings: dict,
-           test: bool = True):
-    """abacus interface for calling iteratively the abacus executable, generate reference
-    wavefunctions and overlap between KS states and Truncated Spherical Bessel Functions.
-    Will save as orb_matrix.0.dat and orb_matrix.1.dat.
-    However for new version of abacus, which can accept multiple bessel_nao_rcut input,
-    output matrices will be saved as orb_matrix_rcutRderivD.0.dat and orb_matrix_rcutRderivD.1.dat
-    where R and D are the corresponding bessel_nao_rcut and order of derivatives of the
-    wavefunctions.
-    
-    For introduction of input params, see annotation of initialize() function in this file.
-    
-    Iteration will return a list of list of folders in the save sequence of reference shapes,
-    according to present implemented nomenclature of folders, if, element is Si, what returns
-    would be like:
-    [
-        ["Si-dimer-1.0", "Si-dimer-1.1"], ["Si-trimer-1.0", "Si-trimer-1.1", "Si-trimer-1.2"]
-    ]
-    if the bond_lengths is given as [[1.0, 1.1], [1.0, 1.1, 1.2]]
-
-    Parameters
-    ----------
-    general: dict
-        general settings, contain element symbol, pseudo_dir, pseudo_name
-
-    structures: list of dict
-        list of structures, each structure is a dict, contain the information of the structure
-    
-    calculation_settings: list of dict
-        list of calculation settings, for each reference shape
-    
-    env_settings: dict
-        settings for calculation environment configuration, important in HPC case
-    
-    test: bool
-        whether to run in test mode, default is True
-    """
-    
-    folders = run_all(general=general,
-                      structures=structures,
-                      calculation_settings=calculation_settings,
-                      env_settings=env_settings,
-                      test=test)
-    
-    return folders
-
-def spillage(folders: list,
-             calculation_settings: list,
-             siab_settings: dict):
-    """Interface to Spillage Optimization task runners
-
-    Parameters
-    ----------
-    folders: list of list of str
-        the folders for each reference shape and bond length,
-    like
-    ```python
-    [["Si-dimer-1.0", "Si-dimer-1.1"], 
-     ["Si-trimer-1.0", "Si-trimer-1.1", "Si-trimer-1.2"]]
-    ```
-    calculation_settings: list of dict
-        the contents of INPUT for each reference shape, like
-    ```python
-    [
-        {'pseudo_dir': '/root/abacus-develop/pseudopotentials/SG15_ONCV_v1.0_upf', 
-         'ecutwfc': 100, 'bessel_nao_rcut': [6, 7], 'smearing_sigma': 0.01, 
-         'nbands': 8, 'lmaxmax': 2, 'nspin': 1}, 
-        {'pseudo_dir': '/root/abacus-develop/pseudopotentials/SG15_ONCV_v1.0_upf', 
-         'ecutwfc': 100, 'bessel_nao_rcut': [6, 7], 'smearing_sigma': 0.01, 
-         'nbands': 10, 'lmaxmax': 2, 'nspin': 1}
-    ]
-    ```
-    siab_settings: dict
-        the settings for SIAB optimization tasks, including informations all about the orbitals, 
-        like
-    ```python
-    {
-        'nthreads_per_rcut': 1,
-        'optimizer': 'pytorch.SWAT', 
-        'max_steps': 200, 
-        'spill_coefs': [2.0, 1.0], 
-        'orbitals': [
-            {'nzeta': [1, 1], 'nzeta_from': None, 'nbands_ref': 4, 'folder': 0}, 
-            {'nzeta': [2, 2, 1], 'nzeta_from': [1, 1], 'nbands_ref': 4, 'folder': 0}, 
-            {'nzeta': [3, 3, 2], 'nzeta_from': [2, 2, 1], 'nbands_ref': 6, 'folder': 1}
-        ]
-    }
-    ```
-    """
-    # iteratively generate numerical atomic orbitals here
-    optimizer = siab_settings.get("optimizer", "none").lower()
-    assert optimizer in ["pytorch.swat", "none", "restart", "bfgs"], "optimizer not supported"
-    branch = "v2.0" if optimizer == "pytorch.swat" else "v3.0"
-    run = ssps_api.run if branch == "v2.0" else ss_api.run
-    run(siab_settings, calculation_settings, folders)
-
+     Parameters
+     ----------
+     elem: str
+         element symbol
+     ecut: float
+          the kinetic energy cutoff of the underlying jy
+     rcuts: list[float]
+          the cutoff radius of orbital to generate
+     primitive_type: str
+          the type of jy, can be `reduced` or `normalized`
+     scheme: list
+          the scheme of how to generate the orbitals
+     dft_root: str
+          the root folder of the dft calculations
+     run_mode: str
+          the mode to execute spillage optimization, default is jy, also can be pw
+     kwargs: dict
+          additional parameters, including `max_steps`, `spill_verbo`, `ftol`, `gtol`, `nthreads_rcut`
+     '''
+     options = {'maxiter': kwargs.get('max_steps', 5000), 
+                'disp': kwargs.get('spill_verbo', False),
+                'ftol': kwargs.get('ftol', 0),
+                'gtol': kwargs.get('gtol', 1e-6),
+                'maxcor': 20}
+     for rcut, task in _spilltasks(elem, rcuts, scheme, dft_root, run_mode):
+          initializer = {} if run_mode != 'jy' else {'rcut': rcut}
+          cascade = orb_cascade(elem, 
+                                rcut, 
+                                ecut, 
+                                primitive_type,
+                                dft_folder(elem, 'monomer', 0, **initializer),
+                                task,
+                                run_mode)
+          cascade.opt(immediplot=None,  # immediplot will cause threading bugs from matplotlib
+                      diagnosis=True, 
+                      options=options, 
+                      nthreads=kwargs.get('nthreads_rcut', 1))
+          cascade.plot('.')

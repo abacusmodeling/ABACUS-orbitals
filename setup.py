@@ -27,7 +27,7 @@ setup(
         "Operating System :: OS Independent",
     ],
     scripts=[
-        "SIAB/SIAB_nouvelle.py",
+        "SIAB/orbgen.py",
     ],
    python_requires='<3.11', # required by SciPy 1.10
 )
