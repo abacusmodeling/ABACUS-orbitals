@@ -56,7 +56,8 @@ class SpillTorch(Spillage):
         if ibands == 'all':
             ibands = range(dat['ref_ref'][1].shape[1])
 
-        spill = (dat['wk'] @ dat['ref_ref'][1][:, ibands]).real.sum()
+        wk = th.Tensor(dat['wk'])
+        spill = (wk @ dat['ref_ref'][1][:, ibands]).real.sum()
         _jy2ao = _t_jy2ao(coef, dat['natom'], dat['nbes'])
 
         V = th.Tensor(dat['ref_jy'])[:,:,ibands,:] @ _jy2ao
@@ -70,12 +71,12 @@ class SpillTorch(Spillage):
         _V_dual = np.array(V_dual.tolist())
         VdaggerV = th.Tensor(_V_dual.transpose((0,2,1)).conj()) @ V_dual
 
-        spill += th.Tensor(dat['wk']) @ (_t_rfrob(W[1], VdaggerV)
+        spill += wk @ (_t_rfrob(W[1], VdaggerV)
                                          - 2.0 * _t_rfrob(V_dual, V[1]))
         return spill / len(ibands)
     
     def opt(self, coef_init, coef_frozen, iconfs, ibands,
-            options):
+            options, nthreads=1):
         
         if coef_frozen is not None:
             self._tab_frozen(coef_frozen)
@@ -101,14 +102,15 @@ class SpillTorch(Spillage):
         c0 = th.Tensor(flatten(coef_init))
 
         # only swats
-        optimizer = SWATS([c0], lr=options['learning_rate'])
+        optimizer = SWATS([c0], lr=options.get('learning_rate', 0.01))
 
-        for i in range(options['maxiter']):
+        maxiter, ndisp = options.get('maxiter', 1000), options.get('ndisp', 10)
+        for i in range(maxiter):
             optimizer.zero_grad()
             loss = _t_f(c0)
             loss.backward()
             optimizer.step()
-            if options['disp'] and i % (options['maxiter']//options['ndisp']) == 0:
+            if options.get('disp', True) and i % (maxiter//ndisp) == 0:
                 print(f'step {i:8d}, loss {loss.item():.8e}')
             
         return c0.tolist(), loss.item()
@@ -117,7 +119,9 @@ class SpillTorch_jy(SpillTorch):
     
     def config_add(self, outdir, weight=(0.0, 1.0)):
         raw = _t_jy_data_extract(outdir)
-        C, S, T = raw['C'], raw['S'], raw['T']
+        C = raw['C']
+        S = raw['S']
+        T = raw['T']
 
         wov, wop = weight
         ref_ov_ref = th.sum(C.conj() * (S @ C), -2)
@@ -126,21 +130,22 @@ class SpillTorch_jy(SpillTorch):
         ref_ov_jy = C.swapaxes(-2, -1).conj() @ S
         ref_op_jy = C.swapaxes(-2, -1).conj() @ T
 
-        ref_ref = th.Tensor([ref_ov_ref, wov*ref_ov_ref + wop*ref_op_ref])
-        ref_jy  = th.Tensor([ref_ov_jy, wov*ref_ov_jy + wop*ref_op_jy])
-        jy_jy   = th.Tensor([S, wov*S + wop*T])
+        ref_ref = np.array([ref_ov_ref, wov*ref_ov_ref + wop*ref_op_ref])
+        ref_jy  = np.array([ref_ov_jy, wov*ref_ov_jy + wop*ref_op_jy])
+        jy_jy   = np.array([S, wov*S + wop*T])
 
         p = perm_zeta_m(_lin2comp(raw['natom'], nzeta=raw['nzeta']))
-        ref_jy = ref_jy[:,:,:,p].copy_()
-        jy_jy = jy_jy[:,:,:,p][:,:,p,:].copy_()
+
+        ref_jy = ref_jy[:,:,:,p].copy()
+        jy_jy = jy_jy[:,:,:,p][:,:,p,:].copy()
 
         self.config.append({
             'natom': raw['natom'],
-            'nbes': raw['nbes'],
+            'nbes': raw['nzeta'],
             'wk': raw['wk'],
-            'ref_ref': ref_ref,
-            'ref_jy': ref_jy,
-            'jy_jy': jy_jy
+            'ref_ref': th.Tensor(ref_ref),
+            'ref_jy': th.Tensor(ref_jy),
+            'jy_jy': th.Tensor(jy_jy)
         })
 
 class SpillTorch_pw(SpillTorch):

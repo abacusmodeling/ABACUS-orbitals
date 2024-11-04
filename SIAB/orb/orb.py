@@ -166,7 +166,7 @@ class OrbgenCascade:
                  orbitals: list[Orbital],
                  ifrozen: list,
                  mode: str = 'jy',
-                 impl: str = 'pytorch'):
+                 impl: str = 'scipy'):
         '''instantiation of the an orbital cascade
         
         Parameters
@@ -269,12 +269,13 @@ class OrbgenCascade:
             
             # only initialize when necessary
             nzshift = None if orb_frozen is None else orb_frozen.nzeta_
-            orb.init(self.initializer_, nzshift, diagnosis) if isinstance(self.minimizer_, Spillage_jy)\
+            orb.init(self.initializer_, nzshift, diagnosis) \
+                if isinstance(self.minimizer_, (Spillage_jy, SpillTorch_jy)) \
                 else orb.init(self.initializer_, nzmax, nzshift, diagnosis)
             # then optimize
             coefs_shell, spillage = self.minimizer_.opt([orb.coef_], coefs_frozen, 
                                                          iconfs, orb.nbnds_, 
-                                                         options|{'gtol': options.get('gtol', 1e-6) / 10**(2*i)}, 
+                                                         options, 
                                                          nthreads)
             print(f'OrbgenCascade: orbital optimization ends with spillage = {spillage:.8e}', flush=True)
             orb.coef_ = merge(coefs_frozen, coefs_shell, 2)[0] if coefs_frozen else coefs_shell[0]

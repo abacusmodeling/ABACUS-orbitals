@@ -48,13 +48,13 @@ def _t_jy_data_extract(outdir):
                                ['nspin', 'wk', 'natom', 'nzeta']]
     
     nk = len(wk)
-    S = [th.Tensor(read_triu(os.path.join(outdir, f'data-{ik}-S')) 
-                   for ik in range(nk))]
-    T = [th.Tensor(read_triu(os.path.join(outdir, f'data-{ik}-T'))
-                   for ik in range(nk))]
+    S = [read_triu(os.path.join(outdir, f'data-{ik}-S'))
+         for ik in range(nk)]
+    T = [read_triu(os.path.join(outdir, f'data-{ik}-T'))
+         for ik in range(nk)]
 
     wfc_suffix = 'GAMMA' if nk == 1 else 'K'
-    C = [read_wfc_lcao_txt(os.path.join(outdir, f'WFC_NAO_{wfc_suffix}{ik+1}.txt'))[0]
+    C = [read_wfc_lcao_txt(os.path.join(outdir, f'WFC_NAO_{wfc_suffix}{ik+1}.txt'))[0].tolist()
          for ik in range(nspin * nk)]
     
     if nspin == 2:
@@ -62,6 +62,6 @@ def _t_jy_data_extract(outdir):
         T = [*T, *T]
         wk = [*wk, *wk]
 
-    return {'natom': natom, 'nzeta': nzeta, 'wk': wk,
+    return {'natom': natom, 'nzeta': nzeta, 'wk': wk, 
             'S': th.Tensor(S), 'T': th.Tensor(T), 'C': th.Tensor(C)}
 
