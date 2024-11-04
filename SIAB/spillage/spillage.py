@@ -665,7 +665,7 @@ class Spillage:
             spills, grads = zip(*pool.map(s, range(nconfs)))
             return (sum(spills) / nconfs,
                     sum(np.array(flatten(g)) for g in grads) / nconfs)
-
+        
         c0 = np.array(flatten(coef_init))
 
         bounds = [(-1.0, 1.0) for _ in c0]
@@ -682,10 +682,11 @@ class Spillage:
         pool.close()
 
         coef_opt = nest(res.x.tolist(), pat)
+        spill = res.fun
 
         return [[np.linalg.qr(np.array(coef_tl).T)[0].T.tolist()
                  if coef_tl else []
-                 for coef_tl in coef_t] for coef_t in coef_opt], res.fun
+                 for coef_tl in coef_t] for coef_t in coef_opt], spill
 
 
 class Spillage_jy(Spillage):

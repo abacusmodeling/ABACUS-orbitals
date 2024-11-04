@@ -89,7 +89,7 @@ def _spilltasks(elem,
                                                      'stretch',
                                                      f['pertmags'],
                                                      additional.get('rcut'),
-                                                     5, 1.5)]
+                                                     5, 1.0)]
                orb['folders'] = [dft_folder(**(geom|additional)) for geom in geoms_orb]
           yield rcut, orbitals
 

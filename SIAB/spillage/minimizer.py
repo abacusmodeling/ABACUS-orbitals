@@ -29,7 +29,7 @@ def _torchopt(f, x0, minimizer, **kwargs):
     list, float
         the optimized variables, the minimized value
     '''
-    raise NotImplementedError('The pytorch optimizer is not implemented yet')
+    #raise NotImplementedError('The pytorch optimizer is not implemented yet')
 
     x0 = Tensor(x0)
     x0.requires_grad = True
@@ -92,6 +92,7 @@ def _scipyopt(f, x0, minimizer, **kwargs):
                        bounds=bounds, options=options)
     
     elif minimizer == 'basinhopping':
+        # jac for the gradient
         minimizer_kwargs = {'method': 'L-BFGS-B', 'jac': True, 'bounds': bounds}
         res = basinhopping(f, x0, minimizer_kwargs=minimizer_kwargs, 
                            niter=maxiter, disp=disp)
@@ -151,7 +152,7 @@ class TestMinimizer(unittest.TestCase):
         '''test the scipy_l_bfgs_b'''
         def f(x):
             '''the function to minimize'''
-            return np.sum(x**2)
+            return np.sum(x**2), np.sum(2*x) # the gradient
         x0 = [1.0]
         x, y = _scipyopt(f, x0, 'L-BFGS-B', disp=False)
         self.assertAlmostEqual(x[0], 0.0)
@@ -161,7 +162,7 @@ class TestMinimizer(unittest.TestCase):
         '''test the scipy_basinhopping'''
         def f(x):
             '''the function to minimize'''
-            return np.sum(x**2)
+            return np.sum(x**2), np.sum(2*x), # the gradient
         x0 = [1.0]
         x, y = _scipyopt(f, x0, 'basinhopping', disp=False)
         self.assertAlmostEqual(x[0], 0.0)
