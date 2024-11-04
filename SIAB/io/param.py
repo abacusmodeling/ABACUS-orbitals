@@ -98,10 +98,11 @@ def geomval_chk(geom):
         the geom parameters
     '''
     # check if pertmags is list of int or float
-    if not isinstance(geom['pertmags'], list):
-        raise TypeError('pertmags should be a list of int or float')
-    if not all(isinstance(i, (int, float)) for i in geom['pertmags']):
-        raise TypeError('pertmags should be a list of int or float')
+    if not isinstance(geom['pertmags'], list) and not (isinstance(geom['pertmags'], str)):
+        raise TypeError('pertmags should be a list of int or float, or a string')
+    if isinstance(geom['pertmags'], list):
+        if not all(isinstance(i, (int, float)) for i in geom['pertmags']):
+            raise TypeError('pertmags should be a list of int or float')
     # check if lmaxmax is a non-negative int
     if not isinstance(geom['lmaxmax'], int):
         raise TypeError('lmaxmax should be a int')

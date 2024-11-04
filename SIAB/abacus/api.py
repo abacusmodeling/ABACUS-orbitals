@@ -244,7 +244,7 @@ def _build_pert(elem, proto, pertkind, pertmags, n = 5):
         raise NotImplementedError('only stretch perturbation is supported')
 
     if isinstance(pertmags, str):
-        print(f'pertmags is {pertmags}, a series of pertmags will be generated')
+        print(f'pertmags is `{pertmags}`, a series of pertmags will be generated')
         return blgen(elem, proto, n // 2)
     
     if not isinstance(pertmags, list) or not all([isinstance(pert, (int, float)) for pert in pertmags]):

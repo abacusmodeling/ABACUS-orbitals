@@ -48,7 +48,7 @@ def blgen(elem: str,
         the stepsize of bond length increase, default is 0.5 Angstrom
     '''
     try:
-        return DEFAULT_BOND_LENGTH[elem][proto]
+        return DEFAULT_BOND_LENGTH[proto][elem]
     except KeyError:
         # no predefined bond length, use covalent radius
         bl0 = RCOVALENT[elem]
