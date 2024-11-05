@@ -9,7 +9,8 @@ def orb_cascade(elem,
                 primitive_type,
                 initializer, 
                 orbs,
-                mode):
+                mode,
+                optimizer='pytorch.swats'):
     '''build an OrbgenCascade based on one orbgen graph/scheme
     
     Parameters
@@ -77,6 +78,9 @@ def orb_cascade(elem,
         raise TypeError('mode should be a str')
     if mode not in ['jy', 'pw']:
         raise ValueError('mode should be either jy or pw')
+    impl, optimizer = optimizer.split('.')
+    if impl not in ['pytorch', 'scipy']:
+        raise ValueError('optimizer should be either pytorch or scipy')
     if mode == 'jy':
         orbs = [OrbitalJY(rcut, ecut, elem, nz, primitive_type, fd, nbnd) 
                 for nz, fd, nbnd in zip(nzeta, folders, nbnds)]
@@ -84,4 +88,4 @@ def orb_cascade(elem,
         orbs = [OrbitalPW(rcut, ecut, elem, nz, primitive_type, fd, nbnd) 
                 for nz, fd, nbnd in zip(nzeta, folders, nbnds)]
         
-    return OrbgenCascade(initializer, orbs, iorb_frozen, mode)
+    return OrbgenCascade(initializer, orbs, iorb_frozen, mode, impl)

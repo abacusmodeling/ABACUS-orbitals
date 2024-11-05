@@ -83,11 +83,8 @@ def _spilltasks(elem,
           for orb in orbitals:
                geoms_orb = [{'elem': elem, 'proto': f['proto'], 'pert': pertmag} 
                             for f in orb['folders'] 
-                            for pertmag in jobfilter(dft_root,
-                                                     elem,
-                                                     f['proto'],
-                                                     'stretch',
-                                                     f['pertmags'],
+                            for pertmag in jobfilter(dft_root, elem, f['proto'],
+                                                     'stretch', f['pertmags'],
                                                      additional.get('rcut'),
                                                      5, 1.0)]
                orb['folders'] = [dft_folder(**(geom|additional)) for geom in geoms_orb]
@@ -121,10 +118,10 @@ def spillage(elem,
      run_mode: str
           the mode to execute spillage optimization, default is jy, also can be pw
      kwargs: dict
-          additional parameters, including `max_steps`, `spill_verbo`, `ftol`, `gtol`, `nthreads_rcut`
+          additional parameters, including `max_steps`, `verbose`, `ftol`, `gtol`, `nthreads_rcut`
      '''
      options = {'maxiter': kwargs.get('max_steps', 5000), 
-                'disp': kwargs.get('spill_verbo', False),
+                'disp': kwargs.get('verbose', True),
                 'ftol': kwargs.get('ftol', 0),
                 'gtol': kwargs.get('gtol', 1e-6),
                 'maxcor': 20}
