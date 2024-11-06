@@ -98,8 +98,8 @@ def INPUT(calculation_setting: dict,
 
     if inbuilt_template["basis_type"] != "pw":
         inbuilt_template.update({
-            "out_mat_hs": 1,
-            "out_mat_tk": 1,
+            "out_mat_hs": "1 12",
+            "out_mat_tk": "1 12",
             "out_wfc_lcao": 1
         })
     inbuilt_template.update({"out_chg": -1}) # disable the out_chg or set init_chg auto?

@@ -4,7 +4,8 @@ import argparse
 import os
 
 def start() -> str:
-    '''Initialize the ABACUS-ORBGEN v3.0 workflow'''
+    '''User interface, return the input json file specified in -i tag'''
+
     helpmsg = 'To use ABACUS-ORBGEN v3.0 workflow, you should configure the ABACUS with'\
               ' version higher than 3.7.5. Since v3.0, the workflow has deprecated '\
               'thoroughly the plain text input file as v1.0, 2.0 and 2.0+. Now only '\
@@ -22,8 +23,7 @@ def start() -> str:
 def main():
     '''main function'''
 
-    fn = start()
-    glbparam, dftparam, spillparam, compparam = read(fn)
+    glbparam, dftparam, spillparam, compparam = read(start())
 
     _ = rundft(glbparam['element'],
                glbparam['bessel_nao_rcut'],
