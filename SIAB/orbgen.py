@@ -24,8 +24,17 @@ def main(fn):
              disp=True)
     
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Run the ABACUS-ORBGEN workflow')
-    # only -i, --input is required
+    helpmsg = 'To use ABACUS-ORBGEN v3.0 workflow, you should configure the ABACUS with'\
+              ' version higher than 3.7.5. Since v3.0, the workflow has deprecated '\
+              'thoroughly the plain text input file as v1.0, 2.0 and 2.0+. Now only '\
+              'the json file is supported. An example can be found in folder examples/.'\
+              ' For more information on parameter settings, please refer to the '\
+              'Github repository:\nhttps://github.com/kirk0830/ABACUS-ORBGEN'
+
+    parser = argparse.ArgumentParser(description=helpmsg)
+    
     parser.add_argument('-i', '--input', required=True, help='input json file')
+    parser.add_argument('-v', '--version', action='version', version='%(prog)s 3.0')
+    
     args = parser.parse_args()
     main(args.input)
