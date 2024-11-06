@@ -295,7 +295,7 @@ def jobfilter(root: str,
             nat = read_natom(os.path.join(root, c), None)
             e.append(read_energy(os.path.join(root, c), None)/nat)
 
-    return _blfilter(bl, e, ethr, n)
+    return _blfilter(bl, e, ethr, n) if pertmags == 'scan' else bl
 
 class TestBLSCAN(unittest.TestCase):
     '''test the bond length scan module'''
