@@ -5,7 +5,7 @@ the derived class of Orbital for handling specifically the jy as fit_basis case
 '''
 
 from SIAB.orb.orb import Orbital, OrbgenCascade
-from SIAB.spillage.api import _nzeta_mean_conf
+from SIAB.spillage.legacy.api import _nzeta_mean_conf
 from SIAB.orb.jy_expmt import _coef_init
 from SIAB.spillage.datparse import read_input_script
 import numpy as np

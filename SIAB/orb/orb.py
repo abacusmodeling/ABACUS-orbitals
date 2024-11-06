@@ -22,8 +22,8 @@ of orbital.
 from SIAB.spillage.util import _spil_bnd_autoset
 from SIAB.spillage.spillage import Spillage_pw, Spillage_jy
 from SIAB.spillage.spilltorch import SpillTorch_jy, SpillTorch_pw
-from SIAB.spillage.listmanip import merge, nestpat
-from SIAB.spillage.api import _save_orb, _coef_subset
+from SIAB.spillage.listmanip import merge
+from SIAB.spillage.legacy.api import _save_orb, _coef_subset
 from SIAB.spillage.datparse import read_input_script
 from SIAB.spillage.radial import _nbes
 from SIAB.io.convention import dft_folder
@@ -166,7 +166,7 @@ class OrbgenCascade:
                  orbitals: list[Orbital],
                  ifrozen: list,
                  mode: str = 'jy',
-                 impl: str = 'pytorch'):
+                 optimizer: str = 'torch.swats'):
         '''instantiation of the an orbital cascade
         
         Parameters
@@ -207,13 +207,13 @@ class OrbgenCascade:
         if mode not in ['jy', 'pw']:
             raise ValueError('mode should be either jy or pw')
         if mode == 'jy':
-            self.minimizer_ = Spillage_jy() if impl != 'pytorch' else SpillTorch_jy()
+            self.minimizer_ = Spillage_jy() if optimizer.startswith('scipy') else SpillTorch_jy()
             for f in uniqfds:
                 suffix = read_input_script(os.path.join(f, 'INPUT')).get('suffix', 'ABACUS')
                 self.minimizer_.config_add(os.path.join(f, f'OUT.{suffix}'))
                 print(f'OrbgenCascade: a new term added: {f} -> Generalized Spillage S = sum <ref|(1-P)|ref>')
         else:
-            self.minimizer_ = Spillage_pw() if impl != 'pytorch' else SpillTorch_pw()
+            self.minimizer_ = Spillage_pw() if optimizer.startswith('scipy') else SpillTorch_pw()
             OLD_MATRIX_PW = {'orb_matrix_0': 'orb_matrix.0.dat',
                              'orb_matrix_1': 'orb_matrix.1.dat'}
             NEW_MATRIX_PW = {'orb_matrix_0': f'orb_matrix_rcut{rcuts[0]}deriv0.dat',

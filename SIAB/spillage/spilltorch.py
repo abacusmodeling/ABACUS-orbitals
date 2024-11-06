@@ -119,7 +119,12 @@ class SpillTorch(Spillage):
     
     def opt(self, coef_init, coef_frozen, iconfs, ibands,
             options, nthreads=1):
-        
+        '''
+        This is the PyTorch overload of Spillage.opt.
+        The optimization employing torch_optimizer is based on multiprocessing
+        parallelism instead of multithreading, therefore the `nthreads` is not
+        used in this function.
+        '''
         if coef_frozen is not None:
             self._tab_frozen(coef_frozen)
 
@@ -142,12 +147,15 @@ class SpillTorch(Spillage):
                 spill += out
             return spill/nconfs
         
+        compulsory = {'method': options.get('method', 'swats'),
+                      'maxiter': options.get('maxiter', 5000),
+                      'disp': options.get('disp', False),
+                      'ndisp': options.get('ndisp', 10)}
+        optional = {k: v for k, v in options.items() if k not in compulsory}
         return minimize(_t_f, 
                         coef_init, 
-                        options.get('method', 'swats'), 
-                        options.get('maxiter', 5000), 
-                        options.get('disp', False), 
-                        options.get('ndisp', 10))
+                        **compulsory,
+                        **optional)
 
 class SpillTorch_jy(SpillTorch):
     

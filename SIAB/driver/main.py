@@ -4,6 +4,7 @@ from SIAB.abacus.api import build_abacus_jobs, job_done
 from SIAB.io.convention import dft_folder
 from SIAB.orb.api import orb_cascade
 from SIAB.abacus.blscan import jobfilter
+from SIAB.spillage.util import _spillparam
 
 def init(fn):
      """
@@ -120,11 +121,7 @@ def spillage(elem,
      kwargs: dict
           additional parameters, including `max_steps`, `verbose`, `ftol`, `gtol`, `nthreads_rcut`
      '''
-     options = {'maxiter': kwargs.get('max_steps', 5000), 
-                'disp': kwargs.get('verbose', True),
-                'ftol': kwargs.get('ftol', 0),
-                'gtol': kwargs.get('gtol', 1e-6),
-                'maxcor': 20}
+     optimizer, options = _spillparam(kwargs)
      for rcut, task in _spilltasks(elem, rcuts, scheme, dft_root, run_mode):
           initializer = {} if run_mode != 'jy' else {'rcut': rcut}
           cascade = orb_cascade(elem, 
@@ -133,7 +130,8 @@ def spillage(elem,
                                 primitive_type,
                                 dft_folder(elem, 'monomer', 0, **initializer),
                                 task,
-                                run_mode)
+                                run_mode,
+                                optimizer)
           cascade.opt(immediplot=None,  # immediplot will cause threading bugs from matplotlib
                       diagnosis=True, 
                       options=options, 

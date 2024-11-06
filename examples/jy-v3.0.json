@@ -12,7 +12,9 @@
 
     "fit_basis": "jy",
     "primitive_type": "reduced",
-    "optimizer": "bfgs",
+    "optimizer": "torch.swats",
+    "torch.lr": 0.001,
+    
     "max_steps": 3000,
     "spill_guess": "atomic",
 
@@ -33,7 +35,7 @@
         {
             "nzeta": [1, 1, 0],
             "geoms": [0],
-            "nbands": [4, 4, 4, 4, 4],
+            "nbands": ["occ", "occ", "occ", "occ", "occ"],
             "checkpoint": null
         },
         {

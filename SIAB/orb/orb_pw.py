@@ -6,8 +6,7 @@ derived class of Orbital for handling specifically the pw as fit_basis case
 import os
 from SIAB.orb.orb import Orbital, OrbgenCascade
 from SIAB.spillage.spillage import initgen_pw
-from SIAB.spillage.api import _coef_subset
-from SIAB.spillage.datparse import read_input_script
+from SIAB.spillage.legacy.api import _coef_subset
 import unittest
 
 class OrbitalPW(Orbital):

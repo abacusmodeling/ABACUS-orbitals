@@ -2,6 +2,7 @@ from SIAB.orb.orb_jy import OrbitalJY
 from SIAB.orb.orb_pw import OrbitalPW
 from SIAB.orb.orb import OrbgenCascade
 import os
+import re
 
 def orb_cascade(elem,
                 rcut, 
@@ -78,9 +79,9 @@ def orb_cascade(elem,
         raise TypeError('mode should be a str')
     if mode not in ['jy', 'pw']:
         raise ValueError('mode should be either jy or pw')
-    impl, optimizer = optimizer.split('.')
-    if impl not in ['pytorch', 'scipy']:
-        raise ValueError('optimizer should be either pytorch or scipy')
+    if not re.match(r'^torch\..*|scipy\..*', optimizer):
+        raise ValueError(f'currently only optimizer implemented under torch and scipy are'\
+                         f' supported, got {optimizer}')
     if mode == 'jy':
         orbs = [OrbitalJY(rcut, ecut, elem, nz, primitive_type, fd, nbnd) 
                 for nz, fd, nbnd in zip(nzeta, folders, nbnds)]
@@ -88,4 +89,4 @@ def orb_cascade(elem,
         orbs = [OrbitalPW(rcut, ecut, elem, nz, primitive_type, fd, nbnd) 
                 for nz, fd, nbnd in zip(nzeta, folders, nbnds)]
         
-    return OrbgenCascade(initializer, orbs, iorb_frozen, mode, impl)
+    return OrbgenCascade(initializer, orbs, iorb_frozen, mode, optimizer)

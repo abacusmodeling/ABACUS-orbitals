@@ -184,7 +184,7 @@ class TestSpillageExperimental(unittest.TestCase):
         self.assertEqual(_ibands([25, 25], [0, 1], [1, 1]), [range(0, 25), range(0, 25)])
 
     def test_coef_init(self):
-        from SIAB.spillage.api import _save_orb
+        from SIAB.spillage.legacy.api import _save_orb
 
         here = os.path.dirname(__file__)
         parent = os.path.dirname(here)

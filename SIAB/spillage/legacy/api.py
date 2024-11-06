@@ -43,7 +43,7 @@ from SIAB.spillage.lcao_wfc_analysis import api as wfc_analysis_api
 import unittest
 from SIAB.orb.jy_expmt import _coef_init as _coef_init_jy
 from SIAB.orb.jy_expmt import _ibands
-from SIAB.spillage.util import neo_spilopt_params_from_dft
+from SIAB.spillage.util import _legacy_dft2spillparam
 from SIAB.io.convention import orb as name_orb
 from SIAB.io.convention import orb_folder as name_orb_folder
 
@@ -534,7 +534,7 @@ def run(siab_settings: dict, calculation_settings: list, folders: list):
         etc.
     """
     rcuts, ecut, elem, primitive_type, run_type, spil_option = \
-        neo_spilopt_params_from_dft(calculation_settings, siab_settings, folders)
+        _legacy_dft2spillparam(calculation_settings, siab_settings, folders)
     for rcut in rcuts: # can be parallelized here
         ##############
         # Generation #

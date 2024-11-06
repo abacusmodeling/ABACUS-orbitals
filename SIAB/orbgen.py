@@ -32,6 +32,9 @@ def main():
                spillparam.get('spill_guess'),
                compparam)
     
+    options = {k: v for k, v in spillparam.items() 
+               if k not in 
+               ['geoms', 'orbitals', 'primitive_type', 'fit_basis', 'spill_guess']}
     spillage(elem=glbparam['element'],
              ecut=dftparam['ecutwfc'],
              rcuts=glbparam['bessel_nao_rcut'],
@@ -39,8 +42,7 @@ def main():
              scheme=spillparam['orbitals'],
              dft_root=os.getcwd(),
              run_mode=spillparam['fit_basis'],
-             nthreads_rcut=spillparam.get('nthreads_rcut', 1),
-             disp=True)
+             **options)
     
 if __name__ == '__main__':
     '''entry point if run as a script'''

@@ -6,7 +6,7 @@ Interface of ABACUS module for ABACUS-ORBGEN
 from SIAB.io.convention import dft_folder, orb
 from SIAB.abacus.io import INPUT, STRU, abacus_params
 from SIAB.abacus.utils import is_duplicate
-from SIAB.spillage.api import _coef_gen, _save_orb
+from SIAB.spillage.legacy.api import _coef_gen, _save_orb
 from SIAB.spillage.radial import _nbes
 from SIAB.spillage.datparse import read_input_script
 from SIAB.io.read_input import natom_from_shape

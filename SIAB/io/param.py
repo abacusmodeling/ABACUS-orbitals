@@ -153,7 +153,8 @@ def group(params):
                 'max_steps', 'spill_guess', 'nthreads_rcut', 'geoms', 'orbitals']
     
     dftparams = {key: params.get(key) for key in DFT}
-    spillparams = {key: params.get(key) for key in SPILLAGE}
+    optimizer = {k: v for k, v in params.items() if k.startswith('scipy.') or k.startswith('torch.')}
+    spillparams = {key: params.get(key) for key in SPILLAGE}|optimizer
     glbparams = {key: params.get(key) for key in GLOBAL}
     compute = {key: params.get(key) for key in COMPUTE}
 

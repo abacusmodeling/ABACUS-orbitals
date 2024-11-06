@@ -25,17 +25,15 @@ def minimize(f, c, method, maxiter, disp, ndisp, **kwargs):
     ndisp : int
         The number of times to display the optimization process
     **kwargs : dict
-        Additional keyword arguments for the optimization method
+        Additional keyword arguments for the optimization method, only `lr`, 
+        `beta`, `eps`, `weight_decay` are supported
     '''
-    options = {k.replace('torch_', ''): kwargs.get(k) 
-               for k in ['torch_lr', 'torch_beta', 'torch_eps', 'torch_weight_decay']}
-    options = {k: v for k, v in options.items() if v is not None}
 
     c0 = th.Tensor(flatten(c))
     c0.requires_grad = True # necessary for autodiff
 
     optimizer = {'swats': SWATS, 'yogi': Yogi, 'diffgrad': DiffGrad, 
-                 'radam': RAdam}[method.lower()]([c0], **options)
+                 'radam': RAdam}[method.lower()]([c0], **kwargs)
     if disp:
         print(f'\nPyTorch.{method} Spillage optimization with Nmax = {maxiter} steps')
         print(f'{"method":>10s} {"step":>8s} {"loss (spillage)":>20s} {"time/s":>10s}')
