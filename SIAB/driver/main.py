@@ -2,19 +2,19 @@ from SIAB.io.param import read, orb_link_geom
 from SIAB.supercomputing.op import submit
 from SIAB.abacus.api import build_abacus_jobs, job_done
 from SIAB.io.convention import dft_folder
-from SIAB.orb.api import orb_cascade
+from SIAB.orb.api import GetOrbCascadeInstance
 from SIAB.abacus.blscan import jobfilter
 from SIAB.spillage.util import _spillparam
 
 def init(fn):
-     """
+     '''
      initialize the ABACUS-ORBGEN workflow by reading the input file
 
      Parameters
      ----------
      fn: str
          input filename
-     """
+     '''
      glbparams, dftparams, spillparams, compute = read(fn)
      # if fit_basis is jy, then set basis_type in dftparams to lcao explicitly
      if spillparams.get('fit_basis', 'jy') == 'jy':
@@ -37,7 +37,7 @@ def rundft(elem,
      # there should be a check here, to avoid rerun completed jobs
      for job in jobs:
          if job_done(job):
-             print(f'{job} has been done, skip')
+             print(f'{job} has been done, skip', flush=True)
              continue
          _ = submit(job, 
                     compparam.get('environment', ''),
@@ -87,7 +87,7 @@ def _spilltasks(elem,
                             for pertmag in jobfilter(dft_root, elem, f['proto'],
                                                      'stretch', f['pertmags'],
                                                      additional.get('rcut'),
-                                                     5, 1.0)]
+                                                     5, 1.5)]
                orb['folders'] = [dft_folder(**(geom|additional)) for geom in geoms_orb]
           yield rcut, orbitals
 
@@ -124,14 +124,14 @@ def spillage(elem,
      optimizer, options = _spillparam(kwargs)
      for rcut, task in _spilltasks(elem, rcuts, scheme, dft_root, run_mode):
           initializer = {} if run_mode != 'jy' else {'rcut': rcut}
-          cascade = orb_cascade(elem, 
-                                rcut, 
-                                ecut, 
-                                primitive_type,
-                                dft_folder(elem, 'monomer', 0, **initializer),
-                                task,
-                                run_mode,
-                                optimizer)
+          cascade = GetOrbCascadeInstance(elem, 
+                                          rcut, 
+                                          ecut, 
+                                          primitive_type,
+                                          dft_folder(elem, 'monomer', 0, **initializer),
+                                          task,
+                                          run_mode,
+                                          optimizer)
           cascade.opt(immediplot=None,  # immediplot will cause threading bugs from matplotlib
                       diagnosis=True, 
                       options=options, 

@@ -46,6 +46,7 @@ from SIAB.orb.jy_expmt import _ibands
 from SIAB.spillage.util import _legacy_dft2spillparam
 from SIAB.io.convention import orb as name_orb
 from SIAB.io.convention import orb_folder as name_orb_folder
+from SIAB.spillage.util import literal_eval as leval
 
 def _coef_gen(rcut: float, 
               ecut: float, 
@@ -668,7 +669,7 @@ def _nzeta_infer(folder, nband, pop = 'svd-fold', nz_filter = 1.0):
         nocc = len(np.where(np.array(occ[is_][ik_]) > 0)[0])
         nall = len(occ[is_][ik_])
         assert isinstance(nband, (int, str))
-        nband = nband if isinstance(nband, int) else eval('n' + nband)
+        nband = nband if isinstance(nband, int) else leval('n' + nband)
         assert wfc.shape[1] >= nband, \
             f"ERROR: number of bands for orbgen is larger than calculated: {nband} > {wfc.shape[1]}"
 
@@ -685,7 +686,8 @@ def _nzeta_infer(folder, nband, pop = 'svd-fold', nz_filter = 1.0):
         # print out the result
         print(f'k = {ik}, ispin = {is_}', flush=True)
         for it, (st_, nzt_) in enumerate(zip(sigma, nz)):
-            print(f'For type {it}, the complete list of sigma values shown as:', flush=True)
+            print(f'For type {it}, do SVD on {nband} band(s), '\
+                  'the complete list of sigma values are:', flush=True)
             for l, s in enumerate(st_):
                 print(f'l = {l}:', flush=True)
                 for i, s_ in enumerate(s):

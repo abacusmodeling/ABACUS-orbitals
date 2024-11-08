@@ -218,7 +218,7 @@ def _build_jy(elem, proto, pertkind, pertmag, rcuts, param_general, param_specif
                         dftshared=param_general|{'bessel_nao_rcut': rcut},
                         dftspecific=param_specific) for rcut in rcuts]
 
-def _build_pert(elem, proto, pertkind, pertmags, n = 5):
+def _build_pert(elem, proto, pertkind, pertmags, n = 5, dr_l = 0.2, dr_r = 0.5):
     '''generate the perturbation on proto if not set
     
     Parameters
@@ -234,7 +234,11 @@ def _build_pert(elem, proto, pertkind, pertmags, n = 5):
         'default' or 'scan'
     n : int
         the number of perturbation to generate
-    
+    dr_l : float
+        the stepsize of the left side of the perturbation
+    dr_r : float
+        the stepsize of the right side of the perturbation
+        
     Returns
     -------
     list[float]
@@ -244,8 +248,8 @@ def _build_pert(elem, proto, pertkind, pertmags, n = 5):
         raise NotImplementedError('only stretch perturbation is supported')
 
     if isinstance(pertmags, str):
-        print(f'pertmags is `{pertmags}`, a series of pertmags will be generated')
-        return blgen(elem, proto, n // 2)
+        print(f'pertmags is `{pertmags}`, a series of pertmags will be generated', flush=True)
+        return blgen(elem, proto, n // 2, dr_l, dr_r)
     
     if not isinstance(pertmags, list) or not all([isinstance(pert, (int, float)) for pert in pertmags]):
         raise ValueError('pertmags should be a list of float')

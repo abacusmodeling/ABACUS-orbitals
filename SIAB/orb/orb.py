@@ -114,7 +114,7 @@ class Orbital:
             diagnose the purity of the initial guess
         '''
         if srcdir is None:
-            print('WARNING: initializing orbital with random coefficients')
+            print('WARNING: initializing orbital with random coefficients', flush=True)
             less_dof = 0 if self.primitive_type_ == 'normalized' else 1
             coefs_rnd = [np.random.random((nz, _nbes(l, self.rcut_, self.ecut_) - less_dof)).tolist()
                          for l, nz in enumerate(self.nzeta_)]
@@ -211,7 +211,7 @@ class OrbgenCascade:
             for f in uniqfds:
                 suffix = read_input_script(os.path.join(f, 'INPUT')).get('suffix', 'ABACUS')
                 self.minimizer_.config_add(os.path.join(f, f'OUT.{suffix}'))
-                print(f'OrbgenCascade: a new term added: {f} -> Generalized Spillage S = sum <ref|(1-P)|ref>')
+                print(f'GeneralizedSpillage S = sum <ref|(1-P)|ref> <-- {f}', flush=True)
         else:
             self.minimizer_ = Spillage_pw() if optimizer.startswith('scipy') else SpillTorch_pw()
             OLD_MATRIX_PW = {'orb_matrix_0': 'orb_matrix.0.dat',
@@ -228,7 +228,7 @@ class OrbgenCascade:
                 fmat = OLD_MATRIX_PW if use_old else NEW_MATRIX_PW
                 fmat = {k: os.path.join(f, v) for k, v in fmat.items()}
                 self.minimizer_.config_add(**fmat)
-                print(f'OrbgenCascade: a new term added: {f} -> Generalized Spillage S = sum <ref|(1-P)|ref>')
+                print(f'GeneralizedSpillage S = sum <ref|(1-P)|ref> <-- {f}', flush=True)
                 
     def opt(self,
             immediplot = None, 
@@ -261,7 +261,7 @@ class OrbgenCascade:
         nzmax = [np.pad(nz, (0, lmaxmax - len(nz)), 'constant') for nz in nzmax]
         nzmax = np.max(nzmax, axis = 0).tolist()
 
-        print(f'OrbgenCascade: start optimizing orbitals in cascade')
+        print(f'OrbgenCascade: start optimizing orbitals in cascade', flush=True)
         for i in range(len(self.orbitals_)):
             orb, ifroz, iconfs = self.orbitals_[i], self.ifrozen_[i], self.iuniqfds_[i]
             orb_frozen = self.orbitals_[ifroz] if ifroz is not None else None

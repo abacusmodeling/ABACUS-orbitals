@@ -81,9 +81,9 @@ def orbval_chk(orb):
     if not all(isinstance(i, int) for i in orb['geoms']):
         raise TypeError('geoms should be a list of int')
     # check if nbands is a list of int or str
-    if not isinstance(orb['nbands'], list):
-        raise TypeError('nbands should be a list of int or str')
-    if not all(isinstance(i, (int, str)) for i in orb['nbands']):
+    if isinstance(orb['nbands'], list) or not isinstance(orb['nbands'], (int, str)):
+        raise TypeError('nbands should be a list of int or str, or a single int or str')
+    if isinstance(orb['nbands'], list) and not all(isinstance(i, (int, str)) for i in orb['nbands']):
         raise TypeError('nbands should be a list of int or str')
     # check if checkpoint is a int or None
     if not isinstance(orb['checkpoint'], (int, type(None))):
