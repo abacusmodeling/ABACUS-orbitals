@@ -2,7 +2,7 @@ import addict
 import util
 import itertools
 
-def change_info(info_old, weight_old):
+def change_info(info_old, weight_old, flag_same_band):
 	info_stru = [None] * info_old.Nst
 	for ist in range(len(info_stru)):
 		info_stru[ist] = addict.Dict()
@@ -11,10 +11,18 @@ def change_info(info_old, weight_old):
 	for ist,weight in enumerate(weight_old):
 		info_stru[ist].weight = weight
 		info_stru[ist].Nb = weight.shape[0]
-		for ib in range(weight.shape[0], 0, -1):
-			if weight[ib-1]>0:
-				info_stru[ist].Nb_true = ib
-				break
+		def get_Nb_true():
+			if flag_same_band:
+				for ib in range(weight.shape[0], 0, -1):
+					if weight[ib-1]>0:
+						return ib
+			else:
+				for ib in range(weight.shape[0], 0, -1):
+					for ib2 in range(0, ib):
+						if weight[ib-1,ib2]>0 or weight[ib2,ib-1]>0:
+							return ib
+			return 0
+		info_stru[ist].Nb_true = get_Nb_true()
 
 	info_element = addict.Dict()
 	for it_index,it in enumerate(info_old.Nt_all):
