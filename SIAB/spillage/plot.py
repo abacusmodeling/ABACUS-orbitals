@@ -1,7 +1,7 @@
 from SIAB.spillage.orbio import read_nao
 import numpy as np
 import matplotlib.pyplot as plt
-
+import argparse
 from matplotlib import rc
 rc('font',**{'family':'sans-serif'})
 #rc('text', usetex=True)
@@ -36,6 +36,15 @@ def plot_orbfile(orbfile, save=None):
     chi = nao['chi']
     plot_chi(chi, r, save=save)
 
+def main():
+    # parse command line arguments, the -i accepts the filename of the orbital
+    parser = argparse.ArgumentParser(description='Plot the radial functions of an orbital')
+    parser.add_argument('-i', '--input', help='The filename of the orbital')
+    parser.add_argument('-o', '--output', help='The filename of the output plot')
+    args = parser.parse_args()
+
+    plot_orbfile(args.input, save=args.output)
+    plt.show()
 
 if __name__ == '__main__':
 
@@ -47,7 +56,8 @@ if __name__ == '__main__':
     #plot_orbfile('/home/zuxin/abacus-community/abacus_orbital_generation/SIAB/spillage/jy_normalized_10au_10Ry_10s9p9d.orb')
     #plot_orbfile('/home/zuxin/abacus-community/abacus_orbital_generation/Si/Si_2s2p1d/7au_40Ry/Si_gga_40Ry_7au_2s2p1d.orb')
     #plot_orbfile('/home/zuxin/abacus-community/abacus_orbital_generation/Si/Si_3s3p2d/7au_40Ry/Si_gga_40Ry_7au_3s3p2d.orb')
-    plot_orbfile('/root/documents/simulation/orbgen/v3p0-test/Si_gga_10au_60Ry_2s2p1d.orb')
+    #plot_orbfile('/root/documents/simulation/orbgen/v3p0-test/Si_gga_10au_60Ry_2s2p1d.orb')
+    plot_orbfile('/root/abacus-develop/numerical_orbitals/SG15-Version1p0__AllOrbitals-Version2p1/20240714/In_3s3p3d2f/10au_300.0Ry/In_gga_10au_300.0Ry_3s3p3d2f.orb')
     plt.show()
 
     pass

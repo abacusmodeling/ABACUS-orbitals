@@ -91,13 +91,68 @@ def _build_case(proto,
             f.write('WANNIER_PARAMETERS\nout_spillage 2\n')
     return folder
 
+def _filter_coef(coef, nzeta):
+    '''always for development use, only get the orbitals that satisfy the
+    filter condition.
+    
+    Parameters
+    ----------
+    coef : list
+        the coefficients of the orbitals of one atomtype: [l][z][q]
+    nzeta : list
+        the number of zeta for each l
+    
+    Returns
+    -------
+    list
+        the filtered coefficients
+    '''
+    return [[] if nz == 0 else ([coefl[-1]] if nz == 1 else coefl) 
+            for coefl, nz in zip(coef, nzeta)]
+
+
+def _cal_nzeta(rcut, ecut, lmaxmax, less_dof):
+    '''calculate the number of zeta for each l
+    
+    Parameters
+    ----------
+    rcut : float
+        the cutoff radius in a.u.
+    ecut : float|str
+        the kinetic energy cutoff in Ry, or a string startswith '='/'<='
+    lmaxmax : int
+        the maximum angular momentum, or a string startswith '='/'<='
+    less_dof : int
+        the degree of freedom that to be reduced
+    
+    Returns
+    -------
+    list
+        the number of zeta for each l
+    '''
+
+    nq = 1 if isinstance(ecut, str) and ecut.startswith('=') else -1
+    nl = 1 if isinstance(lmaxmax, str) and lmaxmax.startswith('=') else -1
+    lmaxmax = int(lmaxmax.split('=')[-1]) if isinstance(lmaxmax, str) else lmaxmax
+    ecut = float(ecut.split('=')[-1]) if isinstance(ecut, str) else ecut
+    
+    def nbes(l, rcut, ecut):
+        if nl == 1:
+            return 0 if l != lmaxmax else (_nbes(l, rcut, ecut) - less_dof if nq != 1 else 1)
+        if nq == 1:
+            return 1
+        return _nbes(l, rcut, ecut) - less_dof
+    
+    return [nbes(l, rcut, ecut) for l in range(lmaxmax + 1)], ecut, lmaxmax
+
 def _build_atomspecies(elem,
                        pp,
                        ecut = None,
                        rcut = None,
                        lmaxmax = None,
                        primitive_type = 'reduced',
-                       orbital_dir = 'primitive_jy'):
+                       orbital_dir = 'primitive_jy',
+                       norder_smooth = 1):
     '''build the atomspecies dictionary. Once ecut, rcut and lmaxmax
     all are provided, will generate the orbital file path
     
@@ -107,16 +162,19 @@ def _build_atomspecies(elem,
         the element symbol
     pp : str
         the pseudopotential file path
-    ecut : float
-        the kinetic energy cutoff in Ry for planewave
+    ecut : float|str
+        the kinetic energy cutoff in Ry for planewave, or a string startswith '='
     rcut : float
         the cutoff radius in a.u. for primtive jy
-    lmaxmax : int
-        the maximum angular momentum for generating the orbital file
+    lmaxmax : int|str
+        the maximum angular momentum for generating the orbital file, or a string startswith '='
     primitive_type : str
         the type of primitive basis set
     orbital_dir : str
         where the generated orbital file is stored
+    norder_smooth : int
+        the highest order of derivative that is zero at the boundary. For more information,
+        please refer to work https://journals.aps.org/prb/abstract/10.1103/PhysRevB.88.085117
     
     Returns
     -------
@@ -125,14 +183,17 @@ def _build_atomspecies(elem,
     '''
     out = {'pp': os.path.abspath(pp)}
     if all([ecut, rcut, lmaxmax]):
-        less_dof = 0 if primitive_type == 'normalized' else 1
-        nzeta = [_nbes(l, rcut, ecut) - less_dof for l in range(lmaxmax + 1)]
-        forb = os.path.join(orbital_dir, orb(elem, rcut, ecut, nzeta))
+        less_dof = 0 if primitive_type == 'normalized' else norder_smooth # DOF: degree of freedom
+        nzeta, ecut_, lmax_ = _cal_nzeta(rcut, ecut, lmaxmax, less_dof)
+        forb = os.path.join(orbital_dir, orb(elem, rcut, ecut_, nzeta))
         out['orb'] = os.path.abspath(forb)
         if os.path.exists(forb):
+            # print(f'{forb} already exists, skip the generation', flush=True)
             return {elem: out}
-        coefs = _coef_gen(rcut, ecut, lmaxmax, primitive_type)[0]
-        _ = _save_orb(coefs, elem, ecut, rcut, orbital_dir, primitive_type)
+        # otherwise...
+        coefs = _coef_gen(rcut, ecut_, lmax_, primitive_type)[0]
+        coefs = _filter_coef(coefs, nzeta)
+        _ = _save_orb(coefs, elem, ecut_, rcut, orbital_dir, primitive_type)
     return {elem: out}
 
 def _build_pw(elem, proto, pertkind, pertmag, rcuts, param_general, param_specific):
@@ -431,6 +492,14 @@ class TestAbacusApi(unittest.TestCase):
         self.assertSetEqual(set(jobs), {'He-dimer-0.25-6au', 'He-dimer-0.25-7au', 
                                         'He-trimer-0.50-6au', 'He-trimer-0.50-7au', 
                                         'He-trimer-1.00-6au', 'He-trimer-1.00-7au'})
+
+    def test_cal_nzeta(self):
+        '''test _cal_nzeta
+        '''
+        self.assertEqual(_cal_nzeta(6, 100, 2, 1)[0], [18, 17, 17])
+        self.assertEqual(_cal_nzeta(6, '<=100', '<=2', 1)[0], [18, 17, 17])
+        self.assertEqual(_cal_nzeta(6, '=100', 2, 1)[0], [1, 1, 1])
+        self.assertEqual(_cal_nzeta(6, 100, '=2', 1)[0], [0, 0, 17])
 
 if __name__ == '__main__':
     unittest.main()

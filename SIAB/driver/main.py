@@ -34,7 +34,10 @@ def rundft(elem,
            spill_guess,
            compparam):
      jobs = build_abacus_jobs(elem, rcuts, dftparam, geoms, spill_guess)
-     # there should be a check here, to avoid rerun completed jobs
+     abacus_command = compparam.get('abacus_command', 'abacus')
+     if abacus_command is None:
+          print('abacus command is not found, workflow terminated.', flush=True)
+          exit()
      for job in jobs:
          if job_done(job):
              print(f'{job} has been done, skip', flush=True)
@@ -42,7 +45,7 @@ def rundft(elem,
          _ = submit(job, 
                     compparam.get('environment', ''),
                     compparam.get('mpi_command', ''),
-                    compparam.get('abacus_command', 'abacus'))
+                    abacus_command)
      # to find these folders by name, call function
      # in SIAB.io.convention the dft_folder
      # dft_folder(elem, proto, pert, rcut = None)

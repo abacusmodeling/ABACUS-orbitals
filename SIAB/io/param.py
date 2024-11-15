@@ -81,10 +81,10 @@ def orbval_chk(orb):
     if not all(isinstance(i, int) for i in orb['geoms']):
         raise TypeError('geoms should be a list of int')
     # check if nbands is a list of int or str
-    if isinstance(orb['nbands'], list) or not isinstance(orb['nbands'], (int, str)):
-        raise TypeError('nbands should be a list of int or str, or a single int or str')
+    if not isinstance(orb['nbands'], (list, int, str)):
+        raise TypeError('nbands should be a list, int or str')
     if isinstance(orb['nbands'], list) and not all(isinstance(i, (int, str)) for i in orb['nbands']):
-        raise TypeError('nbands should be a list of int or str')
+        raise TypeError('if specify nbands as list, it should be list[int], list[str] or list[int, str]')
     # check if checkpoint is a int or None
     if not isinstance(orb['checkpoint'], (int, type(None))):
         raise TypeError('checkpoint should be a int or None')
@@ -104,10 +104,10 @@ def geomval_chk(geom):
         if not all(isinstance(i, (int, float)) for i in geom['pertmags']):
             raise TypeError('pertmags should be a list of int or float')
     # check if lmaxmax is a non-negative int
-    if not isinstance(geom['lmaxmax'], int):
-        raise TypeError('lmaxmax should be a int')
-    if geom['lmaxmax'] < 0:
-        raise ValueError('lmaxmax should be non-negative')
+    if not isinstance(geom['lmaxmax'], (int, str)):
+        raise TypeError('lmaxmax should be a int or a string (development use)')
+    if isinstance(geom['lmaxmax'], int) and geom['lmaxmax'] < 0:
+        raise ValueError('lmaxmax should be a non-negative int')
 
 def cmprhsive_chk(params):
     '''check the correctness of the input parameters across sections
