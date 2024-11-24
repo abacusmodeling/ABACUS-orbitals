@@ -248,6 +248,6 @@ def _unit_convert_ener(from_: str = 'Ha', to_: str = 'eV'):
         'Ha': 1.0, 'a.u.': 1.0, 'au': 1.0, 'hartree': 1.0, 'Hartree': 1.0,
         'Ry': 0.5, 'ry': 0.5, 'Rydberg': 0.5, 'rydberg': 0.5,
         'eV': 27.21138602, 'ev': 27.21138602,
-        'kcal/mol': 627.509469, 'kcal': 627.509469, 'kcal/mol': 627.509469, 'kcal/mole': 627.509469,
+        'kcal/mol': 627.509469, 'kcal': 627.509469, 'kcal/mole': 627.509469,
     }
     return factors_[to_] / factors_[from_]
