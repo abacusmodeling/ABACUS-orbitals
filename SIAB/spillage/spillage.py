@@ -632,6 +632,12 @@ class Spillage:
             nthreads : int
                 Number of threads for config-level parallelization.
 
+        Returns
+        -------
+            A nested list. coef[iconf][itype][l][zeta][q] -> float.
+            The optimized coefficients for each configuration.
+
+            Spillage value.
         '''
         from multiprocessing.pool import ThreadPool
         pool = ThreadPool(nthreads)
@@ -659,7 +665,7 @@ class Spillage:
             spills, grads = zip(*pool.map(s, range(nconfs)))
             return (sum(spills) / nconfs,
                     sum(np.array(flatten(g)) for g in grads) / nconfs)
-
+        
         c0 = np.array(flatten(coef_init))
 
         bounds = [(-1.0, 1.0) for _ in c0]
@@ -676,9 +682,11 @@ class Spillage:
         pool.close()
 
         coef_opt = nest(res.x.tolist(), pat)
+        spill = res.fun
+
         return [[np.linalg.qr(np.array(coef_tl).T)[0].T.tolist()
                  if coef_tl else []
-                 for coef_tl in coef_t] for coef_t in coef_opt]
+                 for coef_tl in coef_t] for coef_t in coef_opt], spill
 
 
 class Spillage_jy(Spillage):
@@ -1243,7 +1251,7 @@ class _TestSpillage(unittest.TestCase):
         coef_lvl1_init = [[[coef_init[0][0]],
                            [coef_init[1][0]]]]
         coef_lvl1 = orbgen.opt(coef_lvl1_init, None, iconfs, ibands,
-                               options, nthreads)
+                               options, nthreads)[0]
         coef_tot = coef_lvl1
 
         #======================================
@@ -1255,7 +1263,7 @@ class _TestSpillage(unittest.TestCase):
                            [coef_init[1][1]],
                            [coef_init[2][0]]]]
         coef_lvl2 = orbgen.opt(coef_lvl2_init, coef_lvl1, iconfs, ibands,
-                               options, nthreads)
+                               options, nthreads)[0]
         coef_tot = merge(coef_tot, coef_lvl2, 2)
 
         #======================================
@@ -1267,7 +1275,7 @@ class _TestSpillage(unittest.TestCase):
                            [coef_init[1][2]],
                            [coef_init[2][1]]]]
         coef_lvl3 = orbgen.opt(coef_lvl3_init, coef_tot, iconfs, ibands,
-                               options, nthreads)
+                               options, nthreads)[0]
         coef_tot = merge(coef_tot, coef_lvl3, 2)
 
         return # supress the plot 
@@ -1366,7 +1374,7 @@ class _TestSpillage(unittest.TestCase):
         coef_lvl1_init = [[[coef_init[0][0]],
                            [coef_init[1][0]]]]
         coef_lvl1 = orbgen.opt(coef_lvl1_init, None, iconfs, ibands,
-                               options, nthreads)
+                               options, nthreads)[0]
         coef_tot = coef_lvl1
 
         #======================================
@@ -1378,7 +1386,7 @@ class _TestSpillage(unittest.TestCase):
                            [coef_init[1][1]],
                            [coef_init[2][0]]]]
         coef_lvl2 = orbgen.opt(coef_lvl2_init, coef_lvl1, iconfs, ibands,
-                               options, nthreads)
+                               options, nthreads)[0]
         coef_tot = merge(coef_tot, coef_lvl2, 2)
 
         return # supress the plot 

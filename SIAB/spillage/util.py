@@ -2,41 +2,8 @@ from SIAB.spillage.datparse import read_istate_info, read_input_script, read_kpo
 import os
 import numpy as np
 import unittest
-import ast # for literal_eval
-
-def ptg_spilopt_params_from_dft(calculation_settings, siab_settings, folders):
-    """prepare the input for orbital optimization task.
-    Because the folder name might not be determined at the beginning of task if perform
-    `auto` on bond_length, the exact folder name will be given uniformly after performing
-    abacus calculation, therefore it is compulsory to update the folder name in siab_settings
-    and cannot be somewhere else."""
-    # because it is orbital that is generated one-by-one, it is reasonable to iterate
-    # the orbitals...
-    # NOTE: the following loop move necessary information for orbital generation from 
-    # calculation_settings to siab_settings, so to make decouple between these
-    # two dicts -> but this can be done earlier. The reason why do it here is because
-    # the conversion from newly designed data structure, calculation_settings, and
-    # siab_settings, to the old version of SIAB, is taken place here.
-    for orbital in siab_settings["orbitals"]:
-        # MOVE: copy lmax information from calculation_settings to siab_settings
-        # for old version SIAB, but lmax can be read from orb_matrix*.dat for better design
-        # in that way, not needed to import lmaxmax information from calculation_settings
-        orbital["lmax"] = max([calculation_settings[i]["lmaxmax"] for i in orbital["folder"]])
-        # the key "folder" has a more reasonable alternative: "abacus_setup"
-
-        # MOVE: let siab_settings know exactly what folders are used for orbital generation
-        # in folders, folders are stored collectively according to reference structure
-        # and the "abacus_setup" is then expanded to the corresponding folder
-        # therefore this setup is to expand the "folder" key to the corresponding folder
-        # list
-        matmaps_ = orbital["folder"] if siab_settings.get("optimizer", "none") not in ["none", "restart"] else 0
-        orbital["folder"] = []
-        for i in matmaps_:
-            orbital["folder"].extend(folders[i])
-
-    return siab_settings
-
-def neo_spilopt_params_from_dft(calculation_settings, siab_settings, folders):
+import re
+def _legacy_dft2spillparam(calculation_settings, siab_settings, folders):
     '''this function for new method (bfgs) is just a way to make the interface
     unified with the old version of SIAB.
     But there are indeed some tedious work to do:
@@ -52,7 +19,7 @@ def neo_spilopt_params_from_dft(calculation_settings, siab_settings, folders):
     # because element does not really matter when optimizing orbitals, the only thing
     # has element information is the name of folder. So we extract the element from the
     # first folder name. Not elegant, we know.
-    jy_type = siab_settings.get("jY_type", "reduced")
+    primitive_type = siab_settings.get("primitive_type", "reduced")
 
     run_map = {"none": "none", "restart": "restart", "bfgs": "opt"}
     run_type = run_map.get(siab_settings.get("optimizer", "none"), "none")
@@ -61,10 +28,15 @@ def neo_spilopt_params_from_dft(calculation_settings, siab_settings, folders):
     # rcut, but not for now...
     orbparams = siab_settings["orbitals"]
     for orb in orbparams:
-        nbnd = orb.get("nbands_ref", 0)
+
+        # indexes of folders, it is from the geometries to refer, make it a list
         indf = orb.get("folder", 0)
         if not isinstance(indf, list):
             indf = [indf]
+            
+        # nbands to ref, make it a list. This means all perts in one geom share
+        # the same nbands_ref
+        nbnd = orb.get("nbands_ref", 0)
         if not isinstance(nbnd, list):
             nbnd = [nbnd] * len(indf)
         
@@ -82,7 +54,30 @@ def neo_spilopt_params_from_dft(calculation_settings, siab_settings, folders):
                      'jy': calculation_settings[0].get('basis_type', 'pw') != 'pw',
                      'spill_coefs': siab_settings.get("spill_coefs", None)}
 
-    return rcuts, ecut, elem, jy_type, run_type, shared_option
+    return rcuts, ecut, elem, primitive_type, run_type, shared_option
+
+def literal_eval(expr):
+    '''evaluate the expression, but only allow the basic arithmetic operations'''
+    allowed = set('+-*/()0123456789')
+    if not set(expr) <= allowed:
+        raise ValueError(f"Expression {expr} contains invalid characters")
+    words = re.findall(r'\d+|\+|\-|\*|\/|\(|\)', expr)
+    if not words[0].isdigit():
+        raise ValueError(f'Not supported expression {expr}')
+    out = int(words[0])
+    op_map = {'+': lambda x, y: x + y,
+              '-': lambda x, y: x - y,
+              '*': lambda x, y: x * y,
+              '/': lambda x, y: x / y}
+    op = None
+    for w in words[1:]:
+        if w.isdigit():
+            if op is None:
+                raise ValueError(f'Not supported expression {expr}')
+            out = op_map[op](out, int(w))
+        else:
+            op = w
+    return out
 
 def _spil_bnd_autoset(pattern: int|str, 
                       folder: str,
@@ -144,9 +139,49 @@ def _spil_bnd_autoset(pattern: int|str,
     else:
         assert isinstance(pattern, str), f"nbands_ref {pattern} is not a string."
     try:
-        return int(ast.literal_eval(pattern.replace('occ', str(nocc)).replace('all', str(nall))))
+        return int(literal_eval(pattern.replace('occ', str(nocc)).replace('all', str(nall))))
     except (ValueError, SyntaxError):
         raise ValueError(f"nbands_ref {pattern} is not a valid expression.")
+
+def _spillparam(raw):
+    '''convert the scheme to the spillage module acceptable parameters
+    
+    Parameters
+    ----------
+    raw : dict
+        the scheme of how to generate the orbitals
+    
+    Returns
+    -------
+    dict
+        the spillage module acceptable parameters
+    '''
+    SCIPY_SUPPORTED = ['ftol', 'gtol', 'maxcor']
+    TORCH_SUPPORTED = ['lr', 'beta', 'eps', 'weight_decay']
+
+    common = {'maxiter': raw.get('max_steps', 5000), 
+              'disp': raw.get('verbose', True)}
+    scipy_ = {k.replace('scipy.', ''): v for k, v in raw.items() 
+              if k.startswith('scipy.') and k.split('.')[1] in SCIPY_SUPPORTED}
+    torch_ = {k.replace('torch.', ''): v for k, v in raw.items() 
+              if k.startswith('torch.') and k.split('.')[1] in TORCH_SUPPORTED}
+    
+    optimizer = raw.get('optimizer', 'scipy.bfgs')
+    impl, method = optimizer.split('.')
+    if impl not in ['scipy', 'torch']:
+        raise ValueError(f"Spillage optimizer implementation framework `{impl}` is not supported")
+
+    specific = scipy_ if impl == 'scipy' else torch_|{'method': method}
+    
+    report  =  '\nSpillage optimization parameterization summary\n'
+    report +=  '---------------------------------------------\n'
+    report += f'optimizer: {optimizer}'
+    report +=  '\nCommon parameters:\n'
+    report +=  "\n".join([f"{k:>10s}: {v}" for k, v in common.items()])
+    report +=  '\nSpecific parameters:\n'
+    report +=  "\n".join([f"{k:>10s}: {v}" for k, v in specific.items()])
+    print(report, flush=True)
+    return optimizer, {**common, **specific}
 
 class TestSpillageUtilities(unittest.TestCase):
     def test_spil_bnd_autoset(self):
@@ -175,6 +210,19 @@ class TestSpillageUtilities(unittest.TestCase):
 
         out = _spil_bnd_autoset('all-2', outdir)
         self.assertEqual(out, 23)
+
+    def test_spilparam(self):
+
+        test = {'max_steps': 1000, 'verbose': False, 'optimizer': 'scipy.bfgs',
+                'scipy.ftol': 1e-6, 'scipy.gtol': 1e-6, 'scipy.maxcor': 10}
+        optimizer, options = _spillparam(test)
+        self.assertEqual(optimizer, 'scipy.bfgs')
+        self.assertEqual(options['maxiter'], 1000)
+        self.assertEqual(options['disp'], False)
+        self.assertEqual(options['ftol'], 1e-6)
+        self.assertEqual(options['gtol'], 1e-6)
+        self.assertEqual(options['maxcor'], 10)
+
 
 if __name__ == "__main__":
     unittest.main()

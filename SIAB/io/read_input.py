@@ -341,7 +341,7 @@ def siab_settings(user_settings: dict, minimal_basis: list, z_val: float = 0):
         "spill_thr": user_settings.get("spill_thr", 1e-8),
         "nthreads_rcut": user_settings.get("nthreads_rcut", -1),
         "orbitals": [{} for _ in range(len(user_settings["orbitals"]))],
-        "jY_type": user_settings.get("jY_type", "reduced")
+        "primitive_type": user_settings.get("primitive_type", "reduced")
     }
     shapes = [rs["shape"] for rs in user_settings["reference_systems"]]
 
@@ -1190,7 +1190,7 @@ STRU4       trimer      18      2       1      2.6 3.2 3.8
               'nbands': 10, 'lmaxmax': 2, 'nspin': 1}
               ])
         self.assertDictEqual(result[2], {
-            'jY_type': 'reduced',
+            'primitive_type': 'reduced',
             'optimizer': 'pytorch.SWAT', 
             'nthreads_rcut': -1,
             'max_steps': 200, 

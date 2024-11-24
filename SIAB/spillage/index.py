@@ -104,13 +104,40 @@ def perm_zeta_m(lin2comp):
     comp = [(it, ia, l, 2*abs(m)-(m>0), q) for it, ia, l, q, m in lin2comp]
     return sorted(range(len(comp)), key=lambda i: comp[i])
 
+def _coef_flatten(nzeta, nbes):
+    '''
+    Generate the index mapping in two direction, 
+    [itype, l, zeta, q] <-> mu
+    
+    Parameters
+    ----------
+    nzeta : list[list[int]]
+        the number of zeta orbitals of the angular momentum l of type i
+    nbes : list[list[int]]
+        the number of spherical wave radial functions for a given type
+        and angular momentum l of type i
+    
+    Returns
+    -------
+    backward : list[tuple[int, int, int, int]]
+        the index mapping from [itype, l, zeta, q] to mu
+    '''
+    index_, range_ = [], []
+    i = 0
+    for it, (nzeta_t, nbes_t) in enumerate(zip(nzeta, nbes)):
+        for l, nz in enumerate(nzeta_t):
+            index_.append((it, l))
+            range_.append(range(i, i+nz*nbes_t[l]))
+            i += nz*nbes_t[l]
+    
+    return index_, range_
 
 ############################################################
 #                           Test
 ############################################################
 import unittest
 
-class _TestIndex(unittest.TestCase):
+class TestIndex(unittest.TestCase):
 
     def test_nao(self):
         natom = [7]
@@ -170,6 +197,22 @@ class _TestIndex(unittest.TestCase):
         comp2 = [(it, ia, l, 2*abs(m)-(m>0), z) for it, ia, l, z, m in comp]
         self.assertEqual( comp2, sorted(comp2) )
 
+    def test_coef_flatten(self):
+        # first generate a coef indexed by [it][l][z][q] -> float
+        nbes = [[17, 16, 16]]
+        nzeta = [[2, 2, 1]]
+        index_, range_ = _coef_flatten(nzeta, nbes)
+        self.assertEqual(range_[0].start, 0)
+        self.assertEqual(range_[0].stop, 2*17)
+        self.assertEqual(range_[1].start, 2*17)
+        self.assertEqual(range_[1].stop, 2*17+2*16)
+        self.assertEqual(range_[2].start, 2*17+2*16)
+        self.assertEqual(range_[2].stop, 2*17+2*16+1*16)
+        self.assertEqual(len(range_), 3)
+        self.assertEqual(len(index_), 3)
+        self.assertEqual(index_[0], (0, 0))
+        self.assertEqual(index_[1], (0, 1))
+        self.assertEqual(index_[2], (0, 2))
 
 if __name__ == '__main__':
     unittest.main()

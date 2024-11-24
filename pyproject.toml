@@ -22,4 +22,4 @@ dependencies = [
 ]
 
 [project.scripts]
-SIAB_nouvelle = "SIAB.SIAB_nouvelle:main"
+orbgen = "SIAB.orbgen:main"

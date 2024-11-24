@@ -1,0 +1,73 @@
+{
+    "environment": "",
+    "mpi_command": "mpirun -np 8",
+    "abacus_command": "abacus",
+
+    "pseudo_dir": "./",
+    "pseudo_name": "Si_ONCV_PBE-1.0.upf",
+    "ecutwfc": 100,
+    "bessel_nao_smooth": 0,
+    "bessel_nao_rcut": [7],
+    "smearing_sigma": 0.01,
+
+    "fit_basis": "jy",
+    "optimizer": "bfgs",
+    "max_steps": 3000,
+    "spill_guess": "atomic",
+    "nthreads_rcut": 4,
+    "jY_type": "reduced",
+
+    "reference_systems": [
+        {
+            "shape": "dimer",
+            "nbands": 8,
+            "nspin": 1,
+            "lmaxmax": 2,
+            "bond_lengths": "auto"
+        }
+    ],
+    "orbitals": [
+        {
+            "zeta_notation": [1, 1, 0],
+            "shape": "dimer",
+            "nbands_ref": "occ",
+            "orb_ref": "none"
+        },
+        {
+            "zeta_notation": [2, 1, 0],
+            "shape": "dimer",
+            "nbands_ref": "occ",
+            "orb_ref": 0
+        },
+        {
+            "zeta_notation": [2, 2, 0],
+            "shape": "dimer",
+            "nbands_ref": "occ",
+            "orb_ref": 1
+        },
+        {
+            "zeta_notation": [2, 2, 1],
+            "shape": "dimer",
+            "nbands_ref": "occ",
+            "orb_ref": 2
+        },
+        {
+            "zeta_notation": [3, 2, 1],
+            "shape": "dimer",
+            "nbands_ref": "occ",
+            "orb_ref": 3
+        },
+        {
+            "zeta_notation": [3, 3, 1],
+            "shape": "dimer",
+            "nbands_ref": "occ",
+            "orb_ref": 4
+        },
+        {
+            "zeta_notation": [3, 3, 2],
+            "shape": "dimer",
+            "nbands_ref": "occ",
+            "orb_ref": 5
+        }
+    ]
+}

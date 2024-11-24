@@ -1,0 +1,48 @@
+{
+    "environment": "",
+    "mpi_command": "mpirun -np 8",
+    "abacus_command": "abacus",
+
+    "pseudo_dir": "/root/abacus-develop/pseudopotentials/sg15_oncv_upf_2020-02-06/Si_ONCV_PBE-1.0.upf",
+    "element": "Si",
+
+    "ecutwfc": 60,
+
+    "bessel_nao_rcut": [10],
+
+    "fit_basis": "jy",
+    "primitive_type": "reduced",
+    "optimizer": "torch.swats",
+    "torch.lr": 0.001,
+    
+    "max_steps": 3000,
+    "spill_guess": "atomic",
+
+    "nthreads_rcut": 4,
+
+    "geoms": [
+        {
+            "proto": "dimer",
+            "pertkind": "stretch",
+            "pertmags": [1.62, 1.82, 2.22, 2.72, 3.22],
+            "nbands": 20,
+            "nspin": 1,
+            "lmaxmax": 2
+        }
+    ],
+
+    "orbitals": [
+        {
+            "nzeta": [1, 1, 0],
+            "geoms": [0],
+            "nbands": ["occ", "occ", "occ", "occ", "occ"],
+            "checkpoint": null
+        },
+        {
+            "nzeta": [1, 1, 1],
+            "geoms": [0],
+            "nbands": [4, 4, 4, 4, 4],
+            "checkpoint": 0
+        }
+    ]
+}
