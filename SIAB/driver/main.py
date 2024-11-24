@@ -82,7 +82,7 @@ def _spilltasks(elem,
                  'checkpoint': 'iorb_frozen', 'geoms': 'folders'}
      for rcut in rcuts:
           template = scheme.copy()
-          orbitals = [{convert_[k]: v for k, v in orb.items()} for orb in template]
+          orbitals = [{convert_.get(k, k): v for k, v in orb.items()} for orb in template]
           additional = {} if run_mode != 'jy' else {'rcut': rcut}
           for orb in orbitals:
                geoms_orb = [{'elem': elem, 'proto': f['proto'], 'pert': pertmag} 

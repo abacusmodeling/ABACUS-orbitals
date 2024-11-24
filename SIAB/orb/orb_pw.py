@@ -22,19 +22,17 @@ class OrbitalPW(Orbital):
                  primitive_type,
                  folders,
                  nbnds):
-        '''specifically for fit_basis jy, it is possible to do things
-        additionally compared with the pw:
-        
-        nzeta-infer:
-            inferring the nzeta from the nbnds
-        '''
+        '''Initialize the `OrbitalPW` class for handling the plane wave (pw) fit basis.
+
+        Note:
+            For `OrbitalPW`, the `nzeta` inference from `nbnds` is not supported.
+         '''
         super().__init__(rcut, ecut, elem, nzeta, primitive_type, folders, nbnds)
         # for OrbitalPW, the nzeta-infer is not supported
-
     def init(self, srcdir, nzmax, nzshift, diagnosis = True):
-        '''initialize the contraction coefficients of jy. This function works differently
-        from the other derived class of Orbital, the OrbitalJY. Each time will extract the
-        full set of initial guess of coefs, then extract different subset.
+        '''Initialize the contraction coefficients for the plane wave (pw) basis.
+        This function differs from other `Orbital` derived classes by extracting
+        the full set of initial coefficient guesses and then selecting a subset.
         
         Parameters
         ----------
