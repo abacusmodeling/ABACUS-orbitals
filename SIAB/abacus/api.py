@@ -182,7 +182,7 @@ def _build_atomspecies(elem,
         the atomspecies dictionary
     '''
     out = {'pp': os.path.abspath(pp)}
-    if all([ecut, rcut, lmaxmax]):
+    if all([x is not None for x in [ecut, rcut, lmaxmax]]):
         less_dof = 0 if primitive_type == 'normalized' else norder_smooth # DOF: degree of freedom
         nzeta, ecut_, lmax_ = _cal_nzeta(rcut, ecut, lmaxmax, less_dof)
         forb = os.path.join(orbital_dir, orb(elem, rcut, ecut_, nzeta))
