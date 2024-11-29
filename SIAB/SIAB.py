@@ -28,6 +28,7 @@ import numpy as np
 import subprocess
 import string
 from io import StringIO
+import textwrap
 # from string import ljust
 # from _elementtree import Element
 # from distutils.cygwinccompiler import get_versions
@@ -240,47 +241,53 @@ spillage_outdir OUT.%s-%s-%s-%s
 '''%(element, STRUname, rcut, BL)
     return input_INPUTw
 
-def get_input_INPUTs(ecut, rcut):
-    input_INPUTs='''INPUT_ORBITAL_INFORMATION
-<SPHERICAL_BESSEL>
-1           // smooth or not
-0.1         // smearing_sigma
-%s        // energy cutoff for spherical bessel functions(Ry)
-%s        // cutoff of wavefunctions(a.u.)
-1.0e-12     // tolerence
-</SPHERICAL_BESSEL>
-'''%(ecut, rcut) 
-    return input_INPUTs
+#def get_input_INPUTs(ecut, rcut):
+#    input_INPUTs = textwrap.dedent('''\
+#        INPUT_ORBITAL_INFORMATION
+#        <SPHERICAL_BESSEL>
+#        1           // smooth or not
+#        0.1         // smearing_sigma
+#        %s        // energy cutoff for spherical bessel functions(Ry)
+#        %s        // cutoff of wavefunctions(a.u.)
+#        1.0e-12     // tolerence
+#        </SPHERICAL_BESSEL>
+#        '''%(ecut, rcut)) 
+#    return input_INPUTs
 
 def get_input_INPUT(name, Pseudo_dir, nspin, maxL, nbands_STRU, Ecut, Rcut, smearing_sigma):
-    input_INPUT='''INPUT_PARAMETERS
-suffix              %s
-stru_file           %s.stru
-pseudo_dir          %s
-kpoint_file         KPOINTS
-wannier_card        INPUTw
-calculation         scf
-ks_solver           dav  //#cg; dav; lapack; genelpa; hpseps; scalapack_gvx; cusolver 
-ntype               1
-nspin               %s
-lmaxmax             %s
-bessel_nao_rcut     %s
+    input_INPUT = textwrap.dedent(f'''\
+        INPUT_PARAMETERS
+        suffix              {name}
+        stru_file           {name}.stru
+        pseudo_dir          {Pseudo_dir}
+        kpoint_file         KPOINTS
+        wannier_card        INPUTw
+        calculation         scf
+        ks_solver           dav  //#cg; dav; lapack; genelpa; hpseps; scalapack_gvx; cusolver
+        nspin               {nspin}
 
-symmetry            0
-nbands             	%s
+        lmaxmax                 {maxL}
+        bessel_nao_ecut         {Ecut} #energy cutoff for spherical bessel functions(Ry)
+        bessel_nao_tolerence    1e-12 #tolerence for spherical bessel root
+        bessel_nao_rcut         {Rcut}  #radial cutoff for spherical bessel functions(a.u.)
+        bessel_nao_smooth       1 #spherical bessel smooth or not
+        bessel_nao_sigma        0.1 #spherical bessel smearing_sigma
 
-ecutwfc             %s
-scf_thr             1.0e-7  // about iteration
-scf_nmax            9000
+        symmetry            0
+        nbands             	{nbands_STRU}
 
-smearing_method     gauss
-smearing_sigma      %s
+        ecutwfc             {Ecut}
+        scf_thr             1.0e-7  // about iteration
+        scf_nmax            9000
 
-mixing_type         pulay       // about charge mixing
-mixing_beta         0.4
-mixing_ndim         8
-printe              1
-'''%(name, name, Pseudo_dir, nspin, maxL, Rcut, nbands_STRU, Ecut, smearing_sigma)
+        smearing_method     gauss
+        smearing_sigma      {smearing_sigma}
+
+        mixing_type         pulay       // about charge mixing
+        mixing_beta         0.4
+        mixing_ndim         8
+        printe              1
+        ''')
     return input_INPUT
 
 def write_string_tofile(input, filename):
@@ -347,9 +354,9 @@ def pw_calculation(iElement, iEcut, iRcut, STRUList):
             # print(input_INPUTw)
             write_string_tofile(input_INPUTw, "INPUTw")
 
-            input_INPUTs = get_input_INPUTs( Ecut[iEcut], Rcut[iRcut] )
-            # print(input_INPUTs)
-            write_string_tofile(input_INPUTs, "INPUTs")
+            #input_INPUTs = get_input_INPUTs( Ecut[iEcut], Rcut[iRcut] )
+            ## print(input_INPUTs)
+            #write_string_tofile(input_INPUTs, "INPUTs")
 
             input_INPUT = get_input_INPUT( pwDataDir_STRU[STRUname][iBL], Pseudo_dir, 
                             nspin_STRU[STRUname], maxL_STRU[STRUname], nbands_STRU[STRUname], Ecut[iEcut], Rcut[iRcut], sigma )
