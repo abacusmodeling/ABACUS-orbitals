@@ -6,8 +6,8 @@ def change_info(info_old, weight_old, flag_same_band):
 	info_stru = [None] * info_old.Nst
 	for ist in range(len(info_stru)):
 		info_stru[ist] = addict.Dict()
-	for ist,Na in enumerate(info_old.Na):
-		info_stru[ist].Na = Na
+		info_stru[ist].Na = info_old.Na[ist]
+		info_stru[ist].Nl = info_old.Nl[ist]
 	for ist,weight in enumerate(weight_old):
 		info_stru[ist].weight = weight
 		info_stru[ist].Nb = weight.shape[0]
@@ -48,18 +48,39 @@ def change_info(info_old, weight_old, flag_same_band):
 	return info_stru, info_element, info_opt
 
 	"""
+
+	info_kst:
+	Nt_all  ['C', 'O']
+	Nu      {'C': [2, 2, 1], 'O': [3, 2, 1]}
+	Rcut    {'C': 6, 'O': 6}
+	dr      {'C': 0.01, 'O': 0.01}
+	Ecut    {'C': 100, 'O': 100}
+	lr      0.01
+	cal_T   False
+	cal_smooth      False
+	max_steps       200
+	Nl      [2, 2, 2]
+	Nst     3
+	Nt      [['C'], ['C'], ['C', 'O']]
+	Na      [{'C': 1}, {'C': 1}, {'C': 1, 'O': 2}]
+	Nb      [6, 6, 10]
+	Ne      {'C': 19, 'O': 19}
+
 	info_stru =
 	[{'Na': {'C': 1},
 	  'Nb': 6,
 	  'Nb_true': 4,
+	  'Nl': 2,
 	  'weight': tensor([0.0333, 0.0111, 0.0111, 0.0111, 0.0000, 0.0000])},
 	 {'Na': {'C': 1},
 	  'Nb': 6,
 	  'Nb_true': 2,
+	  'Nl': 2,
 	  'weight': tensor([0.0667, 0.0667, 0.0000, 0.0000, 0.0000, 0.0000])},
 	 {'Na': {'C': 1, 'O': 2},
 	  'Nb': 10,
 	  'Nb_true': 8,
+	  'Nl': 2,
 	  'weight': tensor([0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.0000, 0.0000])}]
 
 	info_element =
@@ -83,7 +104,8 @@ def change_info(info_old, weight_old, flag_same_band):
 	info_opt =
 	{'cal_T': False,
 	 'cal_smooth': False,
-	 'lr': 0.01}
+	 'lr': 0.01,
+	 'max_steps': 200}
 	"""
 
 

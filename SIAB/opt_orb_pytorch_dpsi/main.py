@@ -31,13 +31,13 @@ def main():
 	info_kst = IO.read_QSV.read_file_head(info_true, file_list["origin"])
 
 	info_stru, info_element, info_opt = IO.change_info.change_info(info_kst, weight, V_info["same_band"])
-	info_max = IO.change_info.get_info_max(info_stru, info_element)
+	#info_max = IO.change_info.get_info_max(info_stru, info_element)
 
-	print("info_kst:", info_kst, sep="\n", end="\n"*2, flush=True)
+	print("info_kst:", pprint.pformat(info_kst), sep="\n", end="\n"*2, flush=True)
 	print("info_stru:", pprint.pformat(info_stru), sep="\n", end="\n"*2, flush=True)
 	print("info_element:", pprint.pformat(info_element,width=40), sep="\n", end="\n"*2, flush=True)
 	print("info_opt:", pprint.pformat(info_opt,width=40), sep="\n", end="\n"*2, flush=True)
-	print("info_max:", pprint.pformat(info_max), sep="\n", end="\n"*2, flush=True)
+	#print("info_max:", pprint.pformat(info_max), sep="\n", end="\n"*2, flush=True)
 
 	QI,SI,VI_origin = IO.read_QSV.read_QSV(info_stru, info_element, file_list["origin"], V_info)
 	if "linear" in file_list.keys():
