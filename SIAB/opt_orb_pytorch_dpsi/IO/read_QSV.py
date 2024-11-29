@@ -154,7 +154,7 @@ def read_VI(info_stru,V_info,ist,data):
 			VI = np.empty((info_stru.Nb,info_stru.Nb),dtype=np.float64)
 			for ib1,ib2 in itertools.product( range(info_stru.Nb), range(info_stru.Nb) ):
 				VI[ib1,ib2] = next(data)
-			VI = VI[info_stru.Nb_true, info_stru.Nb_true]
+			VI = VI[:info_stru.Nb_true, :info_stru.Nb_true]
 		else:
 			VI = np.eye(info_stru.Nb_true, info_stru.Nb_true, dtype=np.float64)
 	return torch.from_numpy(VI)

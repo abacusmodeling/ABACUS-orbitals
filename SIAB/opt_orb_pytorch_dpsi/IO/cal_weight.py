@@ -5,7 +5,8 @@ import functools
 import operator
 
 def cal_weight(info_weight, flag_same_band, stru_file_list=None):
-	""" weight[ist][ib] """
+	""" if flag_same_band:	weight[ist][ib]    """
+	""" else:				weight[ist][ib,ib] """
 
 	if "bands_file" in info_weight.keys():
 		if "bands_range" in info_weight.keys():

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import numpy as np
 import IO.read_QSV
 import IO.print_QSV
 import IO.func_C
@@ -27,9 +28,9 @@ def main():
 
 	weight = IO.cal_weight.cal_weight(weight_info, V_info["same_band"], file_list["origin"])
 
-	info_kst = IO.read_QSV.read_file_head(info_true,file_list["origin"])
+	info_kst = IO.read_QSV.read_file_head(info_true, file_list["origin"])
 
-	info_stru, info_element, info_opt = IO.change_info.change_info(info_kst,weight)
+	info_stru, info_element, info_opt = IO.change_info.change_info(info_kst, weight, V_info["same_band"])
 	info_max = IO.change_info.get_info_max(info_stru, info_element)
 
 	print("info_kst:", info_kst, sep="\n", end="\n"*2, flush=True)
