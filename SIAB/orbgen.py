@@ -25,18 +25,34 @@ def main():
 
     glbparam, dftparam, spillparam, compparam = read(start())
 
-    _ = rundft(glbparam['element'],
-               glbparam['bessel_nao_rcut'],
-               dftparam, 
-               spillparam.get('geoms'), 
-               spillparam.get('spill_guess'),
-               compparam)
+    _ = rundft(atomspecies=[{'elem': glbparam['element'], 
+                             'fpsp': os.path.basename(dftparam['pseudo_dir']),
+                             'forb': None,
+                             'ecutjy': spillparam.get('ecutjy') or dftparam['ecutwfc'],
+                             # it would be a bad idea to leave ecutjy unset, because the
+                             # grid integration is crucial for accurate calculation
+                             'rcutjy': glbparam['bessel_nao_rcut'],
+                             # rcut is both the attribute of orbital of atomispecies
+                             # and the parameter of ABACUS INPUT
+                             'lmaxjy': int(max([geom.get('lmaxmax', 0) 
+                                                for geom in spillparam['geoms']]))
+                             # lmax is both the attribute of orbital of atomispecies
+                             # and the parameter of ABACUS INPUT. But we will not build
+                             # jy primitive according to lmax here, to save the 
+                             # computational cost
+                             }],
+               geoms=spillparam['geoms'], 
+               rcuts=glbparam['bessel_nao_rcut'],
+               dftparam=dftparam,
+               spillguess=spillparam.get('spill_guess'),
+               compparam=compparam)
     
     options = {k: v for k, v in spillparam.items() 
                if k not in 
                ['geoms', 'orbitals', 'primitive_type', 'fit_basis', 'spill_guess']}
+    # when call spillage, the element is merely a symbol, so we pass it as a string
     spillage(elem=glbparam['element'],
-             ecut=dftparam['ecutwfc'],
+             ecut=spillparam['ecutjy'],
              rcuts=glbparam['bessel_nao_rcut'],
              primitive_type=spillparam['primitive_type'],
              scheme=spillparam['orbitals'],

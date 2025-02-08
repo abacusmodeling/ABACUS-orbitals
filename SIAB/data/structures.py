@@ -183,3 +183,79 @@ def cube(element, mass, fpseudo, lattice_constant, bond_length, nspin, forb = No
     result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length / 2 + shift, -bond_length / 2 + shift, -bond_length / 2 + shift)
     result += "%10.8f %10.8f %10.8f 0 0 0\n"%(-bond_length / 2 + shift, bond_length / 2 + shift, -bond_length / 2 + shift)
     return result
+
+class AtomSpecies:
+    '''a simple base class to store the information of atomic species'''
+    def __init__(self, 
+                 elem, 
+                 **kwargs):
+        '''
+        instantiate the class
+        
+        Parameters
+        ----------
+        elem: str
+            element symbol
+        fpseudo: str
+            the pseudopotential file, it is only safe to assign as an absolute path
+        mass : float
+            the atomic mass of the element in amu
+        '''
+        self.elem = elem
+        self.mass = kwargs.get('mass', 1.0)
+
+    def __dict__(self):
+        return {'elem': self.elem, 'mass': self.mass}
+    
+    def __eq__(self, other):
+        return self.__dict__() == other.__dict__()
+
+class OrbgenSpecies(AtomSpecies):
+    '''a class to store the information of atomic species for orbgen
+    -specific tasks'''
+    def __init__(self, 
+                 elem, 
+                 fpseudo,
+                 **kwargs):
+        '''
+        instantiate the class
+        
+        Parameters
+        ----------
+        elem: str
+            element symbol
+        fpseudo: str
+            the pseudopotential file, it is only safe to assign as an absolute path
+        mass : float
+            the atomic mass of the element in amu
+        '''
+        import os
+        super().__init__(elem, **kwargs)
+        if os.path.exists(fpseudo):
+            self.fpseudo = os.path.abspath(fpseudo) 
+            # DFT calculation-specific and compulsory parameters
+        else:
+            # otherwise throw
+            raise FileNotFoundError("The pseudopotential file does not exist.")
+        
+        self.forb = kwargs.get('forb')
+        self.ecutjy = kwargs.get('ecutjy')
+        self.rcutjy = kwargs.get('rcutjy')
+        
+    def jygen(self, outdir, **kwargs):
+        '''generate the jy basis file, return the file path
+        
+        Parameters
+        ----------
+        outdir: str
+            the output directory
+        l : int
+            the angular momentum quantum number, exclusive with lmax
+        lmax : int
+            the maximum angular momentum quantum number, exclusive with l
+        '''
+        from SIAB.io.convention import orb
+        
+        if 'l' in kwargs and 'lmax' in kwargs:
+            raise ValueError('l and lmax are exclusive, only specify one of them')
+        

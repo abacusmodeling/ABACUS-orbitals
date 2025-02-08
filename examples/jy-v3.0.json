@@ -3,21 +3,20 @@
     "mpi_command": "mpirun -np 8",
     "abacus_command": "abacus",
 
-    "pseudo_dir": "/root/abacus-develop/pseudopotentials/sg15_oncv_upf_2020-02-06/Si_ONCV_PBE-1.0.upf",
     "element": "Si",
-
+    "pseudo_dir": "/root/abacus-develop/pseudopotentials/sg15_oncv_upf_2020-02-06/Si_ONCV_PBE-1.0.upf",
+    
+    "fit_basis": "jy",
     "ecutwfc": 60,
 
+    "ecutjy": 20,
     "bessel_nao_rcut": [10],
-
-    "fit_basis": "jy",
     "primitive_type": "reduced",
+
+    "spill_guess": "atomic",
     "optimizer": "torch.swats",
     "torch.lr": 0.001,
-    
     "max_steps": 3000,
-    "spill_guess": "atomic",
-
     "nthreads_rcut": 4,
 
     "geoms": [

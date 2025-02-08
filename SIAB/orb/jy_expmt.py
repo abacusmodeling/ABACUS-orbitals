@@ -1,14 +1,22 @@
 '''all functions in this module are not compatible with abacus pw 
 calculation. abacus pw is deprecated in abacus-orbgen v3.0'''
+
+# in-built modules
+import os
+import unittest
+
+# third-party modules
+import numpy as np
+
+# local modules
 from SIAB.spillage.datparse import read_wfc_lcao_txt, read_triu, \
     read_running_scf_log, read_input_script
 from SIAB.spillage.lcao_wfc_analysis import _wll
 from SIAB.spillage.spillage import flatten, initgen_jy
-import unittest
-import numpy as np
-import os
 
-def _grpbnd_lnm(folder, count_thr = 1e-1, itype = 0):
+def _grpbnd_lnm(folder, 
+                count_thr = 1e-1, 
+                itype = 0):
     '''scan all bands of the calculation in one folder, for one specific atomtype,
     get all bands in which this atomtype's orbitals have significant contribution (
     weight larger than count_thr). Then group those band indexes into spin, l, n 
@@ -184,8 +192,7 @@ class TestSpillageExperimental(unittest.TestCase):
         self.assertEqual(_ibands([25, 25], [0, 1], [1, 1]), [range(0, 25), range(0, 25)])
 
     def test_coef_init(self):
-        from SIAB.spillage.legacy.api import _save_orb
-
+        
         here = os.path.dirname(__file__)
         parent = os.path.dirname(here)
         fpath = os.path.join(parent, "spillage/testfiles/Si/jy-7au/monomer-gamma/OUT.ABACUS")
@@ -200,15 +207,16 @@ class TestSpillageExperimental(unittest.TestCase):
         
         return # disable the following practical example
         # practical example
-        jobdir = '/root/documents/simulation/orbgen/Test1Aluminum-20241011/'
-        rcut = 6
-        suffix = f'Al-monomer-{rcut}au'
-        out = _coef_init(os.path.join(jobdir, suffix, f'OUT.{suffix}'), 
-                         [2, 2, 0], diagnosis=True)
-        _save_orb(out, 'Al(1)', 100, rcut, os.getcwd())
-        out = _coef_init(os.path.join(jobdir, suffix, f'OUT.{suffix}'), 
-                         [1, 1, 0], izmin=[1, 1, 0], diagnosis=True)
-        _save_orb(out, 'Al(2)', 100, rcut, os.getcwd())
+        # from SIAB.spillage.legacy.api import _save_orb
+        # jobdir = '/root/documents/simulation/orbgen/Test1Aluminum-20241011/'
+        # rcut = 6
+        # suffix = f'Al-monomer-{rcut}au'
+        # out = _coef_init(os.path.join(jobdir, suffix, f'OUT.{suffix}'), 
+        #                  [2, 2, 0], diagnosis=True)
+        # _save_orb(out, 'Al(1)', 100, rcut, os.getcwd())
+        # out = _coef_init(os.path.join(jobdir, suffix, f'OUT.{suffix}'), 
+        #                  [1, 1, 0], izmin=[1, 1, 0], diagnosis=True)
+        # _save_orb(out, 'Al(2)', 100, rcut, os.getcwd())
 
 if __name__ == "__main__":
     unittest.main()

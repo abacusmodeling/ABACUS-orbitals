@@ -1,8 +1,16 @@
-from SIAB.spillage.datparse import read_istate_info, read_input_script, read_kpoints
+# in-built modules
 import os
-import numpy as np
 import unittest
 import re
+
+# third-party modules
+import numpy as np
+from scipy.integrate import simps
+
+# local modules
+from SIAB.spillage.datparse import read_istate_info, read_input_script, read_kpoints
+from SIAB.spillage.radial import _nbes
+
 def _legacy_dft2spillparam(calculation_settings, siab_settings, folders):
     '''this function for new method (bfgs) is just a way to make the interface
     unified with the old version of SIAB.
@@ -223,6 +231,66 @@ class TestSpillageUtilities(unittest.TestCase):
         self.assertEqual(options['gtol'], 1e-6)
         self.assertEqual(options['maxcor'], 10)
 
+def _padding(arr, n):
+    '''pad the array to the length of n'''
+    if len(arr) < n:
+        return np.pad(arr, (0, n-len(arr)))
+    return arr[:n]
+
+def _jyproj(radial, dr, l, ecut, rcut, primitive_type: str = 'reduced'):
+    '''
+    project any given radial f onto jy basis \sum |jl><jl|,
+    
+    Parameters
+    ----------
+    radial: np.ndarray
+        the radial function to project
+    dr: float
+        the grid spacing of the radial function
+    l: int
+        the angular momentum quantum number
+    ecut: float
+        the kinetic energy cutoff of the jy basis
+    rcut: float
+        the cutoff radius of the jy basis
+    primitive_type: str
+        the type of jy basis, can be `reduced` or `normalized`
+    
+    Returns
+    -------
+    np.ndarray
+        the coefficients of the projection
+    float
+        the norm of projection error 
+    '''
+    # the temporary way to avoid circular import
+    from SIAB.spillage.legacy.api import _coef_gen, _coef_griddata 
+
+    coefs = _coef_gen(rcut, ecut, primitive_type, l=l)
+    assert len(coefs[0]) == l + 1, 'Unexpected number of angular momentum.'
+    chi = np.array(_coef_griddata(coefs, rcut, dr, primitive_type)[-1])
+    
+    _, nr = chi.shape
+    radial = np.array(_padding(radial, nr))
+    
+    r = np.linspace(0, rcut, int(rcut/dr)+1)
+    proj = np.array([simps(c*radial * r**2, r) for c in chi]) # <jl|f>
+    return proj, np.linalg.norm(radial - np.dot(proj, chi))
+
+class TestRadialProjection(unittest.TestCase):
+    def test_jyproj(self):
+        from SIAB.spillage.legacy.api import _coef_griddata
+        njy = _nbes(l=1, rcut=7, ecut=20) - 1
+        coefs = [[[] for _ in range(1)] + [np.eye(njy).tolist()]]
+        radials = _coef_griddata(coefs, 7, 0.01)[-1]
+        
+        outmat = []
+        for radial in radials:
+            proj, _ = _jyproj(radial, 0.01, 1, 20, 7)
+            outmat.append(proj)
+        outmat = np.array(outmat)
+        self.assertEqual(outmat.shape, (len(radials), len(radials)))
+        self.assertTrue(np.linalg.norm(outmat - np.eye(len(radials))) < 1e-10)
 
 if __name__ == "__main__":
     unittest.main()
