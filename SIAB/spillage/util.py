@@ -151,7 +151,7 @@ def _spil_bnd_autoset(pattern: int|str,
     except (ValueError, SyntaxError):
         raise ValueError(f"nbands_ref {pattern} is not a valid expression.")
 
-def _spillparam(raw):
+def _spill_opt_param(raw):
     '''convert the scheme to the spillage module acceptable parameters
     
     Parameters
@@ -223,7 +223,7 @@ class TestSpillageUtilities(unittest.TestCase):
 
         test = {'max_steps': 1000, 'verbose': False, 'optimizer': 'scipy.bfgs',
                 'scipy.ftol': 1e-6, 'scipy.gtol': 1e-6, 'scipy.maxcor': 10}
-        optimizer, options = _spillparam(test)
+        optimizer, options = _spill_opt_param(test)
         self.assertEqual(optimizer, 'scipy.bfgs')
         self.assertEqual(options['maxiter'], 1000)
         self.assertEqual(options['disp'], False)

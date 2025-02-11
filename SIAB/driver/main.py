@@ -4,7 +4,7 @@ from SIAB.abacus.api import build_abacus_jobs, job_done
 from SIAB.io.convention import dft_folder
 from SIAB.orb.api import GetOrbCascadeInstance
 from SIAB.abacus.blscan import jobfilter
-from SIAB.spillage.util import _spillparam
+from SIAB.spillage.util import _spill_opt_param
 
 def init(fn):
      '''
@@ -26,7 +26,7 @@ def init(fn):
           
      return glbparams, dftparams, spillparams, compute
 
-def rundft(atomspecies,
+def rundft(elem,
            rcuts,
            dftparam,
            geoms,
@@ -65,7 +65,7 @@ def rundft(atomspecies,
      # placing the build_abacus_jobs ahead of the check of `abacus_command`,
      # supporting the case that only generate the jy orbitals, without running
      # all the dft calculations
-     jobs = build_abacus_jobs(elem=atomspecies[0]['elem'], 
+     jobs = build_abacus_jobs(elem=elem, 
                               rcuts=rcuts, 
                               dftparams=dftparam, 
                               geoms=geoms, 
@@ -163,14 +163,17 @@ def spillage(elem,
      kwargs: dict
           additional parameters, including `max_steps`, `verbose`, `ftol`, `gtol`, `nthreads_rcut`
      '''
-     optimizer, options = _spillparam(kwargs)
+     optimizer, options = _spill_opt_param(kwargs)
      for rcut, task in _spilltasks(elem, rcuts, scheme, dft_root, run_mode):
-          initializer = {} if run_mode != 'jy' else {'rcut': rcut}
+          temp = {} if run_mode != 'jy' else {'rcut': rcut}
+          guess = kwargs.get('spill_guess')
+          initializer = dft_folder(elem, 'monomer', 0, **temp) if guess == 'atomic'\
+               else guess
           cascade = GetOrbCascadeInstance(elem=elem, 
                                           rcut=rcut, 
                                           ecut=ecut, 
                                           primitive_type=primitive_type,
-                                          initializer=dft_folder(elem, 'monomer', 0, **initializer),
+                                          initializer=initializer,
                                           orbs=task,
                                           mode=run_mode,
                                           optimizer=optimizer)

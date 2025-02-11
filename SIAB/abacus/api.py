@@ -381,7 +381,8 @@ def build_abacus_jobs(elem,
                                 param_general=dftparams, 
                                 param_specific={'nbands': nbndmax+20, # magic number! is 20+ enough?
                                                 'lmaxmax': lmaxmax})
-
+    else:
+        print(f'`spill_guess` is not `atomic`: {spill_guess}.', flush=True)
     return [job for job in jobs if job is not None]
 
 def job_done(folder):

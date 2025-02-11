@@ -29,6 +29,7 @@ class OrbitalPW(Orbital):
          '''
         super().__init__(rcut, ecut, elem, nzeta, primitive_type, folders, nbnds)
         # for OrbitalPW, the nzeta-infer is not supported
+        
     def init(self, srcdir, nzmax, nzshift, diagnosis = True):
         '''Initialize the contraction coefficients for the plane wave (pw) basis.
         This function differs from other `Orbital` derived classes by extracting

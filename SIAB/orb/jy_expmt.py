@@ -158,7 +158,7 @@ def _coef_init(outdir, nzeta, izmin = None, diagnosis = False):
     list[list[list[float]]]: the initial guess of all coefficients, indexed by
     [l][n][q]'''
 
-    ibnd_lnm = _grpbnd_lnm(outdir)
+    ibnd_lnm = _grpbnd_lnm(outdir) # indexed by [it][l][n]
     izmin = [0] * len(nzeta) if izmin is None else izmin
     assert len(izmin) == len(nzeta), "izmin and nzeta should have the same length"
     # ensure there are enough bands for the calculation
@@ -166,8 +166,7 @@ def _coef_init(outdir, nzeta, izmin = None, diagnosis = False):
         raise ValueError("initgen error: requiring more bands than actually calculated")
     coef = [[] for _ in nzeta]
     for l, nz in enumerate(nzeta):
-        iz0 = izmin[l]
-        for iz in range(iz0, nz):
+        for iz in range(izmin[l], nz):
             ib = ibnd_lnm[0][l][iz] # how to deal with the spin?...
             nz_ = np.zeros_like(np.array(nzeta))
             nz_[l] = 1

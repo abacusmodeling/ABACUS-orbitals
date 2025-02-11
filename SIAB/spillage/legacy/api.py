@@ -508,8 +508,9 @@ def _coef_griddata(coefs, rcut, dr: float = 0.01, primitive_type: str = "reduced
     rcut and grid spacing dr. The coefficients should be in the form of
     [it][l][zeta][q].
     
-    Args:
-    coefs: list of list of list of list of float
+    Parameters
+    ----------
+    coefs: [list[list[list[float]]]
         the coefficients of the orbitals
     rcut: float
         the cutoff radius
@@ -518,8 +519,9 @@ def _coef_griddata(coefs, rcut, dr: float = 0.01, primitive_type: str = "reduced
     primitive_type: str
         the type of jY basis, can be "reduced", "nullspace", "svd" or "raw"
 
-    Returns:
-    np.ndarray: the real space grid data
+    Returns
+    -------
+    A nested list of numerical radial functions, chi[l][zeta][ir] -> float.
     """
 
     r = np.linspace(0, rcut, int(rcut/dr)+1) # hard code dr to be 0.01? no...

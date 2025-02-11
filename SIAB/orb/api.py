@@ -75,7 +75,7 @@ def GetOrbCascadeInstance(elem,
                           orbs,
                           mode,
                           optimizer='pytorch.swats'):
-    '''build an OrbgenCascade based on one orbgen graph/scheme
+    '''build an instance/task for optimizing orbitals in a cascade
     
     Parameters
     ----------
@@ -113,18 +113,20 @@ def GetOrbCascadeInstance(elem,
     # do the check
     _sanitychk(elem, rcut, ecut, nzeta, mode, primitive_type, folders, nbnds, iorb_frozen, optimizer)
     
-    OrbitalInstance = OrbitalJY if mode == 'jy' else OrbitalPW
-    orbs = [OrbitalInstance(rcut, 
-                            ecut, 
-                            elem, 
-                            nz, 
-                            primitive_type, 
-                            fd, 
-                            nbnd)
+    # describe the orbital
+    GetOrbitalInstance = OrbitalJY if mode == 'jy' else OrbitalPW
+    orbs = [GetOrbitalInstance(rcut=rcut,                     # cutoff radius of orbital to gen
+                               ecut=ecut,                     # kinetic energy cutoff
+                               elem=elem,                     # a element symbol
+                               nzeta=nz,                      # number of zeta functions of each l
+                               primitive_type=primitive_type, # `reduce` or `normalized`
+                               folders=fd,                    # folders in which reference data is stored
+                               nbnds=nbnd)                    # number of bands to refer
             for nz, fd, nbnd in zip(nzeta, folders, nbnds)]
-        
-    return OrbgenCascade(initializer, 
-                         orbs, 
-                         iorb_frozen, 
-                         mode, 
-                         optimizer)
+    
+    # plug orbitals in optimization cascade
+    return OrbgenCascade(initializer=initializer, 
+                         orbitals=orbs, 
+                         ifrozen=iorb_frozen, 
+                         mode=mode, 
+                         optimizer=optimizer)
