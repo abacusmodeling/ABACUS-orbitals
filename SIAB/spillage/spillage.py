@@ -322,6 +322,98 @@ def initgen_pw(orb_mat, nzeta, ibands='all', nbes_gen=None, diagnosis=False):
                          wk, nbes_gen, diagnosis)
 
 
+def initgen_restart(forb, nzeta, ecut, rcut, dr = 0.01, primitive_type='reduced'):
+    '''
+    use the generated orbital file as the initial guess to restart the optimization.
+    This function is a trial for initializing the orbital with larger rcut by the one
+    with smaller rcut (will pad zeros to make the length consistent). 
+    
+    Parameters
+    ----------
+    forb: str
+        the path to the generated orbital file
+    nzeta: list[int]
+        the number of zeta orbitals for each angular momentum to initialize
+    ecut: float
+        the kinetic energy cutoff of the jy basis that used to generate new orbitals
+    rcut: float
+        the cutoff radius of the jy basis that used to generate new orbitals
+    primitive_type: str
+        the type of jy basis, can be `reduced` or `normalized`
+    
+    Returns
+    -------
+    list[list[list[float]]]
+        in accord with initgen_pw and initgen_jy, the initial guess of all coefficients, 
+        indexed in the way of [l][n][q] -> float
+    '''
+    def _padding(arr, n):
+        '''pad the array to the length of n'''
+        if len(arr) < n:
+            return np.pad(arr, (0, n-len(arr)))
+        return arr[:n]
+
+    def _jyproj(radial, dr, l, ecut, rcut, primitive_type: str = 'reduced'):
+        '''
+        project any given radial f onto jy basis \sum |jl><jl|,
+        
+        Parameters
+        ----------
+        radial: np.ndarray
+            the radial function to project
+        dr: float
+            the grid spacing of the radial function
+        l: int
+            the angular momentum quantum number
+        ecut: float
+            the kinetic energy cutoff of the jy basis
+        rcut: float
+            the cutoff radius of the jy basis
+        primitive_type: str
+            the type of jy basis, can be `reduced` or `normalized`
+        
+        Returns
+        -------
+        np.ndarray
+            the coefficients of the projection, [q] -> float
+        float
+            the norm of projection error 
+        '''
+        # the temporary way to avoid circular import
+        # but harmful to the code readability, so do not use this way
+        # in the future
+        from SIAB.spillage.legacy.api import _coef_gen, _coef_griddata 
+        from scipy.integrate import simps
+
+        coefs = _coef_gen(rcut, ecut, primitive_type, l=l)
+        assert len(coefs[0]) == l + 1, 'Unexpected number of angular momentum.'
+        chi = np.array(_coef_griddata(coefs, rcut, dr, primitive_type)[-1])
+        
+        _, nr = chi.shape
+        radial = np.array(_padding(radial, nr))
+        
+        r = np.linspace(0, rcut, int(rcut/dr)+1)
+        proj = np.array([simps(c*radial * r**2, r) for c in chi]) # <jl|f>
+        return proj, np.linalg.norm(radial - np.dot(proj, chi))
+    
+    from SIAB.spillage.orbio import read_nao
+
+    nao = read_nao(forb)
+    assert nao['dr'] == dr, f'Intepolation has not been supported yet: {nao["dr"]} vs {dr}'
+    
+    nzeta_ = [len(chi) for chi in nao['chi']]
+    assert all([nz <= nz_ for nz, nz_ in zip(nzeta, nzeta_)]), \
+        'The number of zeta orbitals should be less than the original one.'
+    
+    coef = []
+    for l, (chi, nz) in enumerate(zip(nao['chi'], nzeta)):
+        coef_l = [_jyproj(chi[i], dr, l, ecut, rcut, primitive_type)[0].tolist()
+                  for i in range(nz)]
+        coef.append(coef_l)
+    # now coef is indexed [l][n][q] -> float
+    return coef
+
+
 def _overlap_spillage(natom, nbes, jy_jy, ref_jy, ref_ref, wk,
                       coef, ibands, coef_frozen=None):
     '''
@@ -827,6 +919,7 @@ import matplotlib.pyplot as plt
 
 class _TestSpillage(unittest.TestCase):
 
+
     def test_initgen_jy_gamma(self):
         import os
         here = os.path.dirname(os.path.abspath(__file__))
@@ -902,6 +995,28 @@ class _TestSpillage(unittest.TestCase):
         chi = build_reduced(coef, rcut, r, True)
         plot_chi(chi, r)
         plt.show()
+
+
+    def test_initgen_restart(self):
+        import os
+        from SIAB.spillage.orbio import read_nao
+        from SIAB.spillage.legacy.api import _coef_griddata
+        
+        here = os.path.dirname(os.path.abspath(__file__))
+        testfiles = os.path.join(here, 'testfiles')
+
+        forb = os.path.join(testfiles, 'Si_gga_10au_20Ry_1s1p.orb')
+        coef = initgen_restart(forb, [1, 1, 0], 100.0, 10.0)
+        self.assertEqual(len(coef), 3)
+        self.assertEqual([len(coef_l) for coef_l in coef], [1, 1, 0])
+        
+        # the coef should be identical with the original read one
+        griddata = _coef_griddata([coef], 10.0, 0.01, 'reduced')
+        ref = read_nao(forb)['chi']
+        
+        for i in range(3):
+            for j in range(len(coef[i])):
+                self.assertTrue(np.allclose(griddata[i][j], ref[i][j]))
 
 
     def test_jy_config_add(self):

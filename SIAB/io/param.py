@@ -117,18 +117,21 @@ def cmprhsive_chk(params):
     params : dict
         the input parameters
     '''
+    import numpy as np
     # check if more bands are required in orbital section than in geom section
     for orb in params['orbitals']:
         for i in orb['geoms']:
             if i >= len(params['geoms']):
                 raise ValueError(f'orbital {orb} requires geom {i} which is not defined')
-            spill_nbnds = orb['nbands'][i]
+            spill_nbnds = orb['nbands'] # can be str, int, list of int
             if isinstance(spill_nbnds, str):
+                print(f'orbital {orb} requires `{spill_nbnds}` bands')
                 continue
             geom_nbnds = params['geoms'][i].get('nbands')
             if geom_nbnds is None:
                 continue
-            if spill_nbnds > geom_nbnds:
+            spill_nbnds = [spill_nbnds] if not isinstance(spill_nbnds, list) else spill_nbnds
+            if np.any([nb > geom_nbnds for nb in spill_nbnds]):
                 raise ValueError(f'orbital {orb} requires more bands than geom {i} can provide')
 
 def group(params):
@@ -149,13 +152,18 @@ def group(params):
     GLOBAL = ['element', 'bessel_nao_rcut']
     DFT = [k for k in abacus_params() if k != 'bessel_nao_rcut']
     COMPUTE = ['environment', 'mpi_command', 'abacus_command']
-    SPILLAGE = ['ecutwfc', 'fit_basis', 'primitive_type', 'optimizer', 
-                'max_steps', 'spill_guess', 'nthreads_rcut', 'geoms', 'orbitals']
+    SPILLAGE = ['fit_basis', 'primitive_type', 'optimizer', 
+                'max_steps', 'spill_guess', 'nthreads_rcut', 'geoms', 'orbitals',
+                'ecutjy']
     
     dftparams = {key: params.get(key) for key in DFT}
+    
     optimizer = {k: v for k, v in params.items() if k.startswith('scipy.') or k.startswith('torch.')}
-    spillparams = {key: params.get(key) for key in SPILLAGE}|optimizer
+    spillparams = {key: params.get(key) for key in SPILLAGE if key in params}|optimizer
+    spillparams['ecutjy'] = spillparams.get('ecutjy', dftparams.get('ecutwfc'))
+    
     glbparams = {key: params.get(key) for key in GLOBAL}
+    
     compute = {key: params.get(key) for key in COMPUTE}
 
     return glbparams, dftparams, spillparams, compute

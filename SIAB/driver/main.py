@@ -4,7 +4,7 @@ from SIAB.abacus.api import build_abacus_jobs, job_done
 from SIAB.io.convention import dft_folder
 from SIAB.orb.api import GetOrbCascadeInstance
 from SIAB.abacus.blscan import jobfilter
-from SIAB.spillage.util import _spillparam
+from SIAB.spillage.util import _spill_opt_param
 
 def init(fn):
      '''
@@ -16,11 +16,10 @@ def init(fn):
          input filename
      '''
      glbparams, dftparams, spillparams, compute = read(fn)
+     
      # if fit_basis is jy, then set basis_type in dftparams to lcao explicitly
-     if spillparams.get('fit_basis', 'jy') == 'jy':
-          dftparams['basis_type'] = 'lcao'
-     else:
-          dftparams['basis_type'] = 'pw'
+     dftparams['basis_type'] = 'lcao' if spillparams.get('fit_basis', 'jy') == 'jy' else 'pw'
+     
      # link the geometries
      for orb in spillparams['orbitals']:
           orb['geoms'] = orb_link_geom(orb['geoms'], spillparams['geoms'])
@@ -31,9 +30,49 @@ def rundft(elem,
            rcuts,
            dftparam,
            geoms,
-           spill_guess,
-           compparam):
-     jobs = build_abacus_jobs(elem, rcuts, dftparam, geoms, spill_guess)
+           spillguess,
+           compparam,
+           **kwargs):
+     '''
+     run the ABACUS DFT calculations to generate the reference wavefunctions
+     
+     Parameters
+     ----------
+     elem: str
+         element symbol
+     rcuts: list[float]
+          the cutoff radius of orbital to generate. this parameter will affect
+          in two aspects: 1. in the ABACUS INPUT parameter, 2. the definition
+          of the orbital to generate
+     dftparam: dict
+          other ABACUS INPUT parameters
+     geoms: dict
+          the geometries that ABACUS perform the DFT calculations on
+     spillguess: str|None
+          the initial guess of the spillage optimization, now it must be `atomic`
+     compparam: dict
+          the computational parameters, including `abacus_command`, `environment`,
+          `mpi_command`
+     ecutjy: float, optional
+          the kinetic energy cutoff of the underlying jy, if not set, will use the
+          value of ecutwfc in dftparam
+     
+     Returns
+     -------
+     jobs: list[str]
+          the job names of the ABACUS calculations
+     '''
+     # placing the build_abacus_jobs ahead of the check of `abacus_command`,
+     # supporting the case that only generate the jy orbitals, without running
+     # all the dft calculations
+     jobs = build_abacus_jobs(elem=elem, 
+                              rcuts=rcuts, 
+                              dftparams=dftparam, 
+                              geoms=geoms, 
+                              spill_guess=spillguess, 
+                              **kwargs)
+     
+     # then run ABACUS
      abacus_command = compparam.get('abacus_command', 'abacus')
      if abacus_command is None:
           print('abacus command is not found, workflow terminated.', flush=True)
@@ -124,17 +163,20 @@ def spillage(elem,
      kwargs: dict
           additional parameters, including `max_steps`, `verbose`, `ftol`, `gtol`, `nthreads_rcut`
      '''
-     optimizer, options = _spillparam(kwargs)
+     optimizer, options = _spill_opt_param(kwargs)
      for rcut, task in _spilltasks(elem, rcuts, scheme, dft_root, run_mode):
-          initializer = {} if run_mode != 'jy' else {'rcut': rcut}
-          cascade = GetOrbCascadeInstance(elem, 
-                                          rcut, 
-                                          ecut, 
-                                          primitive_type,
-                                          dft_folder(elem, 'monomer', 0, **initializer),
-                                          task,
-                                          run_mode,
-                                          optimizer)
+          temp = {} if run_mode != 'jy' else {'rcut': rcut}
+          guess = kwargs.get('spill_guess')
+          initializer = dft_folder(elem, 'monomer', 0, **temp) if guess == 'atomic'\
+               else guess
+          cascade = GetOrbCascadeInstance(elem=elem, 
+                                          rcut=rcut, 
+                                          ecut=ecut, 
+                                          primitive_type=primitive_type,
+                                          initializer=initializer,
+                                          orbs=task,
+                                          mode=run_mode,
+                                          optimizer=optimizer)
           cascade.opt(immediplot=None,  # immediplot will cause threading bugs from matplotlib
                       diagnosis=True, 
                       options=options, 

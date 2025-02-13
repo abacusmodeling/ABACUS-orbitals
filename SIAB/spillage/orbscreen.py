@@ -59,7 +59,6 @@ class TestScreen(unittest.TestCase):
         jobdir = os.path.join(here, 'testfiles')
         
         T_In = screen(os.path.join(jobdir, 'In_gga_10au_100Ry_3s3p3d2f.orb'), item="T")
-        #T_In = screen('./testfiles/In_gga_10au_100Ry_3s3p3d2f.orb', item="T")
         
         self.assertEqual([len(T_l) for T_l in T_In], [3, 3, 3, 2])
 
@@ -89,8 +88,7 @@ class TestScreen(unittest.TestCase):
         import matplotlib.pyplot as plt
         forb = '/root/abacus-develop/numerical_orbitals/SG15-Version1p0__AllOrbitals-VersionJY'\
         '/Cl/primitive_jy/Cl_gga_10au_100Ry_30s30p29d.orb'
-        #here = os.path.dirname(os.path.abspath(__file__))
-        #forb = os.path.join(here, 'testfiles/In_gga_10au_100Ry_3s3p3d2f.orb')
+
         nao = read_nao(forb)
         r = nao['dr'] * np.arange(nao['nr'])
         chi = nao['chi']

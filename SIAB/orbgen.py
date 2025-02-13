@@ -25,18 +25,19 @@ def main():
 
     glbparam, dftparam, spillparam, compparam = read(start())
 
-    _ = rundft(glbparam['element'],
-               glbparam['bessel_nao_rcut'],
-               dftparam, 
-               spillparam.get('geoms'), 
-               spillparam.get('spill_guess'),
-               compparam)
+    _ = rundft(elem=glbparam['element'],
+               geoms=spillparam['geoms'], 
+               rcuts=glbparam['bessel_nao_rcut'],
+               dftparam=dftparam,
+               spillguess=spillparam.get('spill_guess'),
+               compparam=compparam)
     
     options = {k: v for k, v in spillparam.items() 
                if k not in 
-               ['geoms', 'orbitals', 'primitive_type', 'fit_basis', 'spill_guess']}
+               ['geoms', 'orbitals', 'primitive_type', 'fit_basis']}
+    # when call spillage, the element is merely a symbol, so we pass it as a string
     spillage(elem=glbparam['element'],
-             ecut=dftparam['ecutwfc'],
+             ecut=spillparam['ecutjy'],
              rcuts=glbparam['bessel_nao_rcut'],
              primitive_type=spillparam['primitive_type'],
              scheme=spillparam['orbitals'],

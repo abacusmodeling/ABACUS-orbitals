@@ -113,18 +113,23 @@ class Orbital:
         diagnosis : bool
             diagnose the purity of the initial guess
         '''
+        # sanity check the first
+        if nzshift is not None and not isinstance(nzshift, list):
+            raise TypeError('nzshift should be a list of int or None')
+        
         if srcdir is None:
             print('WARNING: initializing orbital with random coefficients', flush=True)
             less_dof = 0 if self.primitive_type_ == 'normalized' else 1
             coefs_rnd = [np.random.random((nz, _nbes(l, self.rcut_, self.ecut_) - less_dof)).tolist()
                          for l, nz in enumerate(self.nzeta_)]
             return _coef_subset(self.nzeta_, nzshift, coefs_rnd)[0] # [l][iz][q]
-        if not os.path.exists(srcdir):
-            raise FileNotFoundError(f'{srcdir} does not exist')
-        if nzshift is not None and not isinstance(nzshift, list):
-            raise TypeError('nzshift should be a list of int or None')
+        elif srcdir.endswith('.orb'):
+            coefs_restart = self.restart_from(srcdir)
+            return _coef_subset(self.nzeta_, nzshift, coefs_restart)[0]
+
         if not isinstance(diagnosis, bool):
             raise TypeError('diagnosis should be a bool')
+
         return None
 
     def coef(self):
@@ -138,17 +143,38 @@ class Orbital:
         if not isinstance(value, Orbital):
             return False
         return self.rcut_ == value.rcut_ and\
-            self.ecut_ == value.ecut_ and\
-            self.elem_ == value.elem_ and\
-            self.nzeta_ == value.nzeta_ and\
-            self.primitive_type_ == value.primitive_type_ and\
-            self.folders_ == value.folders_ and\
-            self.nbnds_ == value.nbnds_ and\
-            self.coef_ == value.coef_
+               self.ecut_ == value.ecut_ and\
+               self.elem_ == value.elem_ and\
+               self.nzeta_ == value.nzeta_ and\
+               self.primitive_type_ == value.primitive_type_ and\
+               self.folders_ == value.folders_ and\
+               self.nbnds_ == value.nbnds_ and\
+               self.coef_ == value.coef_
 
     def __ne__(self, value):
         '''compare two orbitals'''
         return not self.__eq__(value)
+
+    def restart_from(self, forb):
+        '''get coef from another orbital
+        
+        Parameters
+        ----------
+        forb : str
+            the orbital file to restart from
+        
+        Returns
+        -------
+        list[list[list[float]]]: the coef to restart from
+        '''
+        from SIAB.spillage.spillage import initgen_restart
+        print(f'Orbital: restart from {forb}', flush=True)
+        return initgen_restart(forb=forb,
+                               nzeta=self.nzeta_,
+                               ecut=self.ecut_,
+                               rcut=self.rcut_,
+                               dr=0.01,
+                               primitive_type=self.primitive_type_)
 
 class OrbgenCascade:
     '''
@@ -264,21 +290,33 @@ class OrbgenCascade:
         print(f'OrbgenCascade: start optimizing orbitals in cascade', flush=True)
         for i in range(len(self.orbitals_)):
             orb, ifroz, iconfs = self.orbitals_[i], self.ifrozen_[i], self.iuniqfds_[i]
-            orb_frozen = self.orbitals_[ifroz] if ifroz is not None else None
-            coefs_frozen = [orb_frozen.coef_] if orb_frozen else None
+            orb_frozen, coefs_frozen, nzshift = None, None, None
+            if ifroz is not None:
+                orb_frozen = self.orbitals_[ifroz]
+                coefs_frozen = [orb_frozen.coef_]
+                nzshift = orb_frozen.nzeta_
             
             # only initialize when necessary
-            nzshift = None if orb_frozen is None else orb_frozen.nzeta_
             orb.init(self.initializer_, nzshift, diagnosis) \
                 if isinstance(self.minimizer_, (Spillage_jy, SpillTorch_jy)) \
                 else orb.init(self.initializer_, nzmax, nzshift, diagnosis)
             # then optimize
-            coefs_shell, spillage = self.minimizer_.opt([orb.coef_], coefs_frozen, 
-                                                         iconfs, orb.nbnds_, 
-                                                         options,
-                                                         nthreads)
+            # NOTE: the second param is always the inner, and the initial guess is always
+            #       for the outer shell. The following function call will always only return
+            #       the optimized outer shell (also with the optimized spillage value)
+            coefs_shell, spillage = self.minimizer_.opt(
+                [orb.coef_],  # Initial guess, coef_init[itype][l][zeta][q] -> float
+                coefs_frozen, # Frozen component, coef_frozen[itype][l][zeta][q] -> float
+                iconfs,       # List of configuration indices to be included in the optimization
+                orb.nbnds_,   # Band indices to be included
+                options,
+                nthreads)
             print(f'OrbgenCascade: orbital optimization ends with spillage = {spillage:.8e}', flush=True)
             orb.coef_ = merge(coefs_frozen, coefs_shell, 2)[0] if coefs_frozen else coefs_shell[0]
+            
+            # BUG: immediplot will cause threading bugs from matplotlib (unstable).
+            #      so we will not use it.
+            #      But at least you can find how to get orb file with coefs optimized
             if immediplot:
                 f = _save_orb(orb.coef_, orb.elem_, orb.ecut_, orb.rcut_, immediplot)
                 out.append(f)

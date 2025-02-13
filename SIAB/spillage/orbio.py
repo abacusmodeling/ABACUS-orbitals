@@ -367,7 +367,6 @@ class _TestOrbIO(unittest.TestCase):
         here = os.path.dirname(os.path.abspath(__file__))
         jobdir = os.path.join(here, 'testfiles')
 
-        #nao = read_nao('./testfiles/In_gga_10au_100Ry_3s3p3d2f.orb')
         nao = read_nao(os.path.join(jobdir, 'In_gga_10au_100Ry_3s3p3d2f.orb'))
 
         self.assertEqual(nao['elem'], 'In')
@@ -394,9 +393,7 @@ class _TestOrbIO(unittest.TestCase):
         here = os.path.dirname(os.path.abspath(__file__))
         jobdir = os.path.join(here, 'testfiles')
 
-        #nao = read_nao('./testfiles/In_gga_10au_100Ry_3s3p3d2f.orb')
         nao = read_nao(os.path.join(jobdir, 'In_gga_10au_100Ry_3s3p3d2f.orb'))
-        #tmpfile = './testfiles/In_gga_10au_100Ry_3s3p3d2f.orb.tmp'
         tmpfile = os.path.join(jobdir, 'In_gga_10au_100Ry_3s3p3d2f.orb.tmp')
 
         write_nao(tmpfile, **nao)

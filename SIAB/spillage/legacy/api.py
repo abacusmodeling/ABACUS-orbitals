@@ -26,8 +26,11 @@ the Spillage function. The interface in principle needs the following informatio
 '''
 import os
 import re
+import unittest
+
 import numpy as np
 import matplotlib.pyplot as plt
+
 from SIAB.spillage.orbio import read_param, write_nao, write_param
 from SIAB.spillage.spillage import Spillage_jy, Spillage_pw, flatten,\
     initgen_jy, initgen_pw
@@ -40,19 +43,17 @@ from SIAB.spillage.datparse import read_wfc_lcao_txt, read_triu, \
     read_istate_info
 from SIAB.spillage.lcao_wfc_analysis import _wll
 from SIAB.spillage.lcao_wfc_analysis import api as wfc_analysis_api
-import unittest
 from SIAB.orb.jy_expmt import _coef_init as _coef_init_jy
 from SIAB.orb.jy_expmt import _ibands
-from SIAB.spillage.util import _legacy_dft2spillparam
 from SIAB.io.convention import orb as name_orb
 from SIAB.io.convention import orb_folder as name_orb_folder
 from SIAB.spillage.util import literal_eval as leval
 
 def _coef_gen(rcut: float, 
               ecut: float, 
-              lmax: int, 
               primitive_type: str = 'reduced', 
-              value: str = "eye"):
+              value: str = "eye",
+              **kwargs):
     """Directly generate the coefficients of the orbitals instead of performing optimization
     
     Parameters
@@ -61,12 +62,14 @@ def _coef_gen(rcut: float,
         the cutoff radius
     ecut: float
         the energy cutoff
-    lmax: int
-        the maximum angular momentum
     primitive_type: str
         the type of jY basis, can be "reduced" or "normalized"
     value: str
         the value to be returned, can be "eye"
+    l : int
+        the angular momentum, exclusive with lmax, only specify one of them
+    lmax : int
+        the maximum angular momentum, exclusive with l, only specify one of them
     
     Returns
     -------
@@ -75,17 +78,25 @@ def _coef_gen(rcut: float,
 
     if not isinstance(ecut, (int, float)):
         raise ValueError("Expected ecut to be an integer or float")
-    if not isinstance(lmax, int):
-        raise ValueError("Expected lmax to be an integer")
     if primitive_type not in ['reduced', 'normalized']:
         raise ValueError("Expected primitive_type to be 'reduced' or 'normalized'")
     if not isinstance(value, str):
         raise ValueError("Expected value to be a string")
+    if 'l' in kwargs and 'lmax' in kwargs:
+        raise ValueError("Only specify one of l and lmax")
     
-    less_dof = 0 if primitive_type == 'normalized' else 1
-    nbes_rcut = [_nbes(l, rcut, ecut) - less_dof for l in range(lmax + 1)]
+    less_dof = int(primitive_type == 'reduced') # null space has one less Degree of Freedom
+    if 'lmax' in kwargs:
+        lmax = kwargs['lmax']
+        nbes_rcut = [_nbes(l, rcut, ecut) - less_dof for l in range(lmax + 1)]
+    elif 'l' in kwargs:
+        l = kwargs['l']
+        nbes_rcut = [0 for _ in range(l)] + [_nbes(l, rcut, ecut) - less_dof]
+    else:
+        raise ValueError("Either l or lmax should be specified")
+    
     if value == "eye":
-        return [[np.eye(nbes_rcut[l]).tolist() for l in range(lmax + 1)]]
+        return [[np.eye(nz).tolist() if nz > 0 else [] for nz in nbes_rcut]]
     else:
         raise ValueError("Only 'eye' is supported for value presently")
 
@@ -497,8 +508,9 @@ def _coef_griddata(coefs, rcut, dr: float = 0.01, primitive_type: str = "reduced
     rcut and grid spacing dr. The coefficients should be in the form of
     [it][l][zeta][q].
     
-    Args:
-    coefs: list of list of list of list of float
+    Parameters
+    ----------
+    coefs: [list[list[list[float]]]
         the coefficients of the orbitals
     rcut: float
         the cutoff radius
@@ -507,8 +519,9 @@ def _coef_griddata(coefs, rcut, dr: float = 0.01, primitive_type: str = "reduced
     primitive_type: str
         the type of jY basis, can be "reduced", "nullspace", "svd" or "raw"
 
-    Returns:
-    np.ndarray: the real space grid data
+    Returns
+    -------
+    A nested list of numerical radial functions, chi[l][zeta][ir] -> float.
     """
 
     r = np.linspace(0, rcut, int(rcut/dr)+1) # hard code dr to be 0.01? no...
@@ -534,6 +547,8 @@ def run(siab_settings: dict, calculation_settings: list, folders: list):
         etc, and `deform` is index of deformation of the geometry, such as stretching,
         etc.
     """
+    from SIAB.spillage.util import _legacy_dft2spillparam
+    
     rcuts, ecut, elem, primitive_type, run_type, spil_option = \
         _legacy_dft2spillparam(calculation_settings, siab_settings, folders)
     for rcut in rcuts: # can be parallelized here
@@ -552,7 +567,7 @@ def run(siab_settings: dict, calculation_settings: list, folders: list):
         elif run_type == "restart":
             raise NotImplementedError("restart is not implemented yet")
         else: # run_type == "none", used to generate jY basis
-            coefs_tot = [_coef_gen(rcut, ecut, len(orb['nzeta']) - 1) for orb in siab_settings['orbitals']]
+            coefs_tot = [_coef_gen(rcut, ecut, lmax=len(orb['nzeta']) - 1) for orb in siab_settings['orbitals']]
 
         #################
         # save orbitals #
@@ -792,7 +807,7 @@ class TestAPI(unittest.TestCase):
         rcut = 3.0
         ecut = 10.0
         lmax = 3
-        coefs = _coef_gen(rcut, ecut, lmax, 'normalized')
+        coefs = _coef_gen(rcut, ecut, lmax=lmax, primitive_type='normalized')
         self.assertEqual(len(coefs), 1) # always only one atomtype
         self.assertEqual(len(coefs[0]), lmax + 1) # lmax + 1 orbitals
         for l in range(lmax + 1):

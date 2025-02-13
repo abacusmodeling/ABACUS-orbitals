@@ -183,3 +183,4 @@ def cube(element, mass, fpseudo, lattice_constant, bond_length, nspin, forb = No
     result += "%10.8f %10.8f %10.8f 0 0 0\n"%(bond_length / 2 + shift, -bond_length / 2 + shift, -bond_length / 2 + shift)
     result += "%10.8f %10.8f %10.8f 0 0 0\n"%(-bond_length / 2 + shift, bond_length / 2 + shift, -bond_length / 2 + shift)
     return result
+

@@ -3,14 +3,18 @@ Brief
 -----
 the derived class of Orbital for handling specifically the jy as fit_basis case
 '''
+# in-built modules
+import os
+import unittest
 
+# third-party modules
+import numpy as np
+
+# local modules
 from SIAB.orb.orb import Orbital, OrbgenCascade
 from SIAB.spillage.legacy.api import _nzeta_mean_conf
 from SIAB.orb.jy_expmt import _coef_init
 from SIAB.spillage.datparse import read_input_script
-import numpy as np
-import unittest
-import os
 
 class OrbitalJY(Orbital):
     

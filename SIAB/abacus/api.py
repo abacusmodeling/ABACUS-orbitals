@@ -68,14 +68,16 @@ def _build_case(proto,
     pp = os.path.basename(atomspecies[elem].get('pp'))
     orb = None if atomspecies[elem].get('orb') is None \
         else os.path.basename(atomspecies[elem].get('orb'))
-    pertgeom_, _ = STRU(proto, 
-                        elem, 
-                        1, 
-                        pp, 
-                        30,
-                        pertmag,
-                        dftparam.get('nspin', 1),
-                        orb)
+    # the structure -> STRU file conversion can be more general
+    # once there is the Cell instance and a method to convert it to STRU
+    pertgeom_, _ = STRU(shape=proto, 
+                        element=elem, 
+                        mass=1, 
+                        fpseudo=pp, 
+                        lattice_constant=30,
+                        bond_length=pertmag,
+                        nspin=dftparam.get('nspin', 1),
+                        forb=orb)
     
     folder = dft_folder(elem, proto, pertmag, rcut)
     if is_duplicate(folder, dftparam):
@@ -163,11 +165,13 @@ def _build_atomspecies(elem,
     pp : str
         the pseudopotential file path
     ecut : float|str
-        the kinetic energy cutoff in Ry for planewave, or a string startswith '='
+        the kinetic energy cutoff in Ry for spherical Bessel function, 
+        or a string startswith '=', which means the exact value
     rcut : float
         the cutoff radius in a.u. for primtive jy
     lmaxmax : int|str
-        the maximum angular momentum for generating the orbital file, or a string startswith '='
+        the maximum angular momentum for generating the orbital file, 
+        or a string startswith '=', which means the exact value
     primitive_type : str
         the type of primitive basis set
     orbital_dir : str
@@ -191,29 +195,23 @@ def _build_atomspecies(elem,
             # print(f'{forb} already exists, skip the generation', flush=True)
             return {elem: out}
         # otherwise...
-        coefs = _coef_gen(rcut, ecut_, lmax_, primitive_type)[0]
+        coefs = _coef_gen(rcut, ecut_, lmax=lmax_, primitive_type=primitive_type)[0]
         coefs = _filter_coef(coefs, nzeta)
         _ = _save_orb(coefs, elem, ecut_, rcut, orbital_dir, primitive_type)
     return {elem: out}
 
-def _build_pw(elem, proto, pertkind, pertmag, rcuts, param_general, param_specific):
+def _build_pw(atomspecies, geom, rcuts, param_general, param_specific):
     '''build abacus_pw calculation on one structural prototype, perturbaed by
     one pertkind with magnitude specified by pertmag. Generate overlap matrix
     <psi|jy> for jy primitive basis functions with cutoff radius rcuts.
     
     Parameters
     ----------
-    elem : str
-        element symbol
-    proto : str
-        the prototype of structure, can be 'dimer', 'trimer', ..., etc. See
-        SIAB/data/structures.py for details
-    pertkind : str
-        the kind of perturbation executed on the proto, can be 'stretch',
-        'twist' and 'shear'. The latter two are only for bulk. The first for
-        molecule will be the interatomic distance in Angstrom
-    pertmag : float
-        the magnitude the perturbation executed on structural proto.
+    atomspecies : list[dict]
+        a list of atom species, each element contains at least its symbol
+    geom : dict
+        the geometry of the structure, should contain the following keys:
+        proto, pertkind, pertmag.
     rcuts : list
         real space cutoff for orbital to generate. For pw calculation, will be
         used to generate the OVERLAP_S, OVERLAP_Q and OVERLAP_Sq tables.
@@ -229,31 +227,25 @@ def _build_pw(elem, proto, pertkind, pertmag, rcuts, param_general, param_specif
         return all executed folders. If the job in folder has been completed
         in previous run, it will not be returned by this function.
     '''
-    pseudo_dir = param_general['pseudo_dir']
-    return [_build_case(proto=proto, 
-                        pertkind=pertkind, 
-                        pertmag=pertmag, 
-                        atomspecies=_build_atomspecies(elem, pseudo_dir), 
+    return [_build_case(proto=geom['proto'], 
+                        pertkind=geom['pertkind'], 
+                        pertmag=geom['pertmag'], 
+                        atomspecies=_build_atomspecies(elem=atomspecies[0]['elem'], 
+                                                       pp=param_general['pseudo_dir']), 
                         dftshared=param_general|{'bessel_nao_rcut': rcuts},
                         dftspecific=param_specific)]
 
-def _build_jy(elem, proto, pertkind, pertmag, rcuts, param_general, param_specific):
+def _build_jy(atomspecies, geom, rcuts, param_general, param_specific):
     '''build abacus lcao (jy) calculation on one structural prototype, perturbaed by
     one pertkind with magnitude specified by pertmag. 
     
     Parameters
     ----------
-    elem : str
-        element symbol
-    proto : str
-        the prototype of structure, can be 'dimer', 'trimer', ..., etc. See
-        SIAB/data/structures.py for details
-    pertkind : str
-        the kind of perturbation executed on the proto, can be 'stretch',
-        'twist' and 'shear'. The latter two are only for bulk. The first for
-        molecule will be the interatomic distance in Angstrom
-    pertmag : float
-        the magnitude the perturbation executed on structural proto.
+    atomspecies : list[dict]
+        a list of atom species, each element contains at least its symbol
+    geom : dict
+        the geometry of the structure, should contain the following keys:
+        proto, pertkind, pertmag.
     rcuts : list
         real space cutoff for orbital to generate. For lcao calculation, will
         be used to generate primitive jy orbitals with these rcuts
@@ -269,15 +261,17 @@ def _build_jy(elem, proto, pertkind, pertmag, rcuts, param_general, param_specif
         return all executed folders. If the job in folder has been completed
         in previous run, it will not be returned by this function.
     '''
-    pseudo_dir = param_general['pseudo_dir']
-    ecutwfc = param_general['ecutwfc']
-    lmaxmax = param_specific.get('lmaxmax', 2)
-    return [_build_case(proto=proto, 
-                        pertkind=pertkind, 
-                        pertmag=pertmag, 
-                        atomspecies=_build_atomspecies(elem, pseudo_dir, ecutwfc, rcut, lmaxmax), 
+    return [_build_case(proto=geom['proto'], 
+                        pertkind=geom['pertkind'],
+                        pertmag=geom['pertmag'],
+                        atomspecies=_build_atomspecies(elem=atomspecies[0]['elem'], 
+                                                       pp=param_general['pseudo_dir'], 
+                                                       ecut=atomspecies[0]['ecutjy'], 
+                                                       rcut=rcut, 
+                                                       lmaxmax=param_specific.get('lmaxmax', 2)), 
                         dftshared=param_general|{'bessel_nao_rcut': rcut},
-                        dftspecific=param_specific) for rcut in rcuts]
+                        dftspecific=param_specific) 
+            for rcut in rcuts]
 
 def _build_pert(elem, proto, pertkind, pertmags, n = 5, dr_l = 0.2, dr_r = 0.5):
     '''generate the perturbation on proto if not set
@@ -321,7 +315,8 @@ def build_abacus_jobs(elem,
                       rcuts,
                       dftparams,
                       geoms,
-                      spill_guess: str = 'atomic'):
+                      spill_guess: str = 'atomic',
+                      **kwargs):
     '''build series of abacus jobs
     
     Parameters
@@ -335,6 +330,10 @@ def build_abacus_jobs(elem,
         to overwrite the shared dftparam
     spill_guess : str
         the guess for the spillage optimization
+    ecutjy : float
+        the kinetic energy cutoff for the jy orbitals. if not specified, will
+        use the ecutwfc value from dftparams (not a smart choice because it
+        is in principle different)
 
     Returns
     -------
@@ -343,13 +342,30 @@ def build_abacus_jobs(elem,
         in previous run, it will not be returned by this function.
     '''
     _kernel_builder = _build_pw if dftparams.get('basis_type', 'lcao') == 'pw' else _build_jy
+    myatoms = [{'elem': elem,
+                'ecutjy': kwargs.get('ecutjy', dftparams['ecutwfc']),
+                'rcutjy': rcuts,
+                'fpsp': None,  # when will the atomspecies know its pp?
+                'forb': None}] # a list of AtomSpecies instances would be better
+    
     jobs = []
-    for geom in geoms: # transverse the 'geoms' key in input file
+    for geom in geoms: # transverse the 'geoms' key in input file...
+        # collect those parameters specified in the geom section, will overwrite those
+        # in the dftparams
         dftspecific = {k: v for k, v in geom.items() if k in abacus_params()}
         for pertmag in _build_pert(elem, geom['proto'], geom['pertkind'], geom['pertmags']): 
             # except exact values, should also support 'default' and 'scan'
-            jobs += _kernel_builder(elem=elem, proto=geom['proto'], pertkind=geom['pertkind'],
-                                    pertmag=pertmag, rcuts=rcuts, param_general=dftparams,
+            jobs += _kernel_builder(atomspecies=myatoms,
+                                    geom={'proto': geom['proto'], 
+                                          'pertkind': geom['pertkind'], 
+                                          'pertmag': pertmag}, 
+                                    # a Cell instance would be better
+                                    rcuts=rcuts, 
+                                    # rcuts will be used in two places, one is the 
+                                    # ABACUS INPUT parameter `bessel_nao_rcut`, the
+                                    # other is only in LCAO case that generate the
+                                    # corresponding primitive jy orbitals
+                                    param_general=dftparams,
                                     param_specific=dftspecific)
 
     # then the initial guess
@@ -357,10 +373,16 @@ def build_abacus_jobs(elem,
         nbndmax = int(max([
             geom['nbands']/natom_from_shape(geom['proto']) for geom in geoms]))
         lmaxmax = int(max([geom.get('lmaxmax', 2) for geom in geoms]))
-        jobs += _kernel_builder(elem=elem, proto='monomer', pertkind='stretch', 
-                                pertmag=0, rcuts=rcuts, param_general=dftparams, 
-                                param_specific={'nbands': nbndmax+20, 'lmaxmax': lmaxmax})
-
+        jobs += _kernel_builder(atomspecies=myatoms,
+                                geom={'proto': 'monomer', 
+                                      'pertkind': 'stretch', 
+                                      'pertmag': 0},
+                                rcuts=rcuts, 
+                                param_general=dftparams, 
+                                param_specific={'nbands': nbndmax+20, # magic number! is 20+ enough?
+                                                'lmaxmax': lmaxmax})
+    else:
+        print(f'`spill_guess` is not `atomic`: {spill_guess}.', flush=True)
     return [job for job in jobs if job is not None]
 
 def job_done(folder):
