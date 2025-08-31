@@ -291,7 +291,6 @@ def get_input_INPUT(name, Pseudo_dir, nspin, maxL, nbands_STRU, Ecut, Rcut, smea
         mixing_type         pulay       // about charge mixing
         mixing_beta         0.4
         mixing_ndim         8
-        printe              1
         ''')
     return input_INPUT
 
