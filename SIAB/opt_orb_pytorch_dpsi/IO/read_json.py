@@ -1,13 +1,30 @@
+import util
 import json
-from util import Info
 
 def read_json(file_name):
 
 	with open(file_name,"r") as file:
 		input = file.read()
 	input = json.loads(input)
+
+	input_default =	{
+		"info": {
+			"lr": 0.01,
+			"cal_T": False,
+			"cal_smooth": False,
+			"max_steps": 30000
+		},	
+		"C_init_info": {
+			"init_from_file": False,
+		},
+		"V_info": {
+			"init_from_file": True,
+			"same_band": True
+		}
+	}
+	util.set_dict_default(input, input_default)
 	
-	info = Info()
+	info = util.Info()
 	for info_attr,info_value in input["info"].items():
 		info.__dict__[info_attr] = info_value
 	info.Nl = { it:len(Nu) for it,Nu in info.Nu.items() }
@@ -40,7 +57,8 @@ def read_json(file_name):
 			"Ecut": { "C":200,     "O":200     },
 			"lr": 0.01,
 			"cal_T": false,
-			"cal_smooth": false
+			"cal_smooth": false,
+			"max_steps": 30000
 		},
 		"weight":
 		{

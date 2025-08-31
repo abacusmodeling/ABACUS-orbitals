@@ -69,11 +69,7 @@ def main():
 
 		loss_old = np.inf
 
-		maxSteps = 30000
-		if type(info_opt.max_steps) == int :
-			if info_opt.max_steps > 0 :
-				maxSteps = info_opt.max_steps
-		for istep in range(maxSteps):
+		for istep in range(info_opt.max_steps):
 
 			Spillage = 0
 			for ist in range(len(info_stru)):

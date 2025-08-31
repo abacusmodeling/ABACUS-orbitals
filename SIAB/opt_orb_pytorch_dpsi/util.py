@@ -40,3 +40,11 @@ def update0(t):
 
 def Nm(il):
 	return 2*il+1
+
+def set_dict_default(m, m_default):
+	for key,value in m_default.items():
+		if key in m:
+			if isinstance(value,dict):
+				set_dict_default(m[key], value)
+		else:
+			m[key] = value
