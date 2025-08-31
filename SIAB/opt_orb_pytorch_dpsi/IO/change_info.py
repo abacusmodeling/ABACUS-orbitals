@@ -126,4 +126,4 @@ def get_info_max(info_stru, info_element):
 	"""
 	[{'Na': 2, 'Nb': 6, 'Ne': 19, 'Nl': 3, 'Nm': 5, 'Nt': 1, 'Nu': 2},
 	 {'Na': 2, 'Nb': 6, 'Ne': 19, 'Nl': 3, 'Nm': 5, 'Nt': 1, 'Nu': 2}]
-	"""	
+	"""

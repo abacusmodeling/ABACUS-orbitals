@@ -13,7 +13,7 @@ def read_json(file_name):
 			"cal_T": False,
 			"cal_smooth": False,
 			"max_steps": 30000
-		},	
+		},
 		"C_init_info": {
 			"init_from_file": False,
 		},
@@ -23,12 +23,12 @@ def read_json(file_name):
 		}
 	}
 	util.set_dict_default(input, input_default)
-	
+
 	info = util.Info()
 	for info_attr,info_value in input["info"].items():
 		info.__dict__[info_attr] = info_value
 	info.Nl = { it:len(Nu) for it,Nu in info.Nu.items() }
-		
+
 	return input["file_list"], info, input["weight"], input["C_init_info"], input["V_info"]
 
 	""" file_name
@@ -69,7 +69,7 @@ def read_json(file_name):
 				"~/C_bulk/OUT.ABACUS/istate.info",
 				"~/CO2/OUT.ABACUS/istate.info"
 			]
-		},	
+		},
 		"C_init_info": {
 			"init_from_file": false,
 			"C_init_file": "~/CO/ORBITAL_RESULTS.txt",
@@ -81,7 +81,7 @@ def read_json(file_name):
 		}
 	}
 	"""
-	
+
 	""" info
 		Nt_all		['C', 'O']
 		Nu			{'C': [2, 2, 1], 'O': [3, 2, 1]}
