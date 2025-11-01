@@ -5,23 +5,23 @@ def ND_list(*sizes,element=None):
 		for i in range(len(l)):
 			l[i] = ND_list(*size_other,element=element)
 	else:
-		if element in ["dict()","list()"]:	
-			for i in range(size_1):	
+		if element in ["dict()","list()"]:
+			for i in range(size_1):
 				l[i] = eval(element)
 	return l
-	
+
 
 def ignore_line(file,N):
-	for _ in range(N):	
+	for _ in range(N):
 		file.readline()
-		
-		
+
+
 class Info:
 	def Nm(self,il): return 2*il+1
 	def __str__(self):
 		return "\n".join([name+"\t"+str(value) for name,value in self.__dict__.items()])
 	__repr__=__str__
-	
+
 def change_to_cuda(s):
 	if isinstance(s,list):
 		return [change_to_cuda(x) for x in s]
@@ -30,7 +30,7 @@ def change_to_cuda(s):
 	elif isinstance(s,torch.Tensor):
 		return s.cuda()
 	elif isinstance(s,torch_complex.ComplexTensor):
-		return torch_complex.ComplexTensor( change_to_cuda(s.real), change_to_cuda(s.imag) ) 
+		return torch_complex.ComplexTensor( change_to_cuda(s.real), change_to_cuda(s.imag) )
 	else:
 		print(s)
 		raise TypeError("change_to_cuda")

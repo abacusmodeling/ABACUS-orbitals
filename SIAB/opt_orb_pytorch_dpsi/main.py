@@ -58,7 +58,7 @@ def main():
 	#opt = radam.RAdam( sum(C.values(),[]), lr=info_opt.lr, eps=1e-20 )
 	opt = torch_optimizer.SWATS( sum(C.values(),[]), lr=info_opt.lr, eps=1e-20 )
 
-	spillage = Opt_Orbital_Spillage(info_stru, info_element, V_info, file_list)
+	spillage = Opt_Orbital_Spillage(info_stru, info_element, V_info, info_opt["norm"], file_list)
 	spillage.set_QSVI(QI, SI, VI_origin)
 	if "linear" in file_list.keys():
 		spillage.set_QSVI_linear(QI_linear, SI_linear, VI_linear)

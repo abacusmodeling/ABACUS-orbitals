@@ -12,6 +12,7 @@ def read_json(file_name):
 			"lr": 0.01,
 			"cal_T": False,
 			"cal_smooth": False,
+			"norm": "element",
 			"max_steps": 30000
 		},
 		"C_init_info": {
@@ -58,6 +59,7 @@ def read_json(file_name):
 			"lr": 0.01,
 			"cal_T": false,
 			"cal_smooth": false,
+			"norm": "element" / "max" / "max_ist" / "one",
 			"max_steps": 30000
 		},
 		"weight":
