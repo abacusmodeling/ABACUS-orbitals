@@ -45,10 +45,12 @@ def plot_orbital(orb,Rcut,dr):
 		with open("ORBITAL_PLOTU.dat", "w") as file:
 			Nr = int(Rcut[it]/dr[it])+1
 			for ir in range(Nr):
-				print( '%10.6f'%(ir*dr[it]),end="  ",file=file)
+				#print( '%10.6f'%(ir*dr[it]),end="  ",file=file)
+				print( ir*dr[it], end="\t",file=file)
 				for il,orb_tl in enumerate(orb_t):
 					for orb_tlu in orb_tl:
-						print( '%18.14f'%orb_tlu[ir],end="  ",file=file)
+						#print( '%18.14f'%orb_tlu[ir],end="  ",file=file)
+						print( orb_tlu[ir], end="\t",file=file)
 				print(file=file)
 
 

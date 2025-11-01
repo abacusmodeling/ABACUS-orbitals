@@ -6,7 +6,7 @@ from scipy.optimize import fsolve
 import functools
 import torch
 
-def generate_orbital(info_element,C,E):
+def generate_orbital(info_element, C, E):
 	""" C[it][il][ie,iu] """
 	""" orb[it][il][iu][r] = \suml_{ie} C[it][il][ie,iu] * jn(il,ie*r) """
 	orb = dict()
@@ -23,8 +23,41 @@ def generate_orbital(info_element,C,E):
 						orb[it][il][iu][ir] += C[it][il][ie,iu].item() * spherical_jn(il,E[it][il,ie].item()*r)
 	return orb
 
+def generate_jn(info_element, E):
+	""" orb[it][il][ie][r] = jn(il,ie*r) """
+	orb = dict()
+	for it in info_element:
+		Nr = int(info_element[it].Rcut/info_element[it].dr)+1
+		orb[it] = ND_list(info_element[it].Nl)
+		for il in range(info_element[it].Nl):
+			orb[it][il] = ND_list(info_element[it].Ne)
+			for ie in range(info_element[it].Ne):
+				orb[it][il][ie] = np.zeros(Nr)
+				for ir in range(Nr):
+					r = ir * info_element[it].dr
+					orb[it][il][ie][ir] = spherical_jn(il, E[it][il,ie].item()*r)
+	return orb
 
-def smooth_orbital(orb,Rcut,dr,smearing_sigma):
+def generate_jn_smooth(info_element, E):
+	""" orb[it][il][ie][r] = jn(il,ie*r) - jn(il,(ie+1)*r) * jn'(il,ie*Rcut) / jn'(il,(ie+1)*Rcut) """
+	orb = dict()
+	for it in info_element:
+		Nr = int(info_element[it].Rcut/info_element[it].dr)+1
+		orb[it] = ND_list(info_element[it].Nl)
+		for il in range(info_element[it].Nl):
+			orb[it][il] = ND_list(info_element[it].Ne-1)
+			for ie in range(info_element[it].Ne-1):
+				mix_coef = ( spherical_jn(il, E[it][il,ie  ].item()*info_element[it].Rcut, True) * E[it][il,ie  ].item() )			\
+					     / ( spherical_jn(il, E[it][il,ie+1].item()*info_element[it].Rcut, True) * E[it][il,ie+1].item() )
+				orb[it][il][ie] = np.zeros(Nr)
+				for ir in range(Nr):
+					r = ir * info_element[it].dr
+					orb[it][il][ie][ir] = spherical_jn(il, E[it][il,ie].item()*r) - mix_coef * spherical_jn(il, E[it][il,ie+1].item()*r)
+	return orb
+
+
+
+def smooth_orbital(orb, Rcut, dr, smearing_sigma):
 	for it,orb_t in orb.items():
 		for orb_tl in orb_t:
 			for orb_tlu in orb_tl:
@@ -33,14 +66,12 @@ def smooth_orbital(orb,Rcut,dr,smearing_sigma):
 					r = ir * dr[it]
 					orb_tlu[ir] *= 1-np.exp( -(r-Rcut[it])**2/(2*smearing_sigma**2) )
 
-
-
-def inner_product( orb1, orb2, dr ):
+def inner_product(orb1, orb2, dr):
 	assert orb1.shape == orb2.shape
 	r = np.array(range(orb1.shape[0]))*dr
 	return simps( orb1 * orb2 * r * r, dx=dr )
 
-def normalize(orb,dr,C=None,flag_norm_orb=False,flag_norm_C=False):
+def normalize(orb, dr, C=None, flag_norm_orb=False, flag_norm_C=False):
 	""" C[it][il][ie,iu] """
 	""" orb[it][il][iu][r] = \suml_{ie} C[it][il][ie,iu] * jn(il,ie*r) """
 	for it,orb_t in orb.items():
@@ -50,7 +81,7 @@ def normalize(orb,dr,C=None,flag_norm_orb=False,flag_norm_C=False):
 				if flag_norm_orb:  orb_tlu[:]           = orb_tlu              / norm
 				if flag_norm_C:    C[it][il].data[:,iu] = C[it][il].data[:,iu] / norm
 
-def orth(orb,dr):
+def orth(orb, dr):
 	""" |n'> = 1/Z ( |n> - \sum_{i=0}^{n-1} |i><i|n> ) """
 	""" orb[it][il][iu,r] """
 	for it,orb_t in orb.items():
@@ -60,7 +91,9 @@ def orth(orb,dr):
 					orb_tlu1[:] -= orb_tl[iu2] * inner_product(orb_tlu1,orb_tl[iu2],dr[it])
 				orb_tlu1[:] = orb_tlu1 / np.sqrt(inner_product(orb_tlu1,orb_tlu1,dr[it]))
 
-def find_eigenvalue(Nl,Ne):
+
+
+def find_eigenvalue(Nl, Ne):
 	""" E[il,ie] """
 	E = np.zeros((Nl,Ne+Nl+1))
 	for ie in range(1,Ne+Nl+1):
