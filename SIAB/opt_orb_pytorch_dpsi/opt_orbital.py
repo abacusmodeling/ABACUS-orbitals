@@ -125,19 +125,19 @@ class Opt_Orbital:
 		return V
 
 
-	def cal_V_origin(V,V_info):
+	def cal_V_origin(V,info_V):
 		# V[ib1,ib2]
 		"""
 		  <\psi|\psi> = <\psi|\phi> * <\phi|\phi>^{-1} * <\phi|psi>
 		  V_origin[ib]	
 		  V_origin[ib1,ib2]
 		"""			
-		if V_info["same_band"]:		V_origin = V.diag().sqrt()
+		if info_V["same_band"]:		V_origin = V.diag().sqrt()
 		else:						V_origin = V.sqrt()
 		return V_origin		
 		
 		
-	def cal_V_linear(coef,Q_linear,S_linear,V,V_info):
+	def cal_V_linear(coef,Q_linear,S_linear,V,info_V):
 		# coef[ib,it*il*ia*im*iu]
 		# Q_linear[ib,it*il*ia*im*iu]
 		# S_linear[it1*il1*ia1*im1*iu1,it2*il2*ia2*im2*iu2]
@@ -149,11 +149,11 @@ class Opt_Orbital:
 		V_linear_1 = coef.mm(S_linear).mm(coef.t().conj()).real
 		V_linear_2 = Q_linear.mm(coef.t().conj()).real
 		V_linear_3 = coef.mm(Q_linear.t().conj()).real
-		if V_info["same_band"]:
+		if info_V["same_band"]:
 			V_linear_1 = V_linear_1.diag()
 			V_linear_2 = V_linear_2.diag()
 			V_linear_3 = V_linear_3.diag()
-		if V_info["same_band"]:		Z = V.diag().sqrt()
+		if info_V["same_band"]:		Z = V.diag().sqrt()
 		else:						Z = V.sqrt()
 		Z = util.update0(Z)
 		V_linear = (-V_linear_1/Z + V_linear_2 + V_linear_3) / Z

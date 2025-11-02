@@ -8,10 +8,10 @@ import VI_norm
 
 class Opt_Orbital_Spillage:
 
-	def __init__(self, info_stru, info_element, V_info, VI_norm_type, file_list):
+	def __init__(self, info_stru, info_element, info_V, VI_norm_type, file_list):
 		self.info_stru = info_stru
 		self.info_element = info_element
-		self.V_info = V_info
+		self.info_V = info_V
 		self.file_list = file_list
 		self.norm = VI_norm.get_VI_norm_type(VI_norm_type)
 
@@ -34,7 +34,7 @@ class Opt_Orbital_Spillage:
 		Spillage = 0
 
 		for ist in range(len(self.info_stru)):
-			opt_orb_wave = opt_orbital_wavefunc.Opt_Orbital_Wavefunc(self.info_stru[ist], self.info_element, self.V_info)
+			opt_orb_wave = opt_orbital_wavefunc.Opt_Orbital_Wavefunc(self.info_stru[ist], self.info_element, self.info_V)
 
 			V_origin = opt_orb_wave.cal_V_origin(C, self.QI[ist], self.SI[ist])
 

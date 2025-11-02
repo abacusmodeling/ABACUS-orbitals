@@ -55,7 +55,7 @@ def read_file_head(info,file_list):
 	return info_all
 
 
-def read_QSV(info_stru, info_element, file_list, V_info):
+def read_QSV(info_stru, info_element, file_list, info_V):
 	QI=[];	SI=[];	VI=[]
 	ist = 0
 	for ist_true,file_name in enumerate(file_list):
@@ -75,7 +75,7 @@ def read_QSV(info_stru, info_element, file_list, V_info):
 				print("read SI:",ist_true,ik)
 				si = read_SI(info_stru[ist+ik], info_element, data)
 				SI.append( si )
-		if V_info["init_from_file"]:
+		if info_V["init_from_file"]:
 			with open(file_name,"r") as file:
 				data = re.compile(r"<OVERLAP_V>(.+)</OVERLAP_V>", re.S).search(file.read())
 				data = map(float,data.group(1).split())
@@ -83,7 +83,7 @@ def read_QSV(info_stru, info_element, file_list, V_info):
 			data = ()
 		for ik in range(Nk):
 			print("read VI:",ist_true,ik)
-			vi = read_VI(info_stru[ist+ik], V_info, ist_true, data)
+			vi = read_VI(info_stru[ist+ik], info_V, ist_true, data)
 			VI.append( vi )
 		ist += Nk
 	print()
@@ -137,10 +137,10 @@ def read_SI(info_stru, info_element, data):
 
 
 
-def read_VI(info_stru,V_info,ist,data):
-	if V_info["same_band"]:
+def read_VI(info_stru,info_V,ist,data):
+	if info_V["same_band"]:
 		""" VI[ib]	<psi|psi> """
-		if V_info["init_from_file"]:
+		if info_V["init_from_file"]:
 			VI = np.empty(info_stru.Nb,dtype=np.float64)
 			for ib in range(info_stru.Nb):
 				VI.data[ib] = next(data)
@@ -149,7 +149,7 @@ def read_VI(info_stru,V_info,ist,data):
 			VI = np.ones(info_stru.Nb_true, dtype=np.float64)
 	else:
 		""" VI[ib1,ib2]	<psi|psi> """
-		if V_info["init_from_file"]:
+		if info_V["init_from_file"]:
 			VI = np.empty((info_stru.Nb,info_stru.Nb),dtype=np.float64)
 			for ib1,ib2 in itertools.product( range(info_stru.Nb), range(info_stru.Nb) ):
 				VI[ib1,ib2] = next(data)

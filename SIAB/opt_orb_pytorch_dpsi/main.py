@@ -24,13 +24,13 @@ def main():
 	print("seed:",seed)
 	time_start = time.time()
 
-	file_list, info_true, weight_info, C_init_info, V_info, info_radial = IO.read_json.read_json("INPUT")
+	file_list, info_true, info_weight, info_C_init, info_V, info_radial = IO.read_json.read_json("INPUT")
 
-	weight = IO.cal_weight.cal_weight(weight_info, V_info["same_band"], file_list["origin"])
+	weight = IO.cal_weight.cal_weight(info_weight, info_V["same_band"], file_list["origin"])
 
 	info_kst = IO.read_QSV.read_file_head(info_true, file_list["origin"])
 
-	info_stru, info_element, info_opt = IO.change_info.change_info(info_kst, weight, V_info["same_band"])
+	info_stru, info_element, info_opt = IO.change_info.change_info(info_kst, weight, info_V["same_band"])
 	#info_max = IO.change_info.get_info_max(info_stru, info_element)
 
 	print("info_kst:", pprint.pformat(info_kst), sep="\n", end="\n"*2, flush=True)
@@ -40,12 +40,12 @@ def main():
 	print("info_radial:", pprint.pformat(info_radial,width=40), sep="\n", end="\n"*2, flush=True)
 	#print("info_max:", pprint.pformat(info_max), sep="\n", end="\n"*2, flush=True)
 
-	QI,SI,VI_origin = IO.read_QSV.read_QSV(info_stru, info_element, file_list["origin"], V_info)
+	QI,SI,VI_origin = IO.read_QSV.read_QSV(info_stru, info_element, file_list["origin"], info_V)
 	if "linear" in file_list.keys():
-		QI_linear, SI_linear, VI_linear = list(zip(*( IO.read_QSV.read_QSV(info_stru, info_element, file, V_info) for file in file_list["linear"] )))
+		QI_linear, SI_linear, VI_linear = list(zip(*( IO.read_QSV.read_QSV(info_stru, info_element, file, info_V) for file in file_list["linear"] )))
 
-	if C_init_info["init_from_file"]:
-		C, C_read_index = IO.func_C.read_C_init( C_init_info["C_init_file"], info_element )
+	if info_C_init["init_from_file"]:
+		C, C_read_index = IO.func_C.read_C_init( info_C_init["C_init_file"], info_element )
 	else:
 		C = IO.func_C.random_C_init(info_element)
 	E = orbital.set_E(info_element, info_radial["Rcut"])
@@ -59,7 +59,7 @@ def main():
 	#opt = radam.RAdam( sum(C.values(),[]), lr=info_opt.lr, eps=1e-20 )
 	opt = torch_optimizer.SWATS( sum(C.values(),[]), lr=info_opt.lr, eps=1e-20 )
 
-	spillage = Opt_Orbital_Spillage(info_stru, info_element, V_info, info_opt["norm"], file_list)
+	spillage = Opt_Orbital_Spillage(info_stru, info_element, info_V, info_opt["norm"], file_list)
 	spillage.set_QSVI(QI, SI, VI_origin)
 	if "linear" in file_list.keys():
 		spillage.set_QSVI_linear(QI_linear, SI_linear, VI_linear)
@@ -104,7 +104,7 @@ def main():
 
 			opt.zero_grad()
 			Loss.backward()
-			if C_init_info["init_from_file"] and not C_init_info["opt_C_read"]:
+			if info_C_init["init_from_file"] and not info_C_init["opt_C_read"]:
 				for it,il,iu in C_read_index:
 					C[it][il].grad[:,iu] = 0
 			opt.step()

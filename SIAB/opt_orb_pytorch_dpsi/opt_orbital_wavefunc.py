@@ -7,10 +7,10 @@ from opt_orbital import Opt_Orbital
 
 class Opt_Orbital_Wavefunc:
 
-	def __init__(self, info_stru, info_element, V_info):
+	def __init__(self, info_stru, info_element, info_V):
 		self.info_stru = info_stru
 		self.info_element = info_element
-		self.V_info = V_info
+		self.info_V = info_V
 
 	def cal_V_origin(self, C, QI, SI):
 		"""
@@ -29,7 +29,7 @@ class Opt_Orbital_Wavefunc:
 			self.info_stru, self.info_element)
 		self.coef = Opt_Orbital.cal_coef(Q, S)
 		self.V = Opt_Orbital.cal_V(self.coef, Q)
-		V_origin = Opt_Orbital.cal_V_origin(self.V, self.V_info)
+		V_origin = Opt_Orbital.cal_V_origin(self.V, self.info_V)
 		return V_origin
 
 	# attention: must cal_V_origin() firstly
@@ -46,5 +46,5 @@ class Opt_Orbital_Wavefunc:
 		S_linear = Opt_Orbital.change_index_S(
 			Opt_Orbital.cal_S( SI_linear, C, self.info_stru, self.info_element ),
 			self.info_stru, self.info_element)
-		V_linear = Opt_Orbital.cal_V_linear( self.coef, Q_linear, S_linear, self.V, self.V_info )
+		V_linear = Opt_Orbital.cal_V_linear( self.coef, Q_linear, S_linear, self.V, self.info_V )
 		return V_linear
