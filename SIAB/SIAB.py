@@ -279,7 +279,7 @@ def get_input_INPUT(name, Pseudo_dir, nspin, maxL, nbands_STRU, Ecut, Rcut, smea
         bessel_nao_sigma        0.1 #spherical bessel smearing_sigma
 
         symmetry            0
-        nbands             	{nbands_STRU}
+        nbands              {nbands_STRU}
 
         ecutwfc             {Ecut}
         scf_thr             1.0e-7  // about iteration
@@ -419,14 +419,20 @@ def prepare_SIAB_INPUT(iEcut, iRcut, iLevel):
     INPUT_json["file_list"]["origin"] = [ pwDataPath_STRU[STRUname][iBL]+"/orb_matrix.0.dat" for iBL in range(nBL_STRU[STRUname]) ]
     INPUT_json["file_list"]["linear"] = [ [ pwDataPath_STRU[STRUname][iBL]+"/orb_matrix.1.dat" for iBL in range(nBL_STRU[STRUname]) ] ]
 
-    INPUT_json["info"] = {"Nt_all": element,
-			"Nu":   { element[iElement]:orbConf_to_list(orbConf_Level[iLevelm1][iElement], Llabel, maxL_STRU[STRUname] )
-			            for iElement in range(len(element) )  },
-			"Rcut": { element[iElement]:Rcut[iRcut] for iElement in range(len(element)) },
-			"dr":   { element[iElement]:0.01 for iElement in range(len(element)) },
-			"Ecut": { element[iElement]:int(Ecut[iEcut]) for iElement in range(len(element)) },
-            "lr": 0.03,
-            "cal_T": False,  "cal_smooth": True, "max_steps": max_steps }
+    INPUT_json["info"] = {
+        "Nt_all": element,
+        "Nu":   { element[iElement]:orbConf_to_list(orbConf_Level[iLevelm1][iElement], Llabel, maxL_STRU[STRUname] )
+                    for iElement in range(len(element) )  },
+        "lr": 0.03,
+        "cal_T": False,
+        "max_steps": max_steps }
+    
+    INPUT_json["radial"] = {
+        "Rcut": { element[iElement]:Rcut[iRcut] for iElement in range(len(element)) },
+        "dr":   { element[iElement]:0.01 for iElement in range(len(element)) },
+        "Ecut": { element[iElement]:int(Ecut[iEcut]) for iElement in range(len(element)) },
+        "smearing_sigma": { element[iElement]:0.1 for iElement in range(len(element)) }
+    }
 
     if ( refBands_Level[iLevelm1] == "auto" ) :
         refBands_Level[iLevelm1] = [ pwDataPath_STRU[STRUname][iBL]+"/istate.info" for iBL in range(nBL_STRU[STRUname]) ]
@@ -883,7 +889,7 @@ if __name__=="__main__":
 
             # continue
             # print(" import mainFunc @ path: ", opt_mainFunc_path )
-    	    # #print("[pyTorch Version: "+torch.__version__+"]" , flush=True )
+            # #print("[pyTorch Version: "+torch.__version__+"]" , flush=True )
             # import main as mainFunc
             mainFunc.main() #!!!
 

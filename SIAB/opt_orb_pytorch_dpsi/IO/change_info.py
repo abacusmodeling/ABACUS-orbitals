@@ -30,19 +30,12 @@ def change_info(info_old, weight_old, flag_same_band):
 	for it,Nu in info_old.Nu.items():
 		info_element[it].Nu = Nu
 		info_element[it].Nl = len(Nu)
-	for it,Rcut in info_old.Rcut.items():
-		info_element[it].Rcut = Rcut
-	for it,dr in info_old.dr.items():
-		info_element[it].dr = dr
-	for it,Ecut in info_old.Ecut.items():
-		info_element[it].Ecut = Ecut
 	for it,Ne in info_old.Ne.items():
 		info_element[it].Ne = Ne
 
 	info_opt = addict.Dict()
 	info_opt.lr = info_old.lr
 	info_opt.cal_T = info_old.cal_T
-	info_opt.cal_smooth = info_old.cal_smooth
 	info_opt.norm = info_old.norm
 	info_opt.max_steps = info_old.max_steps
 

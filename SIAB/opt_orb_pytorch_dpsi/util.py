@@ -1,3 +1,5 @@
+import torch
+
 def ND_list(*sizes,element=None):
 	size_1,*size_other = sizes
 	l = [element] * size_1
@@ -48,3 +50,8 @@ def set_dict_default(m, m_default):
 				set_dict_default(m[key], value)
 		else:
 			m[key] = value
+
+def set_dict_default_elements(m, Nt_all):
+	for key,value in m.items():
+		if not isinstance(value,dict):
+			m[key] = {it:value for it in Nt_all}

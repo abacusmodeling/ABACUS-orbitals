@@ -24,7 +24,7 @@ def main():
 	print("seed:",seed)
 	time_start = time.time()
 
-	file_list, info_true, weight_info, C_init_info, V_info = IO.read_json.read_json("INPUT")
+	file_list, info_true, weight_info, C_init_info, V_info, info_radial = IO.read_json.read_json("INPUT")
 
 	weight = IO.cal_weight.cal_weight(weight_info, V_info["same_band"], file_list["origin"])
 
@@ -37,6 +37,7 @@ def main():
 	print("info_stru:", pprint.pformat(info_stru), sep="\n", end="\n"*2, flush=True)
 	print("info_element:", pprint.pformat(info_element,width=40), sep="\n", end="\n"*2, flush=True)
 	print("info_opt:", pprint.pformat(info_opt,width=40), sep="\n", end="\n"*2, flush=True)
+	print("info_radial:", pprint.pformat(info_radial,width=40), sep="\n", end="\n"*2, flush=True)
 	#print("info_max:", pprint.pformat(info_max), sep="\n", end="\n"*2, flush=True)
 
 	QI,SI,VI_origin = IO.read_QSV.read_QSV(info_stru, info_element, file_list["origin"], V_info)
@@ -47,10 +48,10 @@ def main():
 		C, C_read_index = IO.func_C.read_C_init( C_init_info["C_init_file"], info_element )
 	else:
 		C = IO.func_C.random_C_init(info_element)
-	E = orbital.set_E(info_element)
+	E = orbital.set_E(info_element, info_radial["Rcut"])
 	orbital.normalize(
-		orbital.generate_orbital(info_element,C,E),
-		{it:info_element[it].dr for it in info_element},
+		orbital.generate_orbital(info_element, info_radial, C, E),
+		info_radial["dr"],
 		C, flag_norm_C=True)
 
 	#opt = torch.optim.Adam(sum( ([c.real,c.imag] for c in sum(C,[])), []), lr=info_opt.lr, eps=1e-8)
@@ -108,24 +109,28 @@ def main():
 					C[it][il].grad[:,iu] = 0
 			opt.step()
 			#orbital.normalize(
-			#	orbital.generate_orbital(info_element,C,E),
+			#	orbital.generate_orbital(info_element, info_radial, C, E),
 			#	{it:info_element[it].dr for it in info_element},
 			#	C, flag_norm_C=True)
 
-	orb = orbital.generate_orbital(info_element,C_old,E)
-	if info_opt.cal_smooth:
-		orbital.smooth_orbital(
-			orb,
-			{it:info_element[it].Rcut for it in info_element}, {it:info_element[it].dr for it in info_element},
-			0.1)
-	orbital.orth(
+	orb = orbital.generate_orbital(info_element, info_radial, C_old, E)
+	for it in info_element:
+		if info_radial["smearing_sigma"][it]:
+			orbital.smooth_orbital(
+				orb[it],
+				info_radial["Rcut"][it],
+				info_radial["dr"][it],
+				info_radial["smearing_sigma"][it])
+		orbital.orth(
+			orb[it],
+			info_radial["dr"][it])
+	IO.print_orbital.print_orbital(
 		orb,
-		{it:info_element[it].dr for it in info_element})
-	IO.print_orbital.print_orbital(orb,info_element)
+		info_radial)
 	IO.print_orbital.plot_orbital(
 		orb,
-		{it:info_element[it].Rcut for it in info_element},
-		{it:info_element[it].dr for it in info_element})
+		info_radial["Rcut"],
+		info_radial["dr"])
 
 	IO.func_C.write_C("ORBITAL_RESULTS.txt",C_old,Spillage)
 

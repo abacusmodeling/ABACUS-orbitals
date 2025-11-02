@@ -11,7 +11,6 @@ def read_json(file_name):
 		"info": {
 			"lr": 0.01,
 			"cal_T": False,
-			"cal_smooth": False,
 			"norm": "element",
 			"max_steps": 30000
 		},
@@ -21,16 +20,21 @@ def read_json(file_name):
 		"V_info": {
 			"init_from_file": True,
 			"same_band": True
+		},
+		"radial": {
+			"Ecut": 0.0,
+			"smearing_sigma": 0.0
 		}
 	}
 	util.set_dict_default(input, input_default)
+	util.set_dict_default_elements(input["radial"], input["info"]["Nt_all"])
 
 	info = util.Info()
 	for info_attr,info_value in input["info"].items():
 		info.__dict__[info_attr] = info_value
 	info.Nl = { it:len(Nu) for it,Nu in info.Nu.items() }
 
-	return input["file_list"], info, input["weight"], input["C_init_info"], input["V_info"]
+	return input["file_list"], info, input["weight"], input["C_init_info"], input["V_info"], input["radial"]
 
 	""" file_name
 	{
@@ -53,12 +57,8 @@ def read_json(file_name):
 		"info": {
 			"Nt_all": [ "C", "O" ],
 			"Nu":   { "C":[2,2,1], "O":[3,2,1] },
-			"Rcut": { "C":6,       "O":6       },
-			"dr":   { "C":0.01,    "O":0.01    },
-			"Ecut": { "C":200,     "O":200     },
 			"lr": 0.01,
 			"cal_T": false,
-			"cal_smooth": false,
 			"norm": "element" / "max" / "max_ist" / "one",
 			"max_steps": 30000
 		},
@@ -80,6 +80,12 @@ def read_json(file_name):
 		"V_info": {
 			"init_from_file": true,
 			"same_band": true
+		},
+		"radial": {
+			"Rcut":           { "C": 6,    "O": 7    },
+			"dr":             { "C": 0.01, "O": 0.01 },
+			"Ecut":           { "C": 100,  "O": 100  },
+			"smearing_sigma": { "C": 0.0,  "O": 0.0  };
 		}
 	}
 	"""
@@ -87,12 +93,8 @@ def read_json(file_name):
 	""" info
 		Nt_all		['C', 'O']
 		Nu			{'C': [2, 2, 1], 'O': [3, 2, 1]}
-		Rcut		{'C': 6, 'O': 6}
-		dr			{'C': 0.01, 'O': 0.01}
-		Ecut		{'C': 200, 'O': 200}
 		lr			0.01
 		cal_T		False
-		cal_smooth	False
 		Nl			{'C': 3, 'O': 3}
 		Nst			3
 		Nt			[['C'], ['C'], ['C', 'O']]
