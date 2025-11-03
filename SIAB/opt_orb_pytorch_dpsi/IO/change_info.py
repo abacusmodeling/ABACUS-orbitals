@@ -33,13 +33,7 @@ def change_info(info_old, weight_old, flag_same_band):
 	for it,Ne in info_old.Ne.items():
 		info_element[it].Ne = Ne
 
-	info_opt = addict.Dict()
-	info_opt.lr = info_old.lr
-	info_opt.cal_T = info_old.cal_T
-	info_opt.norm = info_old.norm
-	info_opt.max_steps = info_old.max_steps
-
-	return info_stru, info_element, info_opt
+	return info_stru, info_element
 
 	"""
 
@@ -56,23 +50,6 @@ def change_info(info_old, weight_old, flag_same_band):
 	Na         [{'C': 1}, {'C': 1}, {'C': 1, 'O': 2}]
 	Nb         [6, 6, 10]
 	Ne         {'C': 19, 'O': 19}
-
-	info_stru =
-	[{'Na': {'C': 1},
-	  'Nb': 6,
-	  'Nb_true': 4,
-	  'Nl': 2,
-	  'weight': tensor([0.0333, 0.0111, 0.0111, 0.0111, 0.0000, 0.0000])},
-	 {'Na': {'C': 1},
-	  'Nb': 6,
-	  'Nb_true': 2,
-	  'Nl': 2,
-	  'weight': tensor([0.0667, 0.0667, 0.0000, 0.0000, 0.0000, 0.0000])},
-	 {'Na': {'C': 1, 'O': 2},
-	  'Nb': 10,
-	  'Nb_true': 8,
-	  'Nl': 2,
-	  'weight': tensor([0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.0000, 0.0000])}]
 
 	info_element =
 	{'C': {
@@ -97,6 +74,23 @@ def change_info(info_old, weight_old, flag_same_band):
 	 'Rcut': {'C': 6, 'O': 7},
 	 'dr': {'C': 0.01, 'O': 001},
 	 'smearing_sigma': {'C': 0.0, 'O': 0.0}}
+
+	info_stru =
+	[{'Na': {'C': 1},
+	  'Nb': 6,
+	  'Nb_true': 4,
+	  'Nl': 2,
+	  'weight': tensor([0.0333, 0.0111, 0.0111, 0.0111, 0.0000, 0.0000])},
+	 {'Na': {'C': 1},
+	  'Nb': 6,
+	  'Nb_true': 2,
+	  'Nl': 2,
+	  'weight': tensor([0.0667, 0.0667, 0.0000, 0.0000, 0.0000, 0.0000])},
+	 {'Na': {'C': 1, 'O': 2},
+	  'Nb': 10,
+	  'Nb_true': 8,
+	  'Nl': 2,
+	  'weight': tensor([0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.1000, 0.0000, 0.0000])}]
 	"""
 
 

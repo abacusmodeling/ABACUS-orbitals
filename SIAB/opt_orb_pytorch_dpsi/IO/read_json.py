@@ -8,12 +8,15 @@ def read_json(file_name):
 	input = json.loads(input)
 
 	input_default =	{
-		"info": {
-			"lr": 0.01,
-			"cal_T": False,
-			"norm": "element",
-			"max_steps": 30000
-		},
+		"optimize": [
+			{
+				"optimizer": "Adam",
+				"kwargs": {},
+				"cal_T": False,
+				"norm": "element",
+				"max_steps": 30000
+			}
+		],
 		"C_init_info": {
 			"init_from_file": False,
 		},
@@ -27,14 +30,14 @@ def read_json(file_name):
 		}
 	}
 	util.set_dict_default(input, input_default)
-	util.set_dict_default_elements(input["radial"], input["info"]["Nt_all"])
+	util.set_dict_default_elements(input["radial"], input["element"]["Nt_all"])
 
-	info = util.Info()
-	for info_attr,info_value in input["info"].items():
-		info.__dict__[info_attr] = info_value
-	info.Nl = { it:len(Nu) for it,Nu in info.Nu.items() }
+	info_element = util.Info()
+	for info_attr,info_value in input["element"].items():
+		info_element.__dict__[info_attr] = info_value
+	info_element.Nl = { it:len(Nu) for it,Nu in info_element.Nu.items() }
 
-	return input["file_list"], info, input["weight"], input["C_init_info"], input["V_info"], input["radial"]
+	return input["file_list"], info_element, input["weight"], input["optimize"], input["C_init_info"], input["V_info"], input["radial"]
 
 	""" file_name
 	{
@@ -54,13 +57,9 @@ def read_json(file_name):
 				],
 			]
 		},
-		"info": {
+		"element": {
 			"Nt_all": [ "C", "O" ],
-			"Nu":   { "C":[2,2,1], "O":[3,2,1] },
-			"lr": 0.01,
-			"cal_T": false,
-			"norm": "element" / "max" / "max_ist" / "one",
-			"max_steps": 30000
+			"Nu":   { "C":[2,2,1], "O":[3,2,1] }
 		},
 		"weight":
 		{
@@ -72,6 +71,17 @@ def read_json(file_name):
 				"~/CO2/OUT.ABACUS/istate.info"
 			]
 		},
+		"optimize":[
+			{
+				"optimizer": "Adam",
+				"kwargs": {
+					"lr": 0.01
+				},
+				"max_steps": 30000,
+				"cal_T": false,
+				"norm": "element" / "max" / "max_ist" / "one",
+			}
+		],
 		"C_init_info": {
 			"init_from_file": false,
 			"C_init_file": "~/CO/ORBITAL_RESULTS.txt",
@@ -90,12 +100,10 @@ def read_json(file_name):
 	}
 	"""
 
-	""" info
+	""" info_kst
 		Nt_all		['C', 'O']
 		Nu			{'C': [2, 2, 1], 'O': [3, 2, 1]}
-		lr			0.01
-		cal_T		False
-		Nl			{'C': 3, 'O': 3}
+		Nl			[3, 3, 3]
 		Nst			3
 		Nt			[['C'], ['C'], ['C', 'O']]
 		Na			[{'C': 1}, {'C': 1}, {'C': 1, 'O': 2}]

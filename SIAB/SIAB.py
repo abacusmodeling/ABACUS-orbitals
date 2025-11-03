@@ -413,19 +413,30 @@ def prepare_SIAB_INPUT(iEcut, iRcut, iLevel):
     STRUname = refSTRU_Level[iLevelm1]
     print(" Prepare INPUT for Level%s orbitals with Ref %s "%(iLevel, STRUname))
 
-    INPUT_json = {"file_list":{}, "info":{}, "weight":{}, "C_init_info":{}, "V_info": {} }
+    INPUT_json = dict()
 
     INPUT_json["file_list"] = {"origin":[], "linear":[] }
     INPUT_json["file_list"]["origin"] = [ pwDataPath_STRU[STRUname][iBL]+"/orb_matrix.0.dat" for iBL in range(nBL_STRU[STRUname]) ]
     INPUT_json["file_list"]["linear"] = [ [ pwDataPath_STRU[STRUname][iBL]+"/orb_matrix.1.dat" for iBL in range(nBL_STRU[STRUname]) ] ]
 
-    INPUT_json["info"] = {
+    INPUT_json["element"] = {
         "Nt_all": element,
         "Nu":   { element[iElement]:orbConf_to_list(orbConf_Level[iLevelm1][iElement], Llabel, maxL_STRU[STRUname] )
-                    for iElement in range(len(element) )  },
-        "lr": 0.03,
-        "cal_T": False,
-        "max_steps": max_steps }
+                    for iElement in range(len(element) )  }
+    }
+
+    INPUT_json["optimize"] = [
+        {
+            "optimizer": "SWATS",
+            "kwargs": {
+                "lr": 0.03,
+                "eps": 1e-20
+            },
+            "max_steps": max_steps,
+            "cal_T": False,
+            "norm": "element"
+        }
+    ]
     
     INPUT_json["radial"] = {
         "Rcut": { element[iElement]:Rcut[iRcut] for iElement in range(len(element)) },
@@ -444,6 +455,7 @@ def prepare_SIAB_INPUT(iEcut, iRcut, iLevel):
     #                         "bands_range": refBandsRange_Level[iLevelm1] }
     #print("____ refBands_Level:%s"%refBands_Level)
 
+    INPUT_json["weight"] = {}
     if ( type(refBands_Level[iLevelm1][0]) == str ):
         INPUT_json["weight"] = { "stru": [1] * nBL_STRU[STRUname],
                              "bands_file": refBands_Level[iLevelm1] }
