@@ -76,7 +76,7 @@ def write_C(file_name,C,Spillage):
 						print("\t", '%18.14f'%C_tl[ie,iu].item(), file=file)
 		print("</Coefficient>", file=file)
 		print("<Mkb>", file=file)
-		print("Left spillage = %.10e"%Spillage.item(), file=file)
+		print("Left spillage = %.10e"%Spillage, file=file)
 		print("</Mkb>", file=file)
 
 

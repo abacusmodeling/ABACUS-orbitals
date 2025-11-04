@@ -32,12 +32,12 @@ def main():
 	info_stru, info_element = IO.change_info.change_info(info_kst, weight, info_V["same_band"])
 	#info_max = IO.change_info.get_info_max(info_stru, info_element)
 
-	print("info_kst:", pprint.pformat(info_kst), sep="\n", end="\n"*2, flush=True)
-	print("info_element:", pprint.pformat(info_element,width=40), sep="\n", end="\n"*2, flush=True)
-	print("info_optimize:", pprint.pformat(info_optimize,width=40), sep="\n", end="\n"*2, flush=True)
-	print("info_radial:", pprint.pformat(info_radial,width=40), sep="\n", end="\n"*2, flush=True)
-	print("info_stru:", pprint.pformat(info_stru), sep="\n", end="\n"*2, flush=True)
-	#print("info_max:", pprint.pformat(info_max), sep="\n", end="\n"*2, flush=True)
+	print("info_kst:", pprint.pformat(info_kst), sep="\n", end="\n"*2)
+	print("info_element:", pprint.pformat(info_element,width=40), sep="\n", end="\n"*2)
+	print("info_optimize:", pprint.pformat(info_optimize,width=40), sep="\n", end="\n"*2)
+	print("info_radial:", pprint.pformat(info_radial,width=40), sep="\n", end="\n"*2)
+	print("info_stru:", pprint.pformat(info_stru), sep="\n", end="\n"*2)
+	#print("info_max:", pprint.pformat(info_max), sep="\n", end="\n"*2)
 
 	QI,SI,VI_origin = IO.read_QSV.read_QSV(info_stru, info_element, file_list["origin"], info_V)
 	if "linear" in file_list.keys():
@@ -57,11 +57,8 @@ def main():
 
 		for info_opt in info_optimize:
 
-			print( "\nSee \"Spillage.dat\" for detail status: " , flush=True )
-			if info_opt["cal_T"]:
-				print( '%5s'%"istep", "%20s"%"Spillage", "%20s"%"T.item()", "%20s"%"Loss", flush=True )
-			else:
-				print( '%5s'%"istep", "%20s"%"Spillage", flush=True )
+			print( '\nSee "Spillage.dat" for detail status:'  )
+			print( "istep", "Spillage", sep="\t" )
 
 			opt = optimize.get_optim( info_opt, sum(C.values(),[]))
 
@@ -70,9 +67,10 @@ def main():
 			if "linear" in file_list.keys():
 				spillage.set_QSVI_linear(QI_linear, SI_linear, VI_linear)
 
-			loss_old = np.inf
+			data_transmit = dict()
 
-			for istep in range(info_opt["max_steps"]):
+			def closure():
+				nonlocal data_transmit
 
 				Spillage = spillage.cal_Spillage(C)
 
@@ -84,34 +82,60 @@ def main():
 					Loss = Spillage
 
 				if info_opt["cal_T"]:
-					print_content = [istep, Spillage.item(), T.item(), Loss.item()]
+					print_content = [data_transmit["istep_big"], data_transmit["istep_small"], data_transmit["istep_all"], Spillage.item(), T.item(), Loss.item()]
 				else:
-					print_content = [istep, Spillage.item()]
-				print(*print_content, sep="\t", file=S_file, flush=True)
-				if not istep%100:
-					print(*print_content, sep="\t", flush=True)
+					print_content = [data_transmit["istep_big"], data_transmit["istep_small"], data_transmit["istep_all"], Spillage.item()]
+				print(*print_content, sep="\t", file=S_file)
+				data_transmit["istep_small"] += 1
+				data_transmit["istep_all"] += 1
 
-				if Loss.item() < loss_old:
-					loss_old = Loss.item()
-					C_old = IO.func_C.copy_C(C,info_element)
-					flag_finish = 0
+				data_transmit.update({"Loss":Loss.item(), "Spillage":Spillage.item()})
+				if info_opt["optimizer"] != "LBFGS":
+					if Loss < data_transmit["loss_saved"]:
+						data_transmit["loss_saved"] = Loss
+						data_transmit["flag_finish"] = 0
+						data_transmit["C"] = IO.func_C.copy_C(C,info_element)
+					else:
+						data_transmit["flag_finish"] += 1
 				else:
-					flag_finish += 1
-					if flag_finish > 50:
-						break
+					data_transmit["C"] = IO.func_C.copy_C(C,info_element)
 
 				opt.zero_grad()
 				Loss.backward()
 				if info_C_init["init_from_file"] and not info_C_init["opt_C_read"]:
 					for it,il,iu in C_read_index:
 						C[it][il].grad[:,iu] = 0
-				opt.step()
+
+				return Loss
+
+			data_transmit["istep_all"] = 0
+			if info_opt["optimizer"] != "LBFGS":
+				data_transmit["loss_saved"] = np.inf
+				data_transmit["flag_finish"] = 0
+
+			for data_transmit["istep_big"] in range(info_opt["max_steps"]):
+
+				data_transmit["istep_small"] = 0
+
+				if info_opt["optimizer"] != "LBFGS":
+					if data_transmit["flag_finish"] > 50:
+						break
+
+				opt.step(closure)
+
+				if (info_opt["optimizer"]=="LBFGS") or (data_transmit["istep_big"]%10==0):
+					print(data_transmit["istep_big"], data_transmit["Spillage"], sep="\t")
+
+				if info_opt["optimizer"] == "LBFGS":
+					if data_transmit["istep_small"]==1:
+						break
+
 				#orbital.normalize(
 				#	orbital.generate_orbital(info_element, info_radial, C, E),
 				#	{it:info_element[it].dr for it in info_element},
 				#	C, flag_norm_C=True)
 
-	orb = orbital.generate_orbital(info_element, info_radial, C_old, E)
+	orb = orbital.generate_orbital(info_element, info_radial, data_transmit["C"], E)
 	for it in info_element:
 		if info_radial["smearing_sigma"][it]:
 			orbital.smooth_orbital(
@@ -130,13 +154,13 @@ def main():
 		info_radial["Rcut"],
 		info_radial["dr"])
 
-	IO.func_C.write_C("ORBITAL_RESULTS.txt",C_old,Spillage)
+	IO.func_C.write_C("ORBITAL_RESULTS.txt", data_transmit["C"], data_transmit["Spillage"])
 
-	print("Time (PyTorch):     %s\n"%(time.time()-time_start), flush=True )
+	print("Time (PyTorch):     %s\n"%(time.time()-time_start) )
 
 
 if __name__=="__main__":
 	import sys
 	np.set_printoptions(threshold=sys.maxsize, linewidth=10000)
-	print( sys.version, flush=True )
+	print( sys.version )
 	main()
