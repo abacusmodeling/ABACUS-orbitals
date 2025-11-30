@@ -63,11 +63,12 @@ def change_info(info_old, weight_old, flag_same_band):
 		'Nu': [3, 2, 1],
 		'index': 1}}
 
-	info_opt =
-	{'cal_T': False,
-	 'lr': 0.01,
-	 'max_steps': 30000,
-	 'norm': 'element'}
+	info_optimize =
+	[{'optimizer': 'Adam',
+	  'kwargs': {'lr': 1},
+	  'max_steps': 30000,
+	  'norm': 'max',
+	  'cal_T': False}]
 
 	info_radial = 
 	{'Ecut': {'C': 100, 'O': 100},

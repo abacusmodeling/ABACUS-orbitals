@@ -1,4 +1,4 @@
-from util import *
+import util
 import torch
 import numpy as np
 
@@ -6,7 +6,7 @@ def random_C_init(info_element):
 	""" C[it][il][ie,iu]	<jY|\phi> """
 	C = dict()
 	for it in info_element.keys():
-		C[it] = ND_list(info_element[it].Nl)
+		C[it] = util.ND_list(info_element[it].Nl)
 		for il in range(info_element[it].Nl):
 			C[it][il] = torch.tensor(np.random.uniform(-1,1, (info_element[it].Ne, info_element[it].Nu[il])), dtype=torch.float64, requires_grad=True)
 	return C
@@ -23,13 +23,13 @@ def read_C_init(file_name,info_element):
 			if line.strip() == "<Coefficient>":
 				line=None
 				break
-		ignore_line(file,1)
+		util.ignore_line(file,1)
 
 		C_read_index = set()
 		while True:
 			line = file.readline().strip()
 			if line.startswith("Type"):
-				it,il,iu = file.readline().split();
+				it,il,iu = file.readline().split()
 				il = int(il)
 				iu = int(iu)-1
 				C_read_index.add((it,il,iu))
@@ -38,7 +38,7 @@ def read_C_init(file_name,info_element):
 					if not line:	line = file.readline().split()
 					C[it][il].data[ie,iu] = float(line.pop(0))
 			elif line.startswith("</Coefficient>"):
-				break;
+				break
 			else:
 				raise IOError("unknown line in read_C_init "+file_name+"\n"+line)
 	return C, C_read_index
@@ -48,7 +48,7 @@ def read_C_init(file_name,info_element):
 def copy_C(C,info_element):
 	C_copy = dict()
 	for it in info_element.keys():
-		C_copy[it] = ND_list(info_element[it].Nl)
+		C_copy[it] = util.ND_list(info_element[it].Nl)
 		for il in range(info_element[it].Nl):
 			C_copy[it][il] = C[it][il].clone()
 	return C_copy

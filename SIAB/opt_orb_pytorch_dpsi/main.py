@@ -8,14 +8,12 @@ import IO.print_orbital
 import IO.cal_weight
 import IO.change_info
 import orbital
-import optimize
-from opt_orbital import Opt_Orbital
-from opt_orbital_spillage import Opt_Orbital_Spillage
+from opt_orbital_converge import Opt_Orbital_Converge
 
 import numpy as np
-import torch
 import time
 import pprint
+import sys
 
 def main():
 	seed = int(1000*time.time())%(2**32)
@@ -53,87 +51,23 @@ def main():
 		info_radial["dr"],
 		C, flag_norm_C=True)
 
+	opt_orb_conv = Opt_Orbital_Converge()
+	opt_orb_conv.set_info(file_list, info_optimize, info_stru, info_C_init, info_V)
+	opt_orb_conv.set_info_element(info_element)
+	opt_orb_conv.set_QSVI(QI, SI, VI_origin)
+	if "linear" in file_list.keys():
+		opt_orb_conv.set_QSVI_linear(QI_linear, SI_linear, VI_linear)
+	if info_C_init["init_from_file"]:
+		opt_orb_conv.set_C_read_index(C_read_index)
+	opt_orb_conv.set_E(E)
+
 	with open("Spillage.dat","w") as S_file:
+		data_transmit = opt_orb_conv.cal_converge(C, (sys.stdout,S_file))
 
-		for info_opt in info_optimize:
-
-			print( '\nSee "Spillage.dat" for detail status:'  )
-			print( "istep", "Spillage", sep="\t" )
-
-			opt = optimize.get_optim( info_opt, sum(C.values(),[]))
-
-			spillage = Opt_Orbital_Spillage(info_stru, info_element, info_V, info_opt["norm"], file_list)
-			spillage.set_QSVI(QI, SI, VI_origin)
-			if "linear" in file_list.keys():
-				spillage.set_QSVI_linear(QI_linear, SI_linear, VI_linear)
-
-			data_transmit = dict()
-
-			def closure():
-				nonlocal data_transmit
-
-				Spillage = spillage.cal_Spillage(C)
-
-				if info_opt["cal_T"]:
-					T = Opt_Orbital.cal_T(C,E)
-					if not "TSrate" in vars():	TSrate = torch.abs(0.002*Spillage/T).data[0]
-					Loss = Spillage + TSrate*T
-				else:
-					Loss = Spillage
-
-				if info_opt["cal_T"]:
-					print_content = [data_transmit["istep_big"], data_transmit["istep_small"], data_transmit["istep_all"], Spillage.item(), T.item(), Loss.item()]
-				else:
-					print_content = [data_transmit["istep_big"], data_transmit["istep_small"], data_transmit["istep_all"], Spillage.item()]
-				print(*print_content, sep="\t", file=S_file)
-				data_transmit["istep_small"] += 1
-				data_transmit["istep_all"] += 1
-
-				data_transmit.update({"Loss":Loss.item(), "Spillage":Spillage.item()})
-				if info_opt["optimizer"] != "LBFGS":
-					if Loss < data_transmit["loss_saved"]:
-						data_transmit["loss_saved"] = Loss
-						data_transmit["flag_finish"] = 0
-						data_transmit["C"] = IO.func_C.copy_C(C,info_element)
-					else:
-						data_transmit["flag_finish"] += 1
-				else:
-					data_transmit["C"] = IO.func_C.copy_C(C,info_element)
-
-				opt.zero_grad()
-				Loss.backward()
-				if info_C_init["init_from_file"] and not info_C_init["opt_C_read"]:
-					for it,il,iu in C_read_index:
-						C[it][il].grad[:,iu] = 0
-
-				return Loss
-
-			data_transmit["istep_all"] = 0
-			if info_opt["optimizer"] != "LBFGS":
-				data_transmit["loss_saved"] = np.inf
-				data_transmit["flag_finish"] = 0
-
-			for data_transmit["istep_big"] in range(info_opt["max_steps"]):
-
-				data_transmit["istep_small"] = 0
-
-				if info_opt["optimizer"] != "LBFGS":
-					if data_transmit["flag_finish"] > 50:
-						break
-
-				opt.step(closure)
-
-				if (info_opt["optimizer"]=="LBFGS") or (data_transmit["istep_big"]%10==0):
-					print(data_transmit["istep_big"], data_transmit["Spillage"], sep="\t")
-
-				if info_opt["optimizer"] == "LBFGS":
-					if data_transmit["istep_small"]==1:
-						break
-
-				#orbital.normalize(
-				#	orbital.generate_orbital(info_element, info_radial, C, E),
-				#	{it:info_element[it].dr for it in info_element},
-				#	C, flag_norm_C=True)
+	#orbital.normalize(
+	#	orbital.generate_orbital(info_element, info_radial, C, E),
+	#	{it:info_element[it].dr for it in info_element},
+	#	C, flag_norm_C=True)
 
 	orb = orbital.generate_orbital(info_element, info_radial, data_transmit["C"], E)
 	for it in info_element:
@@ -160,7 +94,6 @@ def main():
 
 
 if __name__=="__main__":
-	import sys
 	np.set_printoptions(threshold=sys.maxsize, linewidth=10000)
 	print( sys.version )
 	main()
