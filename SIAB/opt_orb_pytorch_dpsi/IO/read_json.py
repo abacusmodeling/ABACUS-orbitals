@@ -1,5 +1,6 @@
 import util
 import json
+import numpy as np
 
 def read_json(file_name):
 
@@ -8,6 +9,10 @@ def read_json(file_name):
 	input = json.loads(input)
 
 	input_default =	{
+		"element":{
+				"Loss_thr": 0,
+				"orb_num": np.inf
+		},
 		"optimize": [
 			{
 				"optimizer": "Adam",
@@ -35,7 +40,10 @@ def read_json(file_name):
 	info_element = util.Info()
 	for info_attr,info_value in input["element"].items():
 		info_element.__dict__[info_attr] = info_value
-	info_element.Nl = { it:len(Nu) for it,Nu in info_element.Nu.items() }
+	if "Nu" in info_element.__dict__.keys():
+		info_element.Nl = { it:len(Nu) for it,Nu in info_element.Nu.items() }
+	elif "Nl" in info_element.__dict__.keys():
+		info_element.Nu = { it:[0]*Nl for it,Nl in info_element.Nl.items() }
 
 	return input["file_list"], info_element, input["weight"], input["optimize"], input["C_init_info"], input["V_info"], input["radial"]
 
@@ -59,7 +67,10 @@ def read_json(file_name):
 		},
 		"element": {
 			"Nt_all": [ "C", "O" ],
-			"Nu":   { "C":[2,2,1], "O":[3,2,1] }
+			"Nu":   { "C":[2,2,1], "O":[3,2,1] },		# only for main.py
+			"Nl":	{ "C": 3, "O": 3 },					# only for main_each.py
+			"Loss_thr":		1E-10,						# only for main_each.py
+			"orb_num":		13							# only for main_each.py
 		},
 		"weight":
 		{
@@ -82,7 +93,7 @@ def read_json(file_name):
 				"norm": "element" / "max" / "max_ist" / "one",
 			}
 		],
-		"C_init_info": {
+		"C_init_info": {								# only for main.py
 			"init_from_file": false,
 			"C_init_file": "~/CO/ORBITAL_RESULTS.txt",
 			"opt_C_read": false

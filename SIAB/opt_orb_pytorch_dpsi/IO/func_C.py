@@ -80,6 +80,20 @@ def write_C(file_name,C,Spillage):
 		print("</Mkb>", file=file)
 
 
+
+def cover_C(C_old, info_element):
+	""" C[it][il][ie,iu] """
+	C_new = random_C_init(info_element)
+	C_read_index = set()
+	for it in C_old:
+		for il in range(len(C_old[it])):
+			size = C_old[it][il].size()
+			with torch.no_grad():
+				C_new[it][il][:size[0],:size[1]] = C_old[it][il]
+			C_read_index.update({(it,il,iu) for iu in range(size[1])})
+	return C_new, C_read_index
+
+
 #def init_C(info):
 #	""" C[it][il][ie,iu] """
 #	C = ND_list(max(info.Nt))
